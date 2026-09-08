@@ -1,0 +1,12 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/tektxbzg/public_html/fuel/
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/mkdir -p $DEPLOYPATH/storage/logs
+    - /bin/mkdir -p $DEPLOYPATH/storage/uploads
+    - /bin/cp -R * $DEPLOYPATH
+    - /bin/cp -R .htaccess $DEPLOYPATH 2>/dev/null || true
+    - /bin/cp -R .env.cpanel $DEPLOYPATH/.env 2>/dev/null || true
+    - /bin/chmod -R 755 $DEPLOYPATH
+    - /bin/chmod -R 775 $DEPLOYPATH/storage 2>/dev/null || /bin/chmod -R 777 $DEPLOYPATH/storage
