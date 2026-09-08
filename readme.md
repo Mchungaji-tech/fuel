@@ -1,10 +1,10 @@
-﻿# Sarura Fuel Logistics Management System
+﻿# Fuel Logistics Management System
 
-A Kenyan fuel logistics and business management platform built for a company that manages drivers, trucks, fuel trips, employees, payroll, taxes, deductions, leads, customers, invoices, and operational reporting.
+A fuel logistics and business management platform built for a company that manages drivers, trucks, fuel trips, employees, payroll, taxes, deductions, leads, customers, invoices, and operational reporting.
 
 ## Overview
 
-Sarura Fuel Logistics helps manage the full business lifecycle of a fuel transport company:
+Fuel Logistics helps manage the full business lifecycle of a fuel transport company:
 
 - lead generation and CRM
 - customer management
@@ -14,7 +14,7 @@ Sarura Fuel Logistics helps manage the full business lifecycle of a fuel transpo
 - financial reporting and invoice management
 - operational dashboards and business alerts
 
-The system is designed for a Kenyan business environment and supports local payroll needs such as PAYE, NSSF, SHIF, Affordable Housing Levy, and employee deductions.
+The system is designed for a  business environment and supports local payroll needs such as PAYE, NSSF, SHIF, Affordable Housing Levy, and employee deductions.
 
 ## Core Goals
 
@@ -400,4 +400,4 @@ This project currently includes:
 
 ## Summary
 
-Sarura Fuel Logistics is a complete operations, payroll, and business management system for a Kenyan fuel transportation company. The platform combines dispatch, fleet, HR, finance, CRM, and reporting into one streamlined environment with a professional dashboard design that reflects the business’s real operational needs.
+Fuel Logistics is a complete operations, payroll, and business management system for a Kenyan fuel transportation company. The platform combines dispatch, fleet, HR, finance, CRM, and reporting into one streamlined environment with a professional dashboard design that reflects the business’s real operational needs.
