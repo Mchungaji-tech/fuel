@@ -1,0 +1,158 @@
+# Fleet Management, Individual Truck Views, Non-Company Trucks & Detailed Truck Reports
+
+This plan outlines the implementation of the requested refinements:
+1. **Fleet Management Renaming**: Rename "Fleet Dispatches" &rarr; "Fleet Management" system-wide.
+2. **Fleet Management Table Columns Update**:
+   - Remove **Driver** column.
+   - Remove standalone **Capacity** column & integrate capacity into **Truck Details** (e.g. `KAA 458Z (28,000 L)`).
+   - Column name for loaded litres: exactly **"Litres Loaded"**.
+   - Remove **Status** column.
+   - Resulting columns: `Date of Dispatch` &rarr; `Truck Details (Plate & Capacity)` &rarr; `Litres Loaded` &rarr; `From` &rarr; `Destination` &rarr; `Product` &rarr; `Transport` &rarr; `Mileage Cost` &rarr; `Extra Expenses` &rarr; `Balance (Profit / Commission)` &rarr; `Actions (BOL, Delete)`.
+3. **Company vs Subcontracted (Non-Company) Trucks**:
+   - Trucks can be marked as **Company Owned** or **Subcontracted / Hired (Non-Company)** with an agreed commission rate/amount.
+   - For non-company trucks, the company's expected profit on each trip is the **Agreed Commission**!
+4. **Individual Truck View (`/trucks/view/{id}`)**:
+   - Each truck can be viewed separately with its complete individual profile, dispatch history, total litres carried, expenses incurred, and profit/commission generated.
+5. **Detailed Truck Report**:
+   - Comprehensive performance report comparing each truck's trips, fuel hauled, revenue, maintenance costs, and net return (company profit or commission).
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Key Design Decisions:**
+> 1. **Fleet Table Layout**: Columns will be:
+>    1. `Date of Dispatch`
+>    2. `Truck Details` (shows Plate, Model, Capacity in Litres, and a badge if Subcontracted/Non-Company)
+>    3. `Litres Loaded`
+>    4. `From`
+>    5. `Destination`
+>    6. `Product`
+>    7. `Transport`
+>    8. `Mileage Cost`
+>    9. `Extra Expenses`
+>    10. `Balance` (For company trucks: `Transport - Mileage - Extra`; for subcontracted/non-company trucks: `Agreed Commission`)
+>    11. `Actions` (📄 BOL, View Truck, Delete)
+> 2. **Non-Company / Subcontracted Trucks**:
+>    - When registering a truck, users can specify **Ownership**: `Company Owned` or `Subcontracted / Third-Party`.
+>    - For Subcontracted trucks, an `agreed_commission` (or percentage) is set. On dispatch, the balance represents the company's agreed commission.
+> 3. **Individual Truck Profile & Report**:
+>    - Clicking any truck navigates to `/trucks/view/{id}`, displaying its dedicated dashboard, trip history, total volume hauled, maintenance history, and financial yield.
+>    - A dedicated **Truck Performance Report** will be accessible under Reports (`/reports/trucks`) and directly from the Trucks section.
+
+---
+
+## Proposed Changes
+
+### 1. Database Schema Updates
+
+#### [MODIFY] [app/Core/Database.php](file:///c:/xampp/htdocs/fuel/app/Core/Database.php)
+- Update `trucks` table:
+  - Add `ownership_type VARCHAR(50) DEFAULT 'Company'` (`Company` vs `Subcontracted`)
+  - Add `owner_name VARCHAR(150)` (e.g. "Sarura Fuel" or third-party owner/transporter name)
+  - Add `commission_rate DECIMAL(10,2) DEFAULT 0` (agreed commission amount or percentage)
+- Update `fleet_dispatches` table:
+  - Add `is_subcontracted INT DEFAULT 0`
+  - Add `agreed_commission DECIMAL(12,2) DEFAULT 0`
+- Seed both Company Owned trucks and Subcontracted / Third-Party trucks (e.g. `KCT 789X` marked as Subcontracted with agreed commission).
+
+---
+
+### 2. Fleet Management Page & Table Overhaul
+
+#### [MODIFY] [resources/views/fleet/index.php](file:///c:/xampp/htdocs/fuel/resources/views/fleet/index.php)
+- Update heading to **"Fleet Management"**.
+- Update table columns:
+  - Table starts with **Date of Dispatch**.
+  - **Truck Details**: Shows Plate, Model, Capacity (e.g. `KAA 458Z · 28,000 L`), with a distinct badge `Subcontracted` if non-company.
+  - **Litres Loaded**: Column header explicitly set to **"Litres Loaded"**.
+  - **From**: Origin depot.
+  - **Destination**: Destination client/depot.
+  - **Product**: Kenya fuel initials (PMS, AGO, DPK, JET A-1).
+  - **Transport**: Total transport billed.
+  - **Mileage Cost**: Trip cost.
+  - **Extra Expenses**: Breakdown / fixes on way.
+  - **Balance**: Net profit for company trucks OR Agreed Commission for subcontracted trucks.
+  - **Actions**: View BOL (📄 BOL), View Truck (🔍 Truck), Delete.
+  - **Removed**: Driver column, standalone Capacity column, Status column.
+- Update New Dispatch modal to support Subcontracted trucks with automatic Agreed Commission calculation.
+
+#### [MODIFY] [app/Controllers/FleetController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/FleetController.php)
+- Support commission calculation for non-company trucks.
+- Update titles and CSV export/import to match the new columns.
+
+---
+
+### 3. Individual Truck View & Management
+
+#### [MODIFY] [app/Controllers/TruckController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/TruckController.php)
+- Add `view(string $id)`:
+  - Fetch truck profile.
+  - Query all dispatches for this specific truck.
+  - Query all garage maintenance expenses for this specific truck.
+  - Compute total trips, total litres transported, total revenue, total maintenance costs, net profit / total commission earned.
+- Update `store()`:
+  - Support `ownership_type` (`Company` vs `Subcontracted`), `owner_name`, `commission_rate`.
+
+#### [NEW] [resources/views/trucks/view.php](file:///c:/xampp/htdocs/fuel/resources/views/trucks/view.php)
+- Dedicated single-truck dashboard:
+  - Truck specifications banner: Plate, Model, Litre Capacity, Compartments, Ownership (`Company Owned` vs `Subcontracted / Non-Company`), Agreed Commission, Maintenance status.
+  - Lifetime KPI cards: Total Dispatches, Total Litres Hauled, Lifetime Revenue Billed, Lifetime Maintenance Expenses, Net Profit / Total Commission.
+  - Dispatches table for this truck only (with 1-click BOL link).
+  - Garage maintenance history for this truck.
+
+#### [MODIFY] [resources/views/trucks/index.php](file:///c:/xampp/htdocs/fuel/resources/views/trucks/index.php)
+- List trucks with ownership badge (`Company` vs `Subcontracted`).
+- Add "🔍 View Truck" button on each row linking to `/trucks/view/{id}`.
+- Modal supports choosing ownership type (`Company Owned` or `Subcontracted`) and entering Agreed Commission.
+
+---
+
+### 4. Detailed Truck Report
+
+#### [MODIFY] [app/Controllers/ReportController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/ReportController.php)
+- Add `truckReport()` method:
+  - Aggregates metrics per truck: Total Trips, Litres Carried, Transport Billed, Operating Costs, Garage Maintenance, Net Company Profit or Commission Earned, Return per Litre.
+  - Distinguishes Company Owned trucks from Subcontracted / Non-Company trucks.
+
+#### [NEW] [resources/views/reports/trucks.php](file:///c:/xampp/htdocs/fuel/resources/views/reports/trucks.php)
+- Detailed Truck Performance Report:
+  - Overview cards: Company Fleet Performance vs Subcontracted Commission Yield.
+  - Comparison table ranking each truck by volume hauled and net earnings.
+  - Direct links to individual truck views.
+
+---
+
+### 5. Navigation & Routes
+
+#### [MODIFY] [resources/views/layouts/app.php](file:///c:/xampp/htdocs/fuel/resources/views/layouts/app.php)
+- Update nav text from "Fleet Dispatches" &rarr; **"Fleet Management"**.
+- Add sub-link or shortcut to **"Truck Reports"** under Reports.
+
+#### [MODIFY] [routes/web.php](file:///c:/xampp/htdocs/fuel/routes/web.php)
+- Add `['GET', '/trucks/view/{id}', [TruckController::class, 'view']]`
+- Add `['GET', '/reports/trucks', [ReportController::class, 'truckReport']]`
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Extend [tests/route_test.php](file:///c:/xampp/htdocs/fuel/tests/route_test.php):
+  1. Verify Fleet Management page renders without Driver, standalone Capacity, or Status columns.
+  2. Verify column header has exact string "Litres Loaded".
+  3. Verify Truck Details column displays plate and capacity.
+  4. Verify `/trucks/view/{id}` renders individual truck profile and dispatch history.
+  5. Verify Subcontracted trucks display agreed commission logic.
+  6. Verify `/reports/trucks` renders detailed truck report.
+- Run:
+  ```powershell
+  c:\xampp\php\php.exe tests\route_test.php
+  ```
+
+### Manual Verification
+- Open Fleet Management in browser: confirm clean column order, no drivers/status/standalone capacity, and "Litres Loaded" header.
+- View an individual truck: verify separate truck page with full dispatch log and financial stats.
+- Test adding a subcontracted/non-company truck with agreed commission.
+- View Detailed Truck Report: verify truck ranking and comparative metrics.

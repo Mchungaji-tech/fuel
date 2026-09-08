@@ -1,0 +1,228 @@
+# Complete Dashboard, Fleet, BOL, Currency, Mobile & Operations Overhaul
+
+This updated plan incorporates all new requirements: Bill of Lading (BOL) generation, loaded litres tracking, spreadsheet import/export, system-wide USD/KES currency toggle, working search/filters, removing Leads & CRM, maximum mobile responsiveness (highlighting Fleet, Trucks, and Expenses), and increased font sizes across the platform.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Summary of New & Updated Requirements:**
+> 1. **Auth First**: Login page is strictly required before any dashboard content is accessible.
+> 2. **Fleet Table Sequence**:
+>    `Dispatch Date` &rarr; `Truck Details` &rarr; `Capacity (L)` &rarr; `Litres Carried / Loaded` &rarr; `From` &rarr; `Destination` &rarr; `Product (PMS, AGO, DPK, etc.)` &rarr; `Driver` &rarr; `Transport (Revenue)` &rarr; `Mileage (Trip Cost)` &rarr; `Extra Expenses (Breakdown/Fix)` &rarr; `Balance (Profit = Transport - Mileage - Extra Expenses)` &rarr; `Status` &rarr; `Actions (BOL / Details)`.
+> 3. **Bill of Lading (BOL)**: Generation of professional, printable fuel petroleum waybills / BOLs directly from dispatches and invoices.
+> 4. **Import / Export**: CSV spreadsheet download (Export) and upload (Import) for fleet dispatches with a downloadable sample template.
+> 5. **Default Currency & System-Wide Toggle**: USD ($) default with live toggle switch to KES (Kenya Shillings, e.g. 1 USD = 130 KES) in the topbar, dynamically converting all monetary figures across the entire system.
+> 6. **Remove Leads & CRM**: Cleaned up from navigation and routing while keeping Invoicing fully active.
+> 7. **Working Search & Filters**: Live search input and status filter chips on Fleet, Trucks, Expenses, and Drivers.
+> 8. **Mobile View**: High responsiveness with a mobile bottom bar showing the 3 core items: **Fleet**, **Trucks**, and **Expenses**, with a slide menu for other modules.
+> 9. **Increased Font Sizes**: System-wide font enlargement (sidebar, headers, table rows, and labels) for clear readability without tiny text.
+> 10. **Products Page**: Dedicated Kenya fuel products directory (PMS, AGO, DPK, JET A-1, HFO, LPG).
+> 11. **Trucks Page & Dynamic Drivers**: No static driver on vehicles; drivers placed on any truck during dispatch.
+> 12. **Expenses Page**: Outside maintenance / garage expenses using **free-text inputs only (no dropdowns)**.
+> 13. **Driver Salaries**: Issue per trip or per month with an interactive **Paid / Wait** click toggle.
+> 14. **Monthly Reports**: Financial assessment of Profit, Expenses, and Salaries.
+
+---
+
+## Proposed Changes
+
+### 1. Global Typography, Currency & Layout
+
+#### [MODIFY] [resources/views/layouts/app.php](file:///c:/xampp/htdocs/fuel/resources/views/layouts/app.php)
+- **Increased Fonts**:
+  - Base body font increased to `15.5px`.
+  - Sidebar links increased to `15px` with larger icons (`20px`).
+  - Table headers increased to `12.5px` (bolder, higher contrast), cells to `14.5px`.
+  - Elimination of tiny `<12px` text across cards and badges.
+- **Remove Leads & CRM**:
+  - Remove Leads & CRM from the navigation menu.
+  - Keep Invoices, Customers, Payroll, Documents, Reports, Audit, Settings.
+  - Add Products, Trucks, Expenses to navigation.
+- **System-Wide Currency Toggle**:
+  - Add an interactive currency switcher in the topbar: `[ $ USD | KES ]`.
+  - Submits to `/currency/toggle` and stores choice in `$_SESSION['currency']`.
+- **Maximum Mobile Responsiveness**:
+  - Mobile bottom navigation bar for screens `< 768px` featuring the 3 core shortcuts:
+    **🚚 Fleet | 🚛 Trucks | 💰 Expenses | ☰ All Menu**
+  - Slide-out mobile navigation drawer containing the remaining modules.
+  - Responsive table wrappers with smooth touch scrolling and responsive cards.
+
+#### [MODIFY] [app/Helpers/helpers.php](file:///c:/xampp/htdocs/fuel/app/Helpers/helpers.php)
+- Add `current_currency()`: returns `'USD'` by default or `'KES'` if toggled.
+- Add `exchange_rate()`: 1 USD = 130 KES.
+- Add `format_money(float|int $amountInUsd)`: formats in `$ 1,250.00` or `KES 162,500.00` depending on the active currency toggle.
+- Add `app_currency_symbol()`: `$` or `KES`.
+
+---
+
+### 2. Authentication Enforcement
+
+#### [MODIFY] [app/Core/Router.php](file:///c:/xampp/htdocs/fuel/app/Core/Router.php)
+- Ensure only `['/login', '/currency/toggle']` are public.
+- Any unauthenticated request to `/`, `/dashboard`, or any other route immediately redirects to `/login`.
+- Authenticated visitors visiting `/login` redirect to `/dashboard`.
+
+---
+
+### 3. Database Schema & Seeds
+
+#### [MODIFY] [app/Core/Database.php](file:///c:/xampp/htdocs/fuel/app/Core/Database.php)
+Create or update the following tables with support for USD financial columns:
+1. **`trucks`**: `id`, `plate_number`, `model`, `capacity_litres`, `compartments`, `status`, `created_at`
+2. **`products`**: `id`, `code` (PMS, AGO, DPK, JET A-1, HFO, LPG), `name`, `category`, `unit`, `status`, `created_at`
+3. **`fleet_dispatches`**:
+   - `id`, `trip_number`, `bol_number`, `dispatch_date`, `truck`, `truck_capacity`, `loaded_litres`, `from_location`, `destination`, `product`, `driver`, `transport_amount`, `mileage_cost`, `extra_expenses`, `breakdown_notes`, `balance`, `status`, `seal_numbers`, `created_at`
+4. **`expenses`**:
+   - `id`, `expense_date`, `expense_title` (text input), `truck` (text input), `amount`, `garage_vendor` (text input), `receipt_number`, `notes`, `created_at`
+5. **`driver_salaries`**:
+   - `id`, `driver_id`, `driver_name`, `payment_type` (`per_trip`/`per_month`), `period_reference`, `amount`, `status` (`Wait`/`Paid`), `payment_date`, `notes`, `created_at`
+- Populate initial seeds with realistic fuel logistics data in USD (with automatic KES conversion display).
+
+---
+
+### 4. Fleet Operations, BOL Generation & Spreadsheet Import/Export
+
+#### [MODIFY] [app/Controllers/FleetController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/FleetController.php)
+- Methods:
+  - `index()`: Display fleet ledger with search query & status filter handling.
+  - `create()`: Render dispatch form with truck capacity auto-fill, loaded litres, driver assignment, and live profit balance preview.
+  - `store()`: Validate and persist dispatch record with calculated `balance = transport_amount - (mileage_cost + extra_expenses)`.
+  - `bol(string $id)`: Generate official Bill of Lading (Waybill) view for print and PDF generation.
+  - `export()`: Stream CSV export of all fleet dispatches.
+  - `import()`: Process uploaded CSV file, validate rows, compute balances, and insert records into `fleet_dispatches`.
+  - `downloadTemplate()`: Stream a clean sample CSV template for users to fill in.
+
+#### [MODIFY] [resources/views/fleet/index.php](file:///c:/xampp/htdocs/fuel/resources/views/fleet/index.php)
+- Sequence of table columns:
+  1. **Date of Dispatch**
+  2. **Truck Details** (Plate & Model)
+  3. **Capacity (Litres)**
+  4. **Litres Carried / Loaded**
+  5. **From** (Origin Depot)
+  6. **Destination**
+  7. **Product** (PMS, AGO, DPK, etc.)
+  8. **Driver** (Assigned at dispatch)
+  9. **Transport ($)** (Billed amount)
+  10. **Mileage ($)** (Trip operating cost)
+  11. **Extra Expenses ($)** (Breakdown/repairs on the way)
+  12. **Balance ($)** (Profit = Transport - Mileage - Extra Expenses)
+  13. **Status**
+  14. **Actions** (📄 View/Print BOL, Edit, Delete)
+- Top action toolbar:
+  - Working real-time search bar (filters table instantly as you type).
+  - Status filter chips (All, In Transit, Delivered, Loading, Breakdown).
+  - **📥 Import CSV** modal with sample file download.
+  - **📤 Export CSV** button.
+  - **＋ New Dispatch** button.
+
+#### [NEW] [resources/views/fleet/bol.php](file:///c:/xampp/htdocs/fuel/resources/views/fleet/bol.php)
+- Standard Kenya Petroleum Bill of Lading / Consignment Note:
+  - Company Header: Sarura Fuel Logistics, KPC Licensed Transporter.
+  - BOL #, Date & Time, Dispatch Depot (From), Destination Depot/Client.
+  - Tanker Plate, Trailer Plate, Driver Name, DL/ID, Transporter License.
+  - Product (PMS, AGO, DPK), Tanker Capacity, Net/Gross Litres Loaded.
+  - Compartment Breakdown table & Security Seal Numbers.
+  - Three-way verification signature blocks: Shipper/Terminal Officer, Transporter Driver, Consignee Station Receiver.
+  - Built-in "🖨️ Print / Save PDF" button.
+
+---
+
+### 5. Products Management (Kenya Fuel Specs)
+
+#### [NEW] [app/Controllers/ProductController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/ProductController.php)
+- `index()`, `store()`, `delete()` for Kenya fuel products (PMS, AGO, DPK, JET A-1, HFO, LPG).
+
+#### [NEW] [resources/views/products/index.php](file:///c:/xampp/htdocs/fuel/resources/views/products/index.php)
+- Directory showing codes, names, categories, and unit.
+- Working live search and "＋ Add Product" modal.
+
+---
+
+### 6. Trucks Page & Dynamic Driver Assignment
+
+#### [NEW] [app/Controllers/TruckController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/TruckController.php)
+- `index()`, `store()`, `delete()` for trucks inventory.
+
+#### [NEW] [resources/views/trucks/index.php](file:///c:/xampp/htdocs/fuel/resources/views/trucks/index.php)
+- Displays Plate, Model, Capacity (Litres), Compartments, and Status.
+- Notice: "Trucks are unassigned by default — drivers are assigned dynamically per trip at dispatch time."
+- Working search and "＋ Add Truck" modal.
+
+#### [MODIFY] [app/Controllers/DriverController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/DriverController.php)
+- Remove static truck binding.
+- `issueSalary()`: Record salary *Per Trip* or *Per Month*.
+- `toggleSalary()`: Instant toggle between **Paid** and **Wait**.
+
+#### [MODIFY] [resources/views/drivers/index.php](file:///c:/xampp/htdocs/fuel/resources/views/drivers/index.php)
+- Drivers listing without fixed trucks.
+- **Salaries Section**:
+  - "＋ Issue Salary" modal (Driver, Basis: Per Trip / Per Month, Reference, Amount, Status: Wait / Paid).
+  - Salaries table with interactive **Paid / Wait button** that toggles status on click.
+
+---
+
+### 7. Garage & Outside Expenses Page
+
+#### [NEW] [app/Controllers/ExpenseController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/ExpenseController.php)
+- `index()`, `store()`, `delete()` for outside maintenance and garage expenses.
+
+#### [NEW] [resources/views/expenses/index.php](file:///c:/xampp/htdocs/fuel/resources/views/expenses/index.php)
+- **Strict Free-Text Inputs (No Dropdowns)**:
+  - `<input type="text" name="expense_title" placeholder="e.g. Brake booster overhaul, gearbox seal replacement">`
+  - `<input type="text" name="truck" placeholder="e.g. KAA 458Z or General Yard">`
+  - `<input type="text" name="garage_vendor" placeholder="e.g. Simba Motors Industrial Area">`
+- Working search bar and summary cards.
+
+---
+
+### 8. Monthly Financial & Operational Assessment Reports
+
+#### [MODIFY] [app/Controllers/ReportController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/ReportController.php) & [resources/views/reports/index.php](file:///c:/xampp/htdocs/fuel/resources/views/reports/index.php)
+- Monthly assessment ledger:
+  - Dispatches Count, Total Transport Revenue, Trip Costs, Fleet Profit (Balance), Garage Expenses, Driver Salaries (Paid/Wait), Net Operating Profit.
+- Converted dynamically using the active currency toggle.
+- Month selector & visual comparison bar charts.
+
+---
+
+### 9. Routes & Currency Controller
+
+#### [NEW] [app/Controllers/CurrencyController.php](file:///c:/xampp/htdocs/fuel/app/Controllers/CurrencyController.php)
+- `toggle()`: Toggle active currency between `USD` and `KES` and redirect back to previous page.
+
+#### [MODIFY] [routes/web.php](file:///c:/xampp/htdocs/fuel/routes/web.php)
+- Register all new endpoints:
+  - `POST /currency/toggle`
+  - `GET /fleet`, `POST /fleet/store`, `GET /fleet/bol/{id}`, `GET /fleet/export`, `POST /fleet/import`, `GET /fleet/template`
+  - `GET /trucks`, `POST /trucks/store`
+  - `GET /products`, `POST /products/store`
+  - `GET /expenses`, `POST /expenses/store`
+  - `POST /drivers/salary/store`, `POST /drivers/salary/toggle`
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Run and extend [tests/route_test.php](file:///c:/xampp/htdocs/fuel/tests/route_test.php):
+  1. Unauthenticated requests to `/` or `/dashboard` redirect to `/login`.
+  2. Public access to `/login` succeeds.
+  3. Currency toggle changes session currency.
+  4. Dispatches store with loaded litres and calculate profit balance.
+  5. BOL endpoint renders valid HTML waybill.
+  6. CSV export returns valid `text/csv` stream.
+  7. Salary toggle switches between `Wait` and `Paid`.
+  8. Expenses store text input without dropdown validation.
+- Command:
+  ```powershell
+  c:\xampp\php\php.exe tests\route_test.php
+  ```
+
+### Manual Verification
+- Open in browser: verify immediate redirect to login.
+- Log in and verify topbar currency toggle ($ USD / KES) switches all displays across all pages.
+- Check Fleet page: verify columns, capacity, loaded litres, live search, CSV import/export, and BOL view.
+- Test mobile view: resize window or inspect on mobile, confirm bottom navigation highlights Fleet, Trucks, and Expenses.
+- Confirm typography is noticeably larger and comfortable to read.
