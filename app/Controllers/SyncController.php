@@ -20,7 +20,7 @@ class SyncController
             session_start();
         }
 
-        if (empty($_SESSION['user_id'])) {
+        if (empty($_SESSION['is_logged_in']) && empty($_SESSION['user']['id']) && empty($_SESSION['user_id'])) {
             http_response_code(401);
             echo json_encode(['success' => false, 'error' => 'Authentication required to sync database.']);
             exit;

@@ -104,6 +104,7 @@ class AuthController
         // Auto-login newly registered user
         session_regenerate_id(true);
         $_SESSION['is_logged_in'] = true;
+        $_SESSION['user_id'] = $newUserId;
         $_SESSION['user'] = [
             'id' => $newUserId,
             'name' => $name,
@@ -132,6 +133,7 @@ class AuthController
         if ($user && password_verify($password, $user['password'])) {
             session_regenerate_id(true);
             $_SESSION['is_logged_in'] = true;
+            $_SESSION['user_id'] = $user['id'];
             $_SESSION['user'] = [
                 'id' => $user['id'],
                 'name' => $user['name'],
