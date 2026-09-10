@@ -177,7 +177,7 @@
                                     <?= format_money($d['balance']) ?>
                                 </td>
                                 <td style="text-align:center;white-space:nowrap;">
-                                    <a href="<?= url('fleet/bol/' . $d['id']) ?>" class="btn btn-sm btn-ghost" style="padding:4px 8px;font-size:12px;font-weight:700;">📄 BOL</a>
+                                    <a href="<?= url('fleet?search=' . urlencode($d['trip_number'])) ?>" class="btn btn-sm btn-ghost" style="padding:4px 8px;font-size:12px;font-weight:700;" title="View in Fleet Ledger">👁️ View</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

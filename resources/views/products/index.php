@@ -23,7 +23,7 @@
                 Standard Transport Payout: 
                 <?php
                     $agoProd = array_values(array_filter($products, fn($p) => strtoupper($p['code']) === 'AGO'))[0] ?? null;
-                    echo $agoProd ? format_money($agoProd['unit_price'] ?? 9.50) . ' / L' : 'KES 9.50 / L';
+                    echo $agoProd ? format_money($agoProd['unit_price'] ?? 0) . ' / L' : '—';
                 ?>
             </div>
         </div>
@@ -39,7 +39,7 @@
                 Standard Transport Payout: 
                 <?php
                     $pmsProd = array_values(array_filter($products, fn($p) => strtoupper($p['code']) === 'PMS'))[0] ?? null;
-                    echo $pmsProd ? format_money($pmsProd['unit_price'] ?? 10.50) . ' / L' : 'KES 10.50 / L';
+                    echo $pmsProd ? format_money($pmsProd['unit_price'] ?? 0) . ' / L' : '—';
                 ?>
             </div>
         </div>
@@ -103,7 +103,7 @@
                                             'name' => $p['name'],
                                             'category' => $p['category'],
                                             'unit' => $p['unit'],
-                                            'unit_price' => (float)($p['unit_price'] ?? 0),
+                                            'unit_price' => (float) convert_currency($p['unit_price'] ?? 0),
                                             'status' => $p['status'],
                                         ])) ?>)" title="Edit product and unit price">
                                             ✏️ Edit

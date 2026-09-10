@@ -40,14 +40,17 @@ class ProductController
         $name = trim($_POST['name'] ?? '');
         $category = trim($_POST['category'] ?? 'Fuel');
         $unit = trim($_POST['unit'] ?? 'Litres');
-        $unitPrice = (float) ($_POST['unit_price'] ?? 0);
+        $isKes = current_currency() === 'KES';
+        $rate = exchange_rate();
+        $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
+        $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($code !== '' && $name !== '') {
             $stmt = $pdo->prepare('INSERT INTO products (code, name, category, unit, unit_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
             try {
                 $stmt->execute([$code, $name, $category, $unit, $unitPrice, $status, date('Y-m-d H:i:s')]);
-                flash('product_success', "Product {$code} - {$name} added successfully.");
+                flash('product_success', "Product {$code} - {$name} added successfully (Unit Price: " . format_money($unitPrice) . " per {$unit}).");
             } catch (\Exception $e) {
                 flash('product_error', "Product code {$code} already exists or error occurred.");
             }
@@ -66,7 +69,10 @@ class ProductController
         $name = trim($_POST['name'] ?? '');
         $category = trim($_POST['category'] ?? 'Fuel');
         $unit = trim($_POST['unit'] ?? 'Litres');
-        $unitPrice = (float) ($_POST['unit_price'] ?? 0);
+        $isKes = current_currency() === 'KES';
+        $rate = exchange_rate();
+        $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
+        $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($id > 0 && $code !== '' && $name !== '') {

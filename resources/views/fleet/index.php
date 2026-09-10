@@ -107,6 +107,7 @@
         $fleetMetaCols = \App\Services\TableSchemaService::getTableColumns('fleet_dispatches', false);
         $metaMap = array_column($fleetMetaCols, null, 'column_key');
         $fleetCustomCols = array_filter($fleetMetaCols, fn($c) => !empty($c['is_custom']) && !empty($c['is_visible']));
+        $truckCapMap = array_column($trucks ?? [], 'capacity_litres', 'plate_number');
     ?>
     <div class="panel">
         <div class="table-responsive">
@@ -115,9 +116,10 @@
                     <tr>
                         <th style="min-width:95px;" title="Date of Loading"><?= htmlspecialchars($metaMap['dispatch_date']['display_label'] ?? 'DOL') ?></th>
                         <th><?= htmlspecialchars($metaMap['truck']['display_label'] ?? 'Truck') ?></th>
+                        <th style="min-width:95px;" title="Tanker Capacity from Truck Management"><?= htmlspecialchars($metaMap['truck_capacity']['display_label'] ?? 'Tank Capacity') ?></th>
                         <th><?= htmlspecialchars($metaMap['driver']['display_label'] ?? 'Driver') ?></th>
                         <th><?= htmlspecialchars($metaMap['status']['display_label'] ?? 'Status') ?></th>
-                        <th><?= htmlspecialchars($metaMap['loaded_litres']['display_label'] ?? 'Litres (Load / Deliv)') ?></th>
+                        <th><?= htmlspecialchars($metaMap['loaded_litres']['display_label'] ?? 'Actual litre (L20)') ?></th>
                         <th style="min-width:90px;text-align:center;"><?= htmlspecialchars($metaMap['shortage_litres']['display_label'] ?? 'Shortage (L)') ?></th>
                         <th><?= htmlspecialchars($metaMap['destination']['display_label'] ?? 'Destination & Client') ?></th>
                         <th><?= htmlspecialchars($metaMap['product']['display_label'] ?? 'Product') ?></th>
@@ -127,30 +129,22 @@
                         <th><?= htmlspecialchars($metaMap['payout_difference']['display_label'] ?? 'Payout Diff (Loss)') ?></th>
                         <th><?= htmlspecialchars($metaMap['mileage_cost']['display_label'] ?? 'Trip Costs') ?></th>
                         <th><?= htmlspecialchars($metaMap['balance']['display_label'] ?? 'Net Balance') ?></th>
-                        <?php if (!empty($metaMap['seal_numbers']['is_visible'])): ?>
-                            <th><?= htmlspecialchars($metaMap['seal_numbers']['display_label'] ?? 'Seal Numbers') ?></th>
-                        <?php endif; ?>
                         <?php if (!empty($metaMap['breakdown_notes']['is_visible'])): ?>
                             <th><?= htmlspecialchars($metaMap['breakdown_notes']['display_label'] ?? 'Breakdown Remarks') ?></th>
                         <?php endif; ?>
                         <?php if (!empty($metaMap['shortage_notes']['is_visible'])): ?>
                             <th><?= htmlspecialchars($metaMap['shortage_notes']['display_label'] ?? 'Shortage Notes') ?></th>
                         <?php endif; ?>
-                        <?php if (!empty($metaMap['bol_number']['is_visible'])): ?>
-                            <th><?= htmlspecialchars($metaMap['bol_number']['display_label'] ?? 'BOL Number') ?></th>
-                        <?php endif; ?>
                         <?php foreach ($fleetCustomCols as $cc): ?>
                             <th style="white-space:nowrap;background:rgba(79,70,229,0.06);"><?= htmlspecialchars($cc['display_label']) ?></th>
                         <?php endforeach; ?>
-                        <th style="text-align:center;min-width:180px;">Actions</th>
+                        <th style="text-align:center;min-width:160px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php 
-                        $extraColCount = (int)!empty($metaMap['seal_numbers']['is_visible'])
-                            + (int)!empty($metaMap['breakdown_notes']['is_visible'])
+                        $extraColCount = (int)!empty($metaMap['breakdown_notes']['is_visible'])
                             + (int)!empty($metaMap['shortage_notes']['is_visible'])
-                            + (int)!empty($metaMap['bol_number']['is_visible'])
                             + count($fleetCustomCols);
                     ?>
                     <?php if (empty($dispatches)): ?>
@@ -232,7 +226,7 @@
                                 elseif (str_contains($s, 'deliver') || str_contains($s, 'complete')) $sClass = 's-done';
                                 elseif (str_contains($s, 'hold') || str_contains($s, 'cancel') || str_contains($s, 'dispute')) $sClass = 's-hold';
                             ?>
-                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)$d['mileage_cost'] ?>" data-extra-expenses="<?= (float)$d['extra_expenses'] ?>" data-diesel="<?= (float)($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
+                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)convert_currency($d['mileage_cost']) ?>" data-extra-expenses="<?= (float)convert_currency($d['extra_expenses']) ?>" data-diesel="<?= (float)convert_currency($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)convert_currency($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
                                 <!-- DOL (Date of Loading formatted DD/MM/YY) -->
                                 <td class="cell-dol" style="font-weight:700;white-space:nowrap;">
                                     <span class="view-val"><?= format_date_dol($d['dispatch_date']) ?></span>
@@ -253,6 +247,16 @@
                                             </span>
                                         <?php endif; ?>
                                     </div>
+                                </td>
+
+                                <!-- Tank Capacity (Auto-reflected from Truck Management) -->
+                                <?php
+                                    $truckCap = !empty($d['truck_capacity']) ? (int)$d['truck_capacity'] : (int)($truckCapMap[$d['truck']] ?? 0);
+                                ?>
+                                <td class="cell-capacity" style="white-space:nowrap;">
+                                    <span class="view-val-capacity" style="font-weight:700;color:var(--text);font-size:13.5px;">
+                                        <?= $truckCap > 0 ? number_format($truckCap) . ' L' : '—' ?>
+                                    </span>
                                 </td>
 
                                 <!-- Driver (Dedicated Column) -->
@@ -332,11 +336,10 @@
                                     </span>
                                     <?php 
                                         $uPrice = (float)($d['unit_price'] ?? 0);
-                                        $displayUPrice = $isKes ? ($uPrice * $rate) : $uPrice;
                                     ?>
-                                    <?php if ($displayUPrice > 0): ?>
+                                    <?php if ($uPrice > 0): ?>
                                         <div style="font-size:11px;color:var(--text-3);margin-top:2px;font-weight:600;">
-                                            @ <?= format_money($displayUPrice) ?>/L
+                                            @ <?= format_money($uPrice) ?>/L
                                         </div>
                                     <?php endif; ?>
                                 </td>
@@ -347,12 +350,11 @@
                                         $dVal = (float)($d['diesel'] ?? 0); 
                                         $dLitres = (float)($d['diesel_litres'] ?? 0);
                                         $dUnitPrice = (float)($d['diesel_unit_price'] ?? 0);
-                                        $displayDieselRate = $isKes ? ($dUnitPrice * $rate) : $dUnitPrice;
                                     ?>
                                     <span class="view-val"><?= $canViewFin ? ($dVal > 0 ? format_money($dVal) : '—') : '[Restricted]' ?></span>
                                     <?php if ($canViewFin && $dLitres > 0): ?>
                                         <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px;">
-                                            <?= number_format($dLitres, 1) ?>L<?= $displayDieselRate > 0 ? ' @ ' . format_money($displayDieselRate) : '' ?>
+                                            <?= number_format($dLitres, 1) ?>L<?= $dUnitPrice > 0 ? ' @ ' . format_money($dUnitPrice) : '' ?>
                                         </div>
                                     <?php endif; ?>
                                 </td>
@@ -427,17 +429,11 @@
                                     <?php endif; ?>
                                 </td>
 
-                                <?php if (!empty($metaMap['seal_numbers']['is_visible'])): ?>
-                                    <td style="font-size:12px;font-family:monospace;white-space:nowrap;"><?= htmlspecialchars($d['seal_numbers'] ?: '—') ?></td>
-                                <?php endif; ?>
                                 <?php if (!empty($metaMap['breakdown_notes']['is_visible'])): ?>
                                     <td style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($d['breakdown_notes'] ?? '') ?>"><?= htmlspecialchars($d['breakdown_notes'] ?: '—') ?></td>
                                 <?php endif; ?>
                                 <?php if (!empty($metaMap['shortage_notes']['is_visible'])): ?>
                                     <td style="font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($d['shortage_notes'] ?? '') ?>"><?= htmlspecialchars($d['shortage_notes'] ?: '—') ?></td>
-                                <?php endif; ?>
-                                <?php if (!empty($metaMap['bol_number']['is_visible'])): ?>
-                                    <td style="font-size:12px;font-family:monospace;white-space:nowrap;"><?= htmlspecialchars($d['bol_number'] ?: '—') ?></td>
                                 <?php endif; ?>
 
                                 <!-- Custom User-Added Columns -->
@@ -451,7 +447,7 @@
                                     </td>
                                 <?php endforeach; ?>
 
-                                <!-- Actions: View Details, Offload Delivery, Inline Edit, Manage Expenses, Delete, BOL -->
+                                <!-- Actions: View Details, Offload Delivery, Inline Edit, Manage Expenses, Delete -->
                                 <td class="cell-actions" style="text-align:center;white-space:nowrap;">
                                     <div class="row-normal-actions" style="display:inline-flex;gap:5px;align-items:center;">
                                         <button type="button" class="btn btn-sm btn-ghost" style="color:var(--brand);font-weight:800;padding:4px 8px;border:1px solid var(--border);" onclick="openViewDispatchModal(<?= $d['id'] ?>)" title="View Complete Dispatch Details">
@@ -486,7 +482,6 @@
                                         ])) ?>)" title="Manage trip mileage, diesel, and breakdown repair expenses">
                                             🛠️ Expense
                                         </button>
-                                        <a href="<?= url('fleet/bol/' . $d['id']) ?>" class="btn btn-sm btn-ghost" style="padding:4px 8px;font-size:12px;" title="Print Bill of Lading">📄</a>
                                         <form method="POST" action="<?= url('fleet/delete/' . $d['id']) ?>" style="display:inline;" onsubmit="return confirm('Delete fleet dispatch <?= htmlspecialchars($d['trip_number']) ?>?');">
                                             <?= csrf_field() ?>
                                             <button type="submit" class="btn btn-sm btn-ghost" style="color:var(--red);border-color:transparent;padding:4px 7px;" title="Delete Record">✕</button>
@@ -576,13 +571,11 @@
                     <select name="product" id="dispatchProductSelect" required onchange="onProductSelected(this)">
                         <?php foreach ($products as $pr): ?>
                             <?php 
-                                $isKes = current_currency() === 'KES';
-                                $rate = exchange_rate();
                                 $rawPrPrice = (float)($pr['unit_price'] ?? 0);
-                                $displayPrPrice = $isKes ? ($rawPrPrice * $rate) : $rawPrPrice;
+                                $displayPrPrice = convert_currency($rawPrPrice);
                             ?>
-                            <option value="<?= htmlspecialchars($pr['code']) ?>" data-price="<?= $displayPrPrice ?>">
-                                <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?> (<?= format_money($displayPrPrice) ?>/L)
+                            <option value="<?= htmlspecialchars($pr['code']) ?>" data-price="<?= number_format($displayPrPrice, 2, '.', '') ?>">
+                                <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?> (<?= format_money($rawPrPrice) ?>/L)
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -591,8 +584,8 @@
                 <div class="form-group">
                     <label>Product Unit Price (<?= app_currency_symbol() ?>/L) *</label>
                     <?php 
-                        $firstPrPrice = !empty($products) ? (float)($products[0]['unit_price'] ?? 0) : 10.50;
-                        $initPrPrice = (current_currency() === 'KES') ? ($firstPrPrice * exchange_rate()) : $firstPrPrice;
+                        $firstPrPrice = !empty($products) ? (float)($products[0]['unit_price'] ?? 0) : 0.08;
+                        $initPrPrice = convert_currency($firstPrPrice);
                     ?>
                     <input type="number" step="0.01" name="unit_price" id="dispatchUnitPrice" value="<?= number_format($initPrPrice, 2, '.', '') ?>" placeholder="0.00" required oninput="calcExpectedTransport()">
                     <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Rate per litre billed to customer</span>
@@ -616,15 +609,15 @@
                     <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= (Loaded - Shortage) × Unit Price</span>
                 </div>
 
-                <div class="form-group" style="grid-column:1/-1;background:rgba(59,130,246,0.05);border:1.5px solid var(--brand);border-radius:10px;padding:12px 16px;">
-                    <label style="color:var(--brand);font-weight:800;font-size:13.5px;">👤 Client / Customer Name *</label>
-                    <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd, Engen RDC, Vivo Energy" required style="font-size:14px;font-weight:600;">
+                <div class="form-group">
+                    <label>👤 Client / Customer Name *</label>
+                    <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd" required style="width:100%;box-sizing:border-box;">
                     <datalist id="customersList">
                         <?php foreach (($customers ?? []) as $cust): ?>
                             <option value="<?= htmlspecialchars($cust) ?>">
                         <?php endforeach; ?>
                     </datalist>
-                    <span style="font-size:11.5px;color:var(--text-2);display:block;margin-top:3px;">Customer profiles automatically synchronize across dispatches regardless of casing.</span>
+                    <span style="font-size:11px;color:var(--text-3);display:block;margin-top:2px;">Consignee profile auto-syncs across dispatches</span>
                 </div>
 
                 <div class="form-group">
@@ -675,25 +668,25 @@
                     <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Driver trip allowances and road tolls</span>
                 </div>
 
-                <div class="form-group" style="background:rgba(245,158,11,0.06);border:1.5px solid var(--amber);border-radius:10px;padding:12px 14px;grid-column:1/-1;">
+                <div class="form-group" style="background:rgba(245,158,11,0.06);border:1.5px solid var(--amber);border-radius:10px;padding:12px 14px;grid-column:1/-1;box-sizing:border-box;width:100%;overflow:hidden;">
                     <div style="font-size:13px;color:var(--amber);font-weight:800;margin-bottom:8px;">
                         ⛽ Diesel Fueling (Owner's Expense)
                     </div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
-                        <div>
-                            <label style="font-size:12px;color:var(--text-2);font-weight:700;">Diesel Fueled (Litres) *</label>
-                            <input type="number" step="0.01" name="diesel_litres" id="dispDieselLitres" placeholder="e.g. 450" oninput="calcDieselExpense()">
+                    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;box-sizing:border-box;width:100%;">
+                        <div style="min-width:0;">
+                            <label style="font-size:12px;color:var(--text-2);font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Litres *</label>
+                            <input type="number" step="0.01" name="diesel_litres" id="dispDieselLitres" placeholder="e.g. 450" oninput="calcDieselExpense()" style="width:100%;box-sizing:border-box;min-width:0;">
                         </div>
-                        <div>
-                            <label style="font-size:12px;color:var(--text-2);font-weight:700;">Diesel Fuel Rate (<?= app_currency_symbol() ?>/L) *</label>
-                            <input type="number" step="0.01" name="diesel_unit_price" id="dispDieselUnitPrice" placeholder="e.g. 175.50" oninput="calcDieselExpense()">
+                        <div style="min-width:0;">
+                            <label style="font-size:12px;color:var(--text-2);font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rate (<?= app_currency_symbol() ?>/L) *</label>
+                            <input type="number" step="0.01" name="diesel_unit_price" id="dispDieselUnitPrice" placeholder="e.g. 175.50" oninput="calcDieselExpense()" style="width:100%;box-sizing:border-box;min-width:0;">
                         </div>
-                        <div>
-                            <label style="font-size:12px;color:var(--text-2);font-weight:700;">Total Diesel Fuel Cost [<?= app_currency_symbol() ?>]</label>
-                            <input type="number" step="0.01" name="diesel" id="dispDiesel" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--amber);cursor:not-allowed;" oninput="calcBalance()">
+                        <div style="min-width:0;">
+                            <label style="font-size:12px;color:var(--text-2);font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Total Cost [<?= app_currency_symbol() ?>]</label>
+                            <input type="number" step="0.01" name="diesel" id="dispDiesel" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--amber);cursor:not-allowed;width:100%;box-sizing:border-box;min-width:0;" oninput="calcBalance()">
                         </div>
                     </div>
-                    <span style="font-size:11.5px;color:var(--amber);display:block;margin-top:6px;font-weight:600;">
+                    <span style="font-size:11px;color:var(--amber);display:block;margin-top:6px;font-weight:600;">
                         ⛽ Owner expense deducted from profit. Any roadside breakdown or mechanical repairs are managed on the <a href="<?= url('expenses') ?>" target="_blank" style="color:var(--brand);text-decoration:underline;">Expenses</a> page.
                     </span>
                 </div>
@@ -707,11 +700,6 @@
                     <label>Shortage / Transit Loss Notes</label>
                     <input type="text" name="shortage_notes" placeholder="e.g. 400 L dipstick discrepancy deducted by depot manager">
                     <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:3px;">Explanation for any cargo volume loss, temperature shrinkage, evaporation, or client payout deductions upon delivery.</span>
-                </div>
-
-                <div class="form-group" style="grid-column:1/-1;">
-                    <label>Security Seal Numbers</label>
-                    <input type="text" name="seal_numbers" placeholder="e.g. SL-9481, SL-9482, SL-9483">
                 </div>
             </div>
 
@@ -1013,7 +1001,6 @@
                     <span id="vdmTripNumber" style="color:var(--brand);font-family:monospace;">—</span>
                 </h2>
                 <span id="vdmStatusBadge" class="status s-done" style="font-size:12px;"><i></i>—</span>
-                <span id="vdmBolBadge" style="font-size:12px;color:var(--text-3);background:var(--card);padding:2px 8px;border-radius:6px;border:1px solid var(--border);font-family:monospace;">—</span>
             </div>
             <button class="close-modal" onclick="document.getElementById('viewDispatchModal').classList.remove('active')">✕</button>
         </div>
@@ -1156,10 +1143,7 @@
             <!-- Notes, Seals, and Custom Columns -->
             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;">
                 <div style="background:var(--card-2);border:1px solid var(--border);border-radius:12px;padding:16px;">
-                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;margin-bottom:6px;">🔒 Security Seals & Notes</div>
-                    <div style="font-size:13px;margin-bottom:8px;">
-                        <span style="color:var(--text-3);font-weight:700;">Seals:</span> <span id="vdmSeals">—</span>
-                    </div>
+                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;margin-bottom:6px;">🛠️ Remarks & Roadside Notes</div>
                     <div style="font-size:13px;">
                         <span style="color:var(--text-3);font-weight:700;">Breakdown Remarks:</span> <span id="vdmBreakdownNotes">—</span>
                     </div>
@@ -1174,7 +1158,6 @@
 
         <div style="padding:14px 24px;border-top:1px solid var(--border);background:var(--card-2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
             <div style="display:flex;gap:8px;">
-                <a id="vdmBolLink" href="#" target="_blank" class="btn btn-ghost btn-sm">📄 Print BOL</a>
                 <button type="button" id="vdmEditBtn" class="btn btn-ghost btn-sm">✏️ Edit Dispatch</button>
             </div>
             <button type="button" class="btn btn-brand" onclick="document.getElementById('viewDispatchModal').classList.remove('active')">Close</button>
@@ -1209,7 +1192,6 @@ window.openViewDispatchModal = function(param) {
     badge.className = 'status ' + (st === 'delivered' ? 's-done' : (st === 'in transit' ? 's-prog' : 's-plan'));
     badge.innerHTML = '<i></i>' + (d.status || 'Pending');
 
-    document.getElementById('vdmBolBadge').textContent = d.bol_number || 'BOL-—';
     document.getElementById('vdmTruck').textContent = d.truck || '—';
     document.getElementById('vdmOwnership').textContent = d.ownership || (d.is_subcontracted ? 'Subcontracted' : 'Company Fleet');
     document.getElementById('vdmCapacity').textContent = (Number(d.truck_capacity || 0).toLocaleString()) + ' L';
@@ -1259,7 +1241,6 @@ window.openViewDispatchModal = function(param) {
     balEl.textContent = d.balance_formatted || '—';
     balEl.style.color = (Number(d.balance || 0) >= 0) ? 'var(--green)' : 'var(--red)';
 
-    document.getElementById('vdmSeals').textContent = d.seal_numbers || 'None specified';
     document.getElementById('vdmBreakdownNotes').textContent = d.breakdown_notes || 'No roadside breakdowns or repairs recorded.';
 
     // Custom fields
@@ -1283,7 +1264,6 @@ window.openViewDispatchModal = function(param) {
     }
 
     // Actions
-    document.getElementById('vdmBolLink').href = '<?= url("fleet/bol") ?>/' + d.id;
     document.getElementById('vdmEditBtn').onclick = function() {
         document.getElementById('viewDispatchModal').classList.remove('active');
         startFleetInlineEdit(d.id);
@@ -1400,8 +1380,6 @@ window.openTripExpenseModal = function(data) {
 
     document.getElementById('temMileageCost').value = isKes ? (baseMileage * exRate).toFixed(2) : baseMileage.toFixed(2);
     document.getElementById('temDiesel').value = isKes ? (baseDiesel * exRate).toFixed(2) : baseDiesel.toFixed(2);
-    document.getElementById('temExtraExpenses').value = isKes ? (baseExtra * exRate).toFixed(2) : baseExtra.toFixed(2);
-    document.getElementById('temBreakdownNotes').value = data.breakdown_notes || '';
 
     document.getElementById('tripExpenseModal').classList.add('active');
 };
@@ -1411,8 +1389,6 @@ window.saveTripExpenses = async function(e) {
     const id = document.getElementById('temTripId').value;
     const mileage = document.getElementById('temMileageCost').value;
     const diesel = document.getElementById('temDiesel').value;
-    const extra = document.getElementById('temExtraExpenses').value;
-    const notes = document.getElementById('temBreakdownNotes').value;
     const btn = document.getElementById('temSubmitBtn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -1428,9 +1404,7 @@ window.saveTripExpenses = async function(e) {
                 _csrf_token: CSRF_TOKEN,
                 id: id,
                 mileage_cost: mileage,
-                diesel: diesel,
-                extra_expenses: extra,
-                breakdown_notes: notes
+                diesel: diesel
             }).toString()
         });
         const json = await res.json();

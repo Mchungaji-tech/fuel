@@ -32,9 +32,10 @@ class TableSchemaService
                     ['dispatch_date', 'Date of Loading (DOL)', 'date', 1],
                     ['trip_number', 'Trip Number', 'text', 1],
                     ['truck', 'Truck Plate', 'text', 1],
+                    ['truck_capacity', 'Tank Capacity (L)', 'number', 1],
                     ['driver', 'Driver Name', 'text', 1],
                     ['status', 'Trip Status', 'status', 1],
-                    ['loaded_litres', 'Loaded Litres', 'number', 1],
+                    ['loaded_litres', 'Actual litre (L20)', 'number', 1],
                     ['shortage_litres', 'Shortage Litres', 'number', 1],
                     ['delivered_litres', 'Delivered Litres', 'number', 1],
                     ['product', 'Fuel Product', 'text', 1],
@@ -51,10 +52,8 @@ class TableSchemaService
                     ['mileage_cost', 'Mileage Expense', 'currency', 1],
                     ['extra_expenses', 'Extra Breakdown Cost', 'currency', 0],
                     ['balance', 'Net Trip Profit', 'currency', 1],
-                    ['seal_numbers', 'Seal Numbers', 'text', 1],
                     ['breakdown_notes', 'Breakdown / Remarks', 'text', 0],
                     ['shortage_notes', 'Shortage Notes', 'text', 0],
-                    ['bol_number', 'BOL Number', 'text', 0],
                 ];
 
             case 'trucks':
@@ -151,11 +150,16 @@ class TableSchemaService
                     }
                 };
 
+                $ensureMeta('truck_capacity', 'Tank Capacity (L)', 'number', 1, 3);
                 $ensureMeta('diesel', 'Diesel Fuel Cost', 'currency', 1, 8);
                 $ensureMeta('shortage_litres', 'Shortage Litres', 'number', 1, 6);
                 $ensureMeta('unit_price', 'Product Unit Price', 'currency', 1, 7);
                 $ensureMeta('diesel_litres', 'Diesel Litres', 'number', 0, 9);
                 $ensureMeta('diesel_unit_price', 'Diesel Unit Price', 'currency', 0, 10);
+
+                // Rename loaded_litres to Actual litre (L20) and hide bol_number and seal_numbers
+                $pdo->exec("UPDATE table_columns_meta SET display_label = 'Actual litre (L20)' WHERE table_name = 'fleet_dispatches' AND column_key = 'loaded_litres'");
+                $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'fleet_dispatches' AND column_key IN ('bol_number', 'seal_numbers')");
             }
             if ($table === 'trucks') {
                 $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'trucks' AND column_key = 'model'");

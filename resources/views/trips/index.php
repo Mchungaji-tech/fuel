@@ -127,11 +127,6 @@
                                     </span>
                                 </td>
                                 <td style="text-align:right;white-space:nowrap;">
-                                    <?php if (!empty($t['bol_url']) && str_contains($t['bol_url'], '/bol/')): ?>
-                                        <a href="<?= $t['bol_url'] ?>" class="btn btn-sm btn-ghost" style="padding:4px 8px;font-size:12px;margin-right:4px;" title="Print Bill of Lading">
-                                            📄 BOL
-                                        </a>
-                                    <?php endif; ?>
                                     <a href="<?= url('fleet') ?>" class="btn btn-sm btn-ghost" style="padding:4px 9px;font-size:12px;" title="View in Fleet Ledger">
                                         View in Ledger →
                                     </a>

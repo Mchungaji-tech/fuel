@@ -83,7 +83,7 @@ $_SERVER['REQUEST_URI'] = '/fuel/fleet';
 $response = $router->dispatch();
 assertTest("Dispatching GET /fuel/fleet contains 'Fleet Management'", str_contains($response, 'Fleet Management'));
 assertTest("Dispatching GET /fuel/fleet contains 'DOL'", str_contains($response, 'DOL'));
-assertTest("Dispatching GET /fuel/fleet contains 'Loaded Litres'", str_contains($response, 'Loaded Litres'));
+assertTest("Dispatching GET /fuel/fleet contains 'Actual litre (L20)'", str_contains($response, 'Actual litre (L20)') || str_contains($response, 'Loaded Litres'));
 assertTest("Dispatching GET /fuel/fleet contains 'Shortage Litres'", str_contains($response, 'Shortage Litres'));
 assertTest("Dispatching GET /fuel/fleet contains 'Driver' column in table header", str_contains($response, 'Driver Name') || str_contains($response, '<th>Driver</th>'));
 
