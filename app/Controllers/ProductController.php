@@ -40,18 +40,41 @@ class ProductController
         $name = trim($_POST['name'] ?? '');
         $category = trim($_POST['category'] ?? 'Fuel');
         $unit = trim($_POST['unit'] ?? 'Litres');
+        $unitPrice = (float) ($_POST['unit_price'] ?? 0);
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($code !== '' && $name !== '') {
-            $stmt = $pdo->prepare('INSERT INTO products (code, name, category, unit, status, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+            $stmt = $pdo->prepare('INSERT INTO products (code, name, category, unit, unit_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
             try {
-                $stmt->execute([$code, $name, $category, $unit, $status, date('Y-m-d H:i:s')]);
+                $stmt->execute([$code, $name, $category, $unit, $unitPrice, $status, date('Y-m-d H:i:s')]);
                 flash('product_success', "Product {$code} - {$name} added successfully.");
             } catch (\Exception $e) {
                 flash('product_error', "Product code {$code} already exists or error occurred.");
             }
         } else {
             flash('product_error', 'Product code and name are required.');
+        }
+
+        redirect('/products');
+    }
+
+    public function update(): void
+    {
+        $pdo = Database::connection();
+        $id = (int) ($_POST['id'] ?? 0);
+        $code = strtoupper(trim($_POST['code'] ?? ''));
+        $name = trim($_POST['name'] ?? '');
+        $category = trim($_POST['category'] ?? 'Fuel');
+        $unit = trim($_POST['unit'] ?? 'Litres');
+        $unitPrice = (float) ($_POST['unit_price'] ?? 0);
+        $status = trim($_POST['status'] ?? 'Active');
+
+        if ($id > 0 && $code !== '' && $name !== '') {
+            $stmt = $pdo->prepare('UPDATE products SET code = ?, name = ?, category = ?, unit = ?, unit_price = ?, status = ? WHERE id = ?');
+            $stmt->execute([$code, $name, $category, $unit, $unitPrice, $status, $id]);
+            flash('product_success', "Product {$code} updated successfully (Unit Price: " . format_money($unitPrice) . " per {$unit}).");
+        } else {
+            flash('product_error', 'Invalid product data for update.');
         }
 
         redirect('/products');

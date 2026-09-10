@@ -118,9 +118,10 @@
                         <th><?= htmlspecialchars($metaMap['driver']['display_label'] ?? 'Driver') ?></th>
                         <th><?= htmlspecialchars($metaMap['status']['display_label'] ?? 'Status') ?></th>
                         <th><?= htmlspecialchars($metaMap['loaded_litres']['display_label'] ?? 'Litres (Load / Deliv)') ?></th>
+                        <th style="min-width:90px;text-align:center;"><?= htmlspecialchars($metaMap['shortage_litres']['display_label'] ?? 'Shortage (L)') ?></th>
                         <th><?= htmlspecialchars($metaMap['destination']['display_label'] ?? 'Destination & Client') ?></th>
                         <th><?= htmlspecialchars($metaMap['product']['display_label'] ?? 'Product') ?></th>
-                        <th style="min-width:75px;" title="Diesel fuel cost catered for by owner (Deducted from profit)"><?= htmlspecialchars($metaMap['diesel']['display_label'] ?? 'Diesel') ?></th>
+                        <th style="min-width:95px;" title="Diesel fuel cost catered for by owner (Deducted from profit)"><?= htmlspecialchars($metaMap['diesel']['display_label'] ?? 'Diesel (Owner Exp)') ?></th>
                         <th><?= htmlspecialchars($metaMap['transport_amount']['display_label'] ?? 'Expected Transport') ?></th>
                         <th><?= htmlspecialchars($metaMap['final_payout']['display_label'] ?? 'Final Client Payout') ?></th>
                         <th><?= htmlspecialchars($metaMap['payout_difference']['display_label'] ?? 'Payout Diff (Loss)') ?></th>
@@ -154,12 +155,16 @@
                     ?>
                     <?php if (empty($dispatches)): ?>
                         <tr>
-                            <td colspan="<?= 14 + $extraColCount ?>" style="text-align:center;padding:40px;color:var(--text-3);">
+                            <td colspan="<?= 15 + $extraColCount ?>" style="text-align:center;padding:40px;color:var(--text-3);">
                                 No fleet dispatches found. Click "New Dispatch" or "Import CSV" to get started.
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php $fleetDetailsMap = []; ?>
+                        <?php 
+                            $fleetDetailsMap = []; 
+                            $isKes = current_currency() === 'KES';
+                            $rate = exchange_rate();
+                        ?>
                         <?php foreach ($dispatches as $d): ?>
                             <?php
                                 $balanceVal = (float) $d['balance'];
@@ -188,14 +193,17 @@
                                     'is_subcontracted' => (int)($d['is_subcontracted'] ?? 0),
                                     'agreed_commission' => (float)($d['agreed_commission'] ?? 0),
                                     'driver' => $d['driver'] ?: 'Unassigned',
-                                    'status' => $d['status'],
-                                    'loaded_litres' => $loaded,
+                                                                      'loaded_litres' => $loaded,
                                     'delivered_litres' => $delivered,
+                                    'shortage_litres' => (int)($d['shortage_litres'] ?? ($isEnRoute ? 0 : $litresLoss)),
                                     'litres_loss' => $litresLoss,
+                                    'unit_price' => (float)($d['unit_price'] ?? 0),
                                     'from_location' => $d['from_location'] ?: 'Eldoret',
                                     'destination' => $d['destination'],
                                     'client_name' => $d['client_name'] ?? 'Regional Consignee',
                                     'product' => $d['product'],
+                                    'diesel_litres' => (float)($d['diesel_litres'] ?? 0),
+                                    'diesel_unit_price' => (float)($d['diesel_unit_price'] ?? 0),
                                     'diesel' => $dVal,
                                     'diesel_formatted' => $canViewFin ? ($dVal > 0 ? format_money($dVal) : '—') : '[Restricted]',
                                     'transport_amount' => $expectedTransport,
@@ -224,7 +232,7 @@
                                 elseif (str_contains($s, 'deliver') || str_contains($s, 'complete')) $sClass = 's-done';
                                 elseif (str_contains($s, 'hold') || str_contains($s, 'cancel') || str_contains($s, 'dispute')) $sClass = 's-hold';
                             ?>
-                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)$d['mileage_cost'] ?>" data-extra-expenses="<?= (float)$d['extra_expenses'] ?>" data-diesel="<?= (float)($d['diesel'] ?? 0) ?>">
+                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)$d['mileage_cost'] ?>" data-extra-expenses="<?= (float)$d['extra_expenses'] ?>" data-diesel="<?= (float)($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
                                 <!-- DOL (Date of Loading formatted DD/MM/YY) -->
                                 <td class="cell-dol" style="font-weight:700;white-space:nowrap;">
                                     <span class="view-val"><?= format_date_dol($d['dispatch_date']) ?></span>
@@ -272,11 +280,22 @@
                                         <div style="font-size:12px;color:var(--text-2);margin-top:2px;">
                                             Deliv: <b class="view-val-delivered"><?= number_format($delivered) ?></b> L
                                         </div>
-                                        <?php if ($litresLoss > 0): ?>
-                                            <div class="shortage-badge" style="font-size:11px;color:var(--red);font-weight:800;background:var(--red-soft);padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px;">
-                                                -<?= number_format($litresLoss) ?> L Shortage
-                                            </div>
-                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
+
+                                <!-- Shortage (Litres) Dedicated Column -->
+                                <td class="cell-shortage" style="white-space:nowrap;text-align:center;">
+                                    <?php $sLitres = (int)($d['shortage_litres'] ?? ($isEnRoute ? 0 : $litresLoss)); ?>
+                                    <?php if ($isEnRoute): ?>
+                                        <span style="font-size:11.5px;color:var(--text-3);font-weight:600;">—</span>
+                                    <?php elseif ($sLitres > 0): ?>
+                                        <span style="background:var(--red-soft);color:var(--red);padding:3px 8px;border-radius:6px;font-weight:800;font-size:12px;display:inline-block;">
+                                            -<?= number_format($sLitres) ?> L
+                                        </span>
+                                    <?php else: ?>
+                                        <span style="background:var(--green-soft);color:var(--green);padding:3px 8px;border-radius:6px;font-weight:700;font-size:12px;display:inline-block;">
+                                            0 L
+                                        </span>
                                     <?php endif; ?>
                                 </td>
 
@@ -306,17 +325,36 @@
                                     </div>
                                 </td>
 
-                                <!-- Product -->
-                                <td class="cell-product">
+                                <!-- Product & Unit Price Rate -->
+                                <td class="cell-product" style="white-space:nowrap;">
                                     <span style="background:var(--brand-soft);color:var(--brand);padding:3px 7px;border-radius:6px;font-weight:800;font-size:12px;">
                                         <?= htmlspecialchars($d['product']) ?>
                                     </span>
+                                    <?php 
+                                        $uPrice = (float)($d['unit_price'] ?? 0);
+                                        $displayUPrice = $isKes ? ($uPrice * $rate) : $uPrice;
+                                    ?>
+                                    <?php if ($displayUPrice > 0): ?>
+                                        <div style="font-size:11px;color:var(--text-3);margin-top:2px;font-weight:600;">
+                                            @ <?= format_money($displayUPrice) ?>/L
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
 
-                                <!-- Diesel Fuel Cost -->
+                                <!-- Diesel Fuel Cost (Owner Expense) -->
                                 <td class="cell-diesel" style="white-space:nowrap;font-weight:700;">
-                                    <?php $dVal = (float)($d['diesel'] ?? 0); ?>
+                                    <?php 
+                                        $dVal = (float)($d['diesel'] ?? 0); 
+                                        $dLitres = (float)($d['diesel_litres'] ?? 0);
+                                        $dUnitPrice = (float)($d['diesel_unit_price'] ?? 0);
+                                        $displayDieselRate = $isKes ? ($dUnitPrice * $rate) : $dUnitPrice;
+                                    ?>
                                     <span class="view-val"><?= $canViewFin ? ($dVal > 0 ? format_money($dVal) : '—') : '[Restricted]' ?></span>
+                                    <?php if ($canViewFin && $dLitres > 0): ?>
+                                        <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px;">
+                                            <?= number_format($dLitres, 1) ?>L<?= $displayDieselRate > 0 ? ' @ ' . format_money($displayDieselRate) : '' ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
 
                                 <!-- Expected Transport -->
@@ -522,32 +560,71 @@
 
                 <div class="form-group">
                     <label>Litres Loaded (DOL Volume) *</label>
-                    <input type="number" name="loaded_litres" id="dispatchLoadedLitres" placeholder="Litres loaded into tanker" required oninput="syncDeliveredDefault()">
-                </div>
-
-                <div class="form-group">
-                    <label>Diesel Allocation / Fuel Cost (<?= app_currency_symbol() ?>) *Owner Expense</label>
-                    <input type="number" step="0.01" name="diesel" id="dispDiesel" placeholder="Price taken for fuel e.g. 450.00" oninput="calcBalance()">
-                    <span style="font-size:11.5px;color:var(--amber);font-weight:700;display:block;margin-top:3px;">⛽ Catered for by owner (automatically deducted from net profit)</span>
+                    <input type="number" name="loaded_litres" id="dispatchLoadedLitres" placeholder="Litres loaded into tanker" required oninput="calcExpectedTransport()">
                 </div>
 
                 <div class="form-group" style="background:rgba(245,158,11,0.08);border:1.5px dashed var(--amber);border-radius:10px;padding:10px 14px;">
                     <span style="font-size:12px;color:var(--amber);font-weight:800;display:block;">🚚 EN-ROUTE LOADING NOTICE:</span>
                     <span style="font-size:12px;color:var(--text-2);">
-                        Truck departs Eldoret in <b>In Transit</b> status. Actual delivered litres & final client payout are verified upon arrival & offloading at customer depot.
+                        Truck departs Eldoret in <b>In Transit</b> status. Expected transport payout is calculated automatically.
                     </span>
                     <input type="hidden" name="status" value="In Transit">
                 </div>
 
                 <div class="form-group">
                     <label>Product (Kenya Fuel Specs) *</label>
-                    <select name="product" required>
+                    <select name="product" id="dispatchProductSelect" required onchange="onProductSelected(this)">
                         <?php foreach ($products as $pr): ?>
-                            <option value="<?= htmlspecialchars($pr['code']) ?>">
-                                <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?>
+                            <?php 
+                                $isKes = current_currency() === 'KES';
+                                $rate = exchange_rate();
+                                $rawPrPrice = (float)($pr['unit_price'] ?? 0);
+                                $displayPrPrice = $isKes ? ($rawPrPrice * $rate) : $rawPrPrice;
+                            ?>
+                            <option value="<?= htmlspecialchars($pr['code']) ?>" data-price="<?= $displayPrPrice ?>">
+                                <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?> (<?= format_money($displayPrPrice) ?>/L)
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Product Unit Price (<?= app_currency_symbol() ?>/L) *</label>
+                    <?php 
+                        $firstPrPrice = !empty($products) ? (float)($products[0]['unit_price'] ?? 0) : 10.50;
+                        $initPrPrice = (current_currency() === 'KES') ? ($firstPrPrice * exchange_rate()) : $firstPrPrice;
+                    ?>
+                    <input type="number" step="0.01" name="unit_price" id="dispatchUnitPrice" value="<?= number_format($initPrPrice, 2, '.', '') ?>" placeholder="0.00" required oninput="calcExpectedTransport()">
+                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Rate per litre billed to customer</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Expected Transport Billed [<?= app_currency_symbol() ?>] (Auto-Calculated) *</label>
+                    <input type="number" step="0.01" name="transport_amount" id="dispTransport" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--brand);cursor:not-allowed;" required>
+                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= Litres Loaded × Unit Price</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Shortage Litres (If Any)</label>
+                    <input type="number" name="shortage_litres" id="dispatchShortageLitres" placeholder="0" value="0" oninput="calcExpectedTransport()">
+                    <span style="font-size:11.5px;color:var(--red);display:block;margin-top:2px;">Transit shortage deducted from final client payout</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Final Client Payout [<?= app_currency_symbol() ?>] (Auto-Calculated)</label>
+                    <input type="number" step="0.01" name="final_payout" id="dispFinalPayout" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--green);cursor:not-allowed;">
+                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= (Loaded - Shortage) × Unit Price</span>
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;background:rgba(59,130,246,0.05);border:1.5px solid var(--brand);border-radius:10px;padding:12px 16px;">
+                    <label style="color:var(--brand);font-weight:800;font-size:13.5px;">👤 Client / Customer Name *</label>
+                    <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd, Engen RDC, Vivo Energy" required style="font-size:14px;font-weight:600;">
+                    <datalist id="customersList">
+                        <?php foreach (($customers ?? []) as $cust): ?>
+                            <option value="<?= htmlspecialchars($cust) ?>">
+                        <?php endforeach; ?>
+                    </datalist>
+                    <span style="font-size:11.5px;color:var(--text-2);display:block;margin-top:3px;">Customer profiles automatically synchronize across dispatches regardless of casing.</span>
                 </div>
 
                 <div class="form-group">
@@ -591,51 +668,39 @@
                     </datalist>
                 </div>
 
+                <!-- Trip Expenses: Strictly Mileage and Diesel Fueling (Owner Expense) -->
                 <div class="form-group">
-                    <label>Client / Customer Name (Optional)</label>
-                    <input type="text" list="customersList" name="client_name" placeholder="e.g. TotalEnergies Uganda Ltd, Engen RDC, Vivo Energy">
-                    <datalist id="customersList">
-                        <?php foreach (($customers ?? []) as $cust): ?>
-                            <option value="<?= htmlspecialchars($cust) ?>">
-                        <?php endforeach; ?>
-                    </datalist>
+                    <label>Mileage & En-route Allowance [<?= app_currency_symbol() ?>] *</label>
+                    <input type="number" step="0.01" name="mileage_cost" id="dispMileage" placeholder="0.00" value="0.00" required oninput="calcBalance()">
+                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Driver trip allowances and road tolls</span>
                 </div>
 
-                <div class="form-group">
-                    <label>Expected Transport Billed [<?= app_currency_symbol() ?>] *</label>
-                    <input type="number" step="0.01" name="transport_amount" id="dispTransport" placeholder="0.00" required oninput="syncFinalPayoutDefault(); calcBalance();">
-                </div>
-
-                <div class="form-group">
-                    <label>Final Client Payout (Received) [<?= app_currency_symbol() ?>]</label>
-                    <input type="number" step="0.01" name="final_payout" id="dispFinalPayout" placeholder="Leave empty to use expected transport" oninput="calcBalance()">
-                </div>
-
-                <div class="form-group">
-                    <label>Mileage & En-route Cost [<?= app_currency_symbol() ?>] *</label>
-                    <input type="number" step="0.01" name="mileage_cost" id="dispMileage" placeholder="0.00" required oninput="calcBalance()">
-                </div>
-
-                <div class="form-group">
-                    <label>Extra Expenses (Repairs / Punctures) [<?= app_currency_symbol() ?>]</label>
-                    <input type="number" step="0.01" name="extra_expenses" id="dispExtra" placeholder="0.00" value="0.00" oninput="calcBalance()">
-                </div>
-
-                <div class="form-group">
-                    <label>⛽ Diesel Fuel Cost (Owner Expense) [<?= app_currency_symbol() ?>]</label>
-                    <input type="number" step="0.01" name="diesel" id="dispDiesel" placeholder="0.00" value="0.00" oninput="calcBalance()">
-                    <span style="font-size:11.5px;color:var(--amber);display:block;margin-top:2px;">Owner catered expense (deducted from net profit).</span>
+                <div class="form-group" style="background:rgba(245,158,11,0.06);border:1.5px solid var(--amber);border-radius:10px;padding:12px 14px;grid-column:1/-1;">
+                    <div style="font-size:13px;color:var(--amber);font-weight:800;margin-bottom:8px;">
+                        ⛽ Diesel Fueling (Owner's Expense)
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+                        <div>
+                            <label style="font-size:12px;color:var(--text-2);font-weight:700;">Diesel Fueled (Litres) *</label>
+                            <input type="number" step="0.01" name="diesel_litres" id="dispDieselLitres" placeholder="e.g. 450" oninput="calcDieselExpense()">
+                        </div>
+                        <div>
+                            <label style="font-size:12px;color:var(--text-2);font-weight:700;">Diesel Fuel Rate (<?= app_currency_symbol() ?>/L) *</label>
+                            <input type="number" step="0.01" name="diesel_unit_price" id="dispDieselUnitPrice" placeholder="e.g. 175.50" oninput="calcDieselExpense()">
+                        </div>
+                        <div>
+                            <label style="font-size:12px;color:var(--text-2);font-weight:700;">Total Diesel Fuel Cost [<?= app_currency_symbol() ?>]</label>
+                            <input type="number" step="0.01" name="diesel" id="dispDiesel" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--amber);cursor:not-allowed;" oninput="calcBalance()">
+                        </div>
+                    </div>
+                    <span style="font-size:11.5px;color:var(--amber);display:block;margin-top:6px;font-weight:600;">
+                        ⛽ Owner expense deducted from profit. Any roadside breakdown or mechanical repairs are managed on the <a href="<?= url('expenses') ?>" target="_blank" style="color:var(--brand);text-decoration:underline;">Expenses</a> page.
+                    </span>
                 </div>
 
                 <div class="form-group" id="commissionGroup" style="display:none;">
                     <label>Agreed Company Commission [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="agreed_commission" id="dispCommission" placeholder="e.g. 350.00" oninput="calcBalance()">
-                </div>
-
-                <div class="form-group" style="grid-column:1/-1;">
-                    <label>Breakdown / Repair Notes</label>
-                    <input type="text" name="breakdown_notes" placeholder="e.g. Tire blowout replacement, wheel hub repair fixed on way">
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:3px;">Optional notes on roadside repairs, mechanic callouts, punctures, or spare parts used en-route.</span>
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
@@ -745,6 +810,12 @@
 
             <div class="form-grid single" style="gap:14px;">
                 <div class="form-group">
+                    <label>Shortage Litres (If Any)</label>
+                    <input type="number" name="shortage_litres" id="cdmShortageInput" value="0" placeholder="0" oninput="recalcDeliveryFromShortage()">
+                    <small style="color:var(--text-3);display:block;margin-top:2px;">Volume shortage deducted at product unit price and forwarded to driver salary deduction.</small>
+                </div>
+
+                <div class="form-group">
                     <label>Client Received / Delivered Litres (Dipped Volume) *</label>
                     <input type="number" name="delivered_litres" id="cdmDeliveredInput" required placeholder="e.g. 29750" oninput="recalcDeliveryModal()">
                 </div>
@@ -754,7 +825,7 @@
                 <div class="form-group">
                     <label>Final Agreed Client Payout [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="final_payout" id="cdmPayoutInput" required placeholder="0.00">
-                    <small style="color:var(--text-3);display:block;margin-top:2px;">Adjust if client deducted shortage penalties or transit fees.</small>
+                    <small style="color:var(--text-3);display:block;margin-top:2px;">Auto-calculated: (Loaded - Shortage) × Unit Price. Adjust if needed.</small>
                 </div>
 
                 <div class="form-group">
@@ -775,7 +846,7 @@
 <div class="modal-backdrop" id="tripExpenseModal" onclick="if(event.target===this)this.classList.remove('active')">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
-            <h2>🛠️ Manage Trip Expenses & Repairs</h2>
+            <h2>🛠️ Manage Trip Expenses</h2>
             <button class="close-modal" onclick="document.getElementById('tripExpenseModal').classList.remove('active')">✕</button>
         </div>
         <form id="tripExpenseForm" onsubmit="saveTripExpenses(event)">
@@ -794,21 +865,15 @@
                 <div class="form-group">
                     <label>Mileage & En-route Cost [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="mileage_cost" id="temMileageCost" required placeholder="0.00">
-                    <small style="color:var(--text-3);">Tolls and driver allowances on this dispatch</small>
+                    <small style="color:var(--text-3);">Driver allowances & tolls during dispatch</small>
                 </div>
                 <div class="form-group">
-                    <label>Diesel Allocation / Fuel Cost [<?= app_currency_symbol() ?>]</label>
+                    <label>⛽ Diesel Fuel Cost (Owner Expense) [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="diesel" id="temDiesel" placeholder="0.00">
-                    <small style="color:var(--text-3);">Amount / price taken for fuel to take product to destination</small>
+                    <small style="color:var(--amber);">Fuel cost catered for by owner (deducted from profit)</small>
                 </div>
-                <div class="form-group">
-                    <label>Breakdown & Repair Expenses [<?= app_currency_symbol() ?>]</label>
-                    <input type="number" step="0.01" name="extra_expenses" id="temExtraExpenses" placeholder="0.00">
-                    <small style="color:var(--text-3);">Punctures, mechanics, spares, repairs during transit</small>
-                </div>
-                <div class="form-group">
-                    <label>Repair / Breakdown Description</label>
-                    <textarea name="breakdown_notes" id="temBreakdownNotes" rows="2" placeholder="e.g. Repaired tyre puncture at Malaba, replaced air hose" style="width:100%;border-radius:8px;padding:8px 12px;background:var(--input-bg);color:var(--text);border:1px solid var(--border);font-family:inherit;font-size:13px;"></textarea>
+                <div style="background:rgba(59,130,246,0.05);border:1px dashed var(--brand);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-2);">
+                    ℹ️ <b>Trip Expenses Policy:</b> Dispatches strictly account for <b>Mileage</b> and <b>Diesel</b>. Any mechanical repairs, tyre replacements, or punctures must be logged on the <a href="<?= url('expenses') ?>" target="_blank" style="color:var(--brand);font-weight:700;text-decoration:underline;">Expenses</a> page.
                 </div>
             </div>
             <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
@@ -1234,6 +1299,7 @@ window.openConfirmDeliveryModal = function(data) {
     document.getElementById('cdmDestClient').textContent = (data.destination || '—') + ' • ' + (data.client || 'Consignee');
     document.getElementById('cdmLoadedLitres').textContent = Number(data.loaded_litres).toLocaleString() + ' L';
     document.getElementById('cdmDeliveredInput').value = data.loaded_litres;
+    document.getElementById('cdmShortageInput').value = 0;
     
     // Set default payout in active currency
     const isKes = ('<?= current_currency() ?>' === 'KES');
@@ -1244,31 +1310,62 @@ window.openConfirmDeliveryModal = function(data) {
 
     const modal = document.getElementById('confirmDeliveryModal');
     modal.dataset.loaded = data.loaded_litres;
+    modal.dataset.unitPrice = data.unit_price || (data.loaded_litres > 0 ? (data.transport_amount / data.loaded_litres) : 0);
     modal.dataset.transport = data.transport_amount;
     recalcDeliveryModal();
     modal.classList.add('active');
+};
+
+window.recalcDeliveryFromShortage = function() {
+    const modal = document.getElementById('confirmDeliveryModal');
+    const loaded = Number(modal.dataset.loaded || 0);
+    const unitPrice = Number(modal.dataset.unitPrice || 0);
+    const isKes = ('<?= current_currency() ?>' === 'KES');
+    const exRate = <?= exchange_rate() ?>;
+    const effUnitPrice = isKes ? (unitPrice * exRate) : unitPrice;
+
+    const shortage = Math.max(0, Number(document.getElementById('cdmShortageInput').value || 0));
+    const delivered = Math.max(0, loaded - shortage);
+    document.getElementById('cdmDeliveredInput').value = delivered;
+
+    if (effUnitPrice > 0) {
+        document.getElementById('cdmPayoutInput').value = (delivered * effUnitPrice).toFixed(2);
+    }
+    recalcDeliveryModal();
 };
 
 window.recalcDeliveryModal = function() {
     const modal = document.getElementById('confirmDeliveryModal');
     const loaded = Number(modal.dataset.loaded || 0);
     const delivered = Number(document.getElementById('cdmDeliveredInput').value || 0);
+    const unitPrice = Number(modal.dataset.unitPrice || 0);
+    const isKes = ('<?= current_currency() ?>' === 'KES');
+    const exRate = <?= exchange_rate() ?>;
+    const effUnitPrice = isKes ? (unitPrice * exRate) : unitPrice;
+
     const banner = document.getElementById('cdmShortageBanner');
     const loss = loaded - delivered;
 
     if (loss > 0) {
+        document.getElementById('cdmShortageInput').value = loss;
+        if (effUnitPrice > 0) {
+            document.getElementById('cdmPayoutInput').value = (delivered * effUnitPrice).toFixed(2);
+        }
         banner.style.display = 'block';
         banner.style.background = 'var(--red-soft)';
         banner.style.border = '1px solid var(--red)';
         banner.style.color = 'var(--red)';
-        banner.textContent = '⚠️ Shortage: -' + loss.toLocaleString() + ' Litres offloaded less than loaded at Eldoret.';
+        const diffAmt = loss * effUnitPrice;
+        banner.innerHTML = `⚠️ Shortage: -${loss.toLocaleString()} L. Client payout automatically reduced by ${CURRENCY_SYM} ${diffAmt.toFixed(2)}. This loss is forwarded to driver salary deductions.`;
     } else if (loss < 0) {
+        document.getElementById('cdmShortageInput').value = 0;
         banner.style.display = 'block';
         banner.style.background = 'var(--green-soft)';
         banner.style.border = '1px solid var(--green)';
         banner.style.color = 'var(--green)';
         banner.textContent = '✓ Surplus: +' + Math.abs(loss).toLocaleString() + ' Litres over loaded volume.';
     } else {
+        document.getElementById('cdmShortageInput').value = 0;
         banner.style.display = 'block';
         banner.style.background = 'var(--green-soft)';
         banner.style.border = '1px solid var(--green)';
@@ -1383,7 +1480,6 @@ function onTruckSelected() {
     if (opt && opt.dataset.capacity) {
         document.getElementById('dispatchTruckCapacity').value = opt.dataset.capacity;
         document.getElementById('dispatchLoadedLitres').value = opt.dataset.capacity;
-        document.getElementById('dispatchDeliveredLitres').value = opt.dataset.capacity;
         isSubcontractedTruck = (opt.dataset.subcontracted === '1');
 
         if (isSubcontractedTruck) {
@@ -1398,25 +1494,51 @@ function onTruckSelected() {
             commGroup.style.display = 'none';
             document.getElementById('balanceLabel').textContent = 'Estimated Net Profit (Balance)';
         }
-        calcBalance();
+        calcExpectedTransport();
     }
 }
 
-function syncDeliveredDefault() {
-    const loaded = document.getElementById('dispatchLoadedLitres').value;
-    const deliv = document.getElementById('dispatchDeliveredLitres');
-    if (!deliv.value || deliv.value == 0) {
-        deliv.value = loaded;
+function onProductSelected(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.dataset.price) {
+        const upInput = document.getElementById('dispatchUnitPrice');
+        if (upInput) {
+            upInput.value = parseFloat(opt.dataset.price).toFixed(2);
+            calcExpectedTransport();
+        }
     }
+}
+
+function calcExpectedTransport() {
+    const loaded = parseFloat(document.getElementById('dispatchLoadedLitres')?.value) || 0;
+    const unitPrice = parseFloat(document.getElementById('dispatchUnitPrice')?.value) || 0;
+    const shortage = Math.max(0, parseFloat(document.getElementById('dispatchShortageLitres')?.value) || 0);
+
+    const transport = loaded * unitPrice;
+    const dispTransport = document.getElementById('dispTransport');
+    if (dispTransport) {
+        dispTransport.value = transport > 0 ? transport.toFixed(2) : '0.00';
+    }
+
+    const delivered = Math.max(0, loaded - shortage);
+    const finalPayout = delivered * unitPrice;
+    const dispFinal = document.getElementById('dispFinalPayout');
+    if (dispFinal) {
+        dispFinal.value = finalPayout > 0 ? finalPayout.toFixed(2) : '0.00';
+    }
+
     calcBalance();
 }
 
-function syncFinalPayoutDefault() {
-    const trans = document.getElementById('dispTransport').value;
-    const finalP = document.getElementById('dispFinalPayout');
-    if (!finalP.value || finalP.value == 0) {
-        finalP.placeholder = trans ? trans : '0.00';
+function calcDieselExpense() {
+    const litres = parseFloat(document.getElementById('dispDieselLitres')?.value) || 0;
+    const unitPrice = parseFloat(document.getElementById('dispDieselUnitPrice')?.value) || 0;
+    const total = litres * unitPrice;
+    const dispDiesel = document.getElementById('dispDiesel');
+    if (dispDiesel) {
+        dispDiesel.value = total > 0 ? total.toFixed(2) : '0.00';
     }
+    calcBalance();
 }
 
 function calcBalance() {
@@ -1424,21 +1546,19 @@ function calcBalance() {
     const finalPInput = document.getElementById('dispFinalPayout')?.value;
     const finalPayout = (finalPInput !== undefined && finalPInput !== '') ? (parseFloat(finalPInput) || 0) : transport;
     const mileage = parseFloat(document.getElementById('dispMileage')?.value) || 0;
-    const extra = parseFloat(document.getElementById('dispExtra')?.value) || 0;
     const diesel = parseFloat(document.getElementById('dispDiesel')?.value) || 0;
     const comm = parseFloat(document.getElementById('dispCommission')?.value) || 0;
 
     const loaded = parseFloat(document.getElementById('dispatchLoadedLitres')?.value) || 0;
-    const delivered = parseFloat(document.getElementById('dispatchDeliveredLitres')?.value) || loaded;
-    const litresLoss = Math.max(0, loaded - delivered);
+    const shortage = Math.max(0, parseFloat(document.getElementById('dispatchShortageLitres')?.value) || 0);
     const payoutDiff = transport - finalPayout;
 
     let bal = 0;
     if (isSubcontractedTruck) {
         bal = comm;
     } else {
-        // Owner expenses (Diesel + Mileage + Extra Repairs) deducted from final client payout
-        bal = finalPayout - (mileage + extra + diesel);
+        // Owner expenses strictly Diesel + Mileage deducted from final client payout
+        bal = finalPayout - (mileage + diesel);
     }
 
     const disp = document.getElementById('liveBalanceDisplay');
@@ -1450,8 +1570,8 @@ function calcBalance() {
     const notice = document.getElementById('payoutDiffNotice');
     if (notice) {
         let msg = '';
-        if (payoutDiff > 0 || litresLoss > 0) {
-            msg += `<span style="color:var(--red);font-weight:700;">Shortage Loss: ${litresLoss.toLocaleString()} Litres • -${CURRENCY_SYM} ${payoutDiff.toFixed(2)} deduction</span>`;
+        if (payoutDiff > 0 || shortage > 0) {
+            msg += `<span style="color:var(--red);font-weight:700;">Shortage Loss: ${shortage.toLocaleString()} Litres • -${CURRENCY_SYM} ${payoutDiff.toFixed(2)} deduction (Forwarded to Driver Salary)</span>`;
         } else {
             msg += `<span style="color:var(--green);font-weight:700;">Full Payout • 0 Litres Shortage</span>`;
         }
@@ -1634,6 +1754,13 @@ function startFleetInlineEdit(id) {
         <input type="number" class="table-inline-input inline-delivered" value="${deliveredLitres}">
     `;
 
+    const shortageVal = parseInt(row.dataset.shortageLitres || '0', 10) || Math.max(0, loadedLitres - deliveredLitres);
+    if (row.querySelector('.cell-shortage')) {
+        row.querySelector('.cell-shortage').innerHTML = `
+            <input type="number" class="table-inline-input inline-shortage" value="${shortageVal}" style="width:65px;text-align:center;">
+        `;
+    }
+
     row.querySelector('.cell-diesel').innerHTML = `
         <input type="number" step="0.01" class="table-inline-input inline-diesel" value="${dieselRaw > 0 ? dieselRaw : ''}" placeholder="${CURRENCY_SYM}" style="width:75px;">
     `;
@@ -1677,6 +1804,7 @@ async function saveFleetInlineEdit(id) {
     const clientName = row.querySelector('.inline-client')?.value;
     const loadedLitres = row.querySelector('.inline-loaded')?.value;
     const deliveredLitres = row.querySelector('.inline-delivered')?.value;
+    const shortageLitres = row.querySelector('.inline-shortage')?.value;
     const diesel = row.querySelector('.inline-diesel')?.value;
     const transport = row.querySelector('.inline-transport')?.value;
     const finalPayout = row.querySelector('.inline-final-payout')?.value;
@@ -1693,6 +1821,7 @@ async function saveFleetInlineEdit(id) {
         client_name: clientName,
         loaded_litres: loadedLitres,
         delivered_litres: deliveredLitres,
+        shortage_litres: shortageLitres,
         diesel: diesel,
         transport_amount: transport,
         final_payout: finalPayout,
@@ -1709,6 +1838,7 @@ async function saveFleetInlineEdit(id) {
             row.dataset.diesel = diesel || 0;
             row.dataset.mileageCost = mileageCost || 0;
             row.dataset.extraExpenses = extraExpenses || 0;
+            row.dataset.shortageLitres = shortageLitres || 0;
 
             const diff = (parseFloat(transport) || 0) - (parseFloat(finalPayout) || 0);
             const lossL = Math.max(0, (parseInt(loadedLitres) || 0) - (parseInt(deliveredLitres) || 0));
@@ -1742,8 +1872,13 @@ async function saveFleetInlineEdit(id) {
             row.querySelector('.cell-litres').innerHTML = `
                 <div style="font-weight:800;color:var(--brand);font-size:14px;"><span class="view-val-loaded">${parseInt(loadedLitres).toLocaleString()}</span> L</div>
                 <div style="font-size:12px;color:var(--text-2);">Deliv: <b class="view-val-delivered">${parseInt(deliveredLitres).toLocaleString()}</b> L</div>
-                ${lossL > 0 ? `<div style="font-size:11px;color:var(--red);font-weight:800;background:var(--red-soft);padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px;">-${lossL} L Loss</div>` : ''}
             `;
+            if (row.querySelector('.cell-shortage')) {
+                const sNum = parseInt(shortageLitres || 0, 10);
+                row.querySelector('.cell-shortage').innerHTML = sNum > 0
+                    ? `<span style="background:var(--red-soft);color:var(--red);padding:3px 8px;border-radius:6px;font-weight:800;font-size:12px;display:inline-block;">-${sNum.toLocaleString()} L</span>`
+                    : `<span style="background:var(--green-soft);color:var(--green);padding:3px 8px;border-radius:6px;font-weight:700;font-size:12px;display:inline-block;">0 L</span>`;
+            }
             const dieselVal = parseFloat(diesel) || 0;
             row.querySelector('.cell-diesel').innerHTML = `<span class="view-val">${dieselVal > 0 ? CURRENCY_SYM + ' ' + dieselVal.toFixed(2) : '—'}</span>`;
             row.querySelector('.cell-transport').innerHTML = `<span class="view-val">${CURRENCY_SYM} ${parseFloat(transport).toFixed(2)}</span>`;
@@ -1775,6 +1910,7 @@ async function saveFleetInlineEdit(id) {
             row.dataset.diesel = d.diesel;
             row.dataset.mileageCost = d.mileage_cost;
             row.dataset.extraExpenses = d.extra_expenses;
+            row.dataset.shortageLitres = d.shortage_litres;
 
             row.querySelector('.cell-dol').innerHTML = `<span class="view-val">${d.dol_formatted}</span>`;
             row.querySelector('.cell-driver').innerHTML = `<span class="view-val">${d.driver}</span>`;
@@ -1812,8 +1948,13 @@ async function saveFleetInlineEdit(id) {
             row.querySelector('.cell-litres').innerHTML = `
                 <div style="font-weight:800;color:var(--brand);font-size:14px;"><span class="view-val-loaded">${d.loaded_litres.toLocaleString()}</span> L</div>
                 <div style="font-size:12px;color:var(--text-2);margin-top:2px;">Deliv: <b class="view-val-delivered">${d.delivered_litres.toLocaleString()}</b> L</div>
-                ${d.shortage_litres > 0 ? `<div style="font-size:11px;color:var(--red);font-weight:800;background:var(--red-soft);padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px;">-${d.shortage_litres.toLocaleString()} L Shortage</div>` : ''}
             `;
+
+            if (row.querySelector('.cell-shortage')) {
+                row.querySelector('.cell-shortage').innerHTML = d.shortage_litres > 0
+                    ? `<span style="background:var(--red-soft);color:var(--red);padding:3px 8px;border-radius:6px;font-weight:800;font-size:12px;display:inline-block;">-${d.shortage_litres.toLocaleString()} L</span>`
+                    : `<span style="background:var(--green-soft);color:var(--green);padding:3px 8px;border-radius:6px;font-weight:700;font-size:12px;display:inline-block;">0 L</span>`;
+            }
 
             row.querySelector('.cell-diesel').innerHTML = `<span class="view-val">${d.diesel_formatted}</span>`;
             row.querySelector('.cell-transport').innerHTML = `<span class="view-val">${d.transport_formatted}</span>`;

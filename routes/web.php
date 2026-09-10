@@ -55,6 +55,7 @@ return [
     // Fuel Products
     ['GET', '/products', [ProductController::class, 'index']],
     ['POST', '/products/store', [ProductController::class, 'store']],
+    ['POST', '/products/update', [ProductController::class, 'update']],
     ['POST', '/products/delete/{id}', [ProductController::class, 'delete']],
 
     // Maintenance & Outside Expenses

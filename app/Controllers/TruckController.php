@@ -119,7 +119,7 @@ class TruckController
         $plate = strtoupper(trim($_POST['plate_number'] ?? ''));
         $model = trim($_POST['model'] ?? '');
         $capacity = (int) ($_POST['capacity_litres'] ?? 0);
-        $compartments = trim($_POST['compartments'] ?? '3 compartments');
+        $compartments = isset($_POST['compartments']) && trim($_POST['compartments']) !== '' ? trim($_POST['compartments']) : null;
         $rawOwnership = strtolower(trim($_POST['ownership_type'] ?? 'owner'));
         $ownershipType = in_array($rawOwnership, ['contract', 'subcontracted', 'sub']) ? 'Contract' : 'Owner';
         $ownerName = trim($_POST['owner_name'] ?? '');
@@ -166,7 +166,7 @@ class TruckController
         $plate = strtoupper(trim($_POST['plate_number'] ?? ''));
         $model = trim($_POST['model'] ?? '');
         $capacity = (int) ($_POST['capacity_litres'] ?? 0);
-        $compartments = trim($_POST['compartments'] ?? '3 compartments');
+        $compartments = isset($_POST['compartments']) && trim($_POST['compartments']) !== '' ? trim($_POST['compartments']) : null;
         $rawOwner = strtolower(trim($_POST['ownership_type'] ?? ''));
         $ownershipType = in_array($rawOwner, ['contract', 'subcontracted', 'sub']) ? 'Contract' : 'Owner';
         $ownerName = trim($_POST['owner_name'] ?? '');

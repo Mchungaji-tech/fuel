@@ -51,15 +51,11 @@ class FleetController
         // Fetch options for the dispatch modal
         $trucks = $pdo->query('SELECT plate_number, model, capacity_litres, ownership_type, owner_name, commission_rate, status FROM trucks ORDER BY plate_number ASC')->fetchAll(PDO::FETCH_ASSOC);
         $drivers = $pdo->query('SELECT id, name, status FROM drivers ORDER BY name ASC')->fetchAll(PDO::FETCH_ASSOC);
-        $products = $pdo->query('SELECT code, name FROM products WHERE status = "Active" ORDER BY code ASC')->fetchAll(PDO::FETCH_ASSOC);
+        $products = $pdo->query('SELECT code, name, unit_price FROM products WHERE status = "Active" AND UPPER(code) IN ("PMS", "AGO") ORDER BY code ASC')->fetchAll(PDO::FETCH_ASSOC);
         if (empty($products)) {
             $products = [
-                ['code' => 'AGO', 'name' => 'Automotive Gas Oil (Diesel)'],
-                ['code' => 'PMS', 'name' => 'Premium Motor Spirit (Super Petrol)'],
-                ['code' => 'DPK', 'name' => 'Dual Purpose Kerosene'],
-                ['code' => 'IK', 'name' => 'Illuminating Kerosene'],
-                ['code' => 'JET A-1', 'name' => 'Aviation Turbine Fuel'],
-                ['code' => 'HFO', 'name' => 'Heavy Fuel Oil (Furnace Oil)'],
+                ['code' => 'AGO', 'name' => 'Automotive Gas Oil (Diesel)', 'unit_price' => 9.50],
+                ['code' => 'PMS', 'name' => 'Premium Motor Spirit (Super Petrol)', 'unit_price' => 10.50],
             ];
         }
         $customers = $pdo->query('SELECT DISTINCT name FROM customers ORDER BY name ASC')->fetchAll(PDO::FETCH_COLUMN) ?: [];
@@ -85,19 +81,20 @@ class FleetController
         $truck = trim($_POST['truck'] ?? '');
         $truckCapacity = (int) ($_POST['truck_capacity'] ?? 0);
         $loadedLitres = (int) ($_POST['loaded_litres'] ?? $truckCapacity);
-        $deliveredLitres = (int) ($_POST['delivered_litres'] ?? $loadedLitres);
-        if ($deliveredLitres <= 0) {
-            $deliveredLitres = $loadedLitres;
+        if ($loadedLitres <= 0) {
+            $loadedLitres = $truckCapacity;
         }
+
         $fromLocation = trim($_POST['from_location'] ?? 'Eldoret');
         if ($fromLocation === '') {
             $fromLocation = 'Eldoret';
         }
         $destination = trim($_POST['destination'] ?? '');
-        $product = trim($_POST['product'] ?? 'AGO');
-        if ($product === '') {
+        $product = strtoupper(trim($_POST['product'] ?? 'AGO'));
+        if (!in_array($product, ['PMS', 'AGO'])) {
             $product = 'AGO';
         }
+
         $driver = trim($_POST['driver'] ?? 'Unassigned');
         $customDriver = trim($_POST['other_driver_name'] ?? $_POST['custom_driver_name'] ?? '');
         if (($driver === '__other__' || $driver === '') && $customDriver !== '') {
@@ -118,40 +115,57 @@ class FleetController
         $isKes = current_currency() === 'KES';
         $rate = exchange_rate();
 
-        $rawTransport = (float) ($_POST['transport_amount'] ?? 0);
-        $rawMileage = (float) ($_POST['mileage_cost'] ?? 0);
-        $rawExtra = (float) ($_POST['extra_expenses'] ?? 0);
-        $rawDiesel = (float) ($_POST['diesel'] ?? 0);
+        // Cargo Product Unit Price (transport payout rate per litre)
+        $prodStmt = $pdo->prepare('SELECT unit_price FROM products WHERE UPPER(code) = ? LIMIT 1');
+        $prodStmt->execute([$product]);
+        $catalogPrice = (float)($prodStmt->fetchColumn() ?: ($product === 'PMS' ? 10.50 : 9.50));
 
-        $transportAmount = $isKes ? ($rawTransport / $rate) : $rawTransport;
-        $mileageCost = $isKes ? ($rawMileage / $rate) : $rawMileage;
-        $extraExpenses = $isKes ? ($rawExtra / $rate) : $rawExtra;
-        $diesel = $isKes ? ($rawDiesel / $rate) : $rawDiesel;
+        $rawUnitPrice = isset($_POST['unit_price']) && $_POST['unit_price'] !== '' ? (float)$_POST['unit_price'] : $catalogPrice;
+        $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
 
+        // Automatically calculated Expected Transport Billed: Loaded Litres × Unit Price
+        $transportAmount = (float)($loadedLitres * $unitPrice);
+
+        // Transit Shortage & Delivered Litres logic
+        $shortageLitres = max(0, (int)($_POST['shortage_litres'] ?? 0));
         $status = trim($_POST['status'] ?? 'In Transit');
         $isDelivered = (strtolower($status) === 'delivered');
 
-        // Delivered volume and final client payout logic:
-        // When truck departs Eldoret, delivery volume and final client payout are assessed upon destination offloading
-        $rawDelivered = $_POST['delivered_litres'] ?? null;
-        if ($rawDelivered !== null && $rawDelivered !== '' && (int)$rawDelivered > 0) {
-            $deliveredLitres = (int) $rawDelivered;
+        if ($shortageLitres > 0) {
+            $deliveredLitres = max(0, $loadedLitres - $shortageLitres);
+            $finalPayout = (float)($deliveredLitres * $unitPrice);
+            $payoutDiff = (float)($shortageLitres * $unitPrice);
         } elseif ($isDelivered) {
             $deliveredLitres = $loadedLitres;
-        } else {
-            $deliveredLitres = null; // Pending client arrival & offloading
-        }
-
-        $rawFinal = $_POST['final_payout'] ?? null;
-        if ($rawFinal !== null && $rawFinal !== '' && (float)$rawFinal > 0) {
-            $finalPayout = $isKes ? ((float)$rawFinal / $rate) : (float)$rawFinal;
-        } elseif ($isDelivered) {
             $finalPayout = $transportAmount;
+            $payoutDiff = 0.0;
         } else {
-            $finalPayout = null; // Pending client reconciliation upon arrival
+            // In transit: pending client arrival & offloading
+            $deliveredLitres = null;
+            $finalPayout = null;
+            $payoutDiff = 0.0;
         }
 
-        $payoutDiff = ($finalPayout !== null) ? ($transportAmount - $finalPayout) : 0;
+        // Single Diesel Fueling Section (Owner's Expense)
+        $dieselLitres = (float)($_POST['diesel_litres'] ?? 0);
+        $rawDieselUnitPrice = (float)($_POST['diesel_unit_price'] ?? 0);
+        $dieselUnitPrice = $isKes ? ($rawDieselUnitPrice / $rate) : $rawDieselUnitPrice;
+
+        if ($dieselLitres > 0 && $dieselUnitPrice > 0) {
+            $diesel = $dieselLitres * $dieselUnitPrice;
+        } else {
+            $rawDiesel = (float)($_POST['diesel'] ?? 0);
+            $diesel = $isKes ? ($rawDiesel / $rate) : $rawDiesel;
+            if ($dieselLitres > 0 && $diesel > 0) {
+                $dieselUnitPrice = $diesel / $dieselLitres;
+            }
+        }
+
+        // Trip Expenses are strictly Mileage and Diesel Fueling
+        $rawMileage = (float) ($_POST['mileage_cost'] ?? 0);
+        $mileageCost = $isKes ? ($rawMileage / $rate) : $rawMileage;
+        $extraExpenses = 0.0; // Any extra repairs must be logged on the Expenses page
+        $breakdownNotes = '';
 
         $agreedCommission = 0.0;
         if ($isSubcontracted) {
@@ -160,10 +174,9 @@ class FleetController
             $balance = $agreedCommission;
         } else {
             $effectiveRev = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transportAmount;
-            $balance = $effectiveRev - ($mileageCost + $extraExpenses + $diesel);
+            $balance = $effectiveRev - ($mileageCost + $diesel);
         }
 
-        $breakdownNotes = trim($_POST['breakdown_notes'] ?? '');
         $shortageNotes = trim($_POST['shortage_notes'] ?? '');
         $clientName = trim($_POST['client_name'] ?? '');
         if ($clientName === '') {
@@ -180,11 +193,11 @@ class FleetController
 
         if ($truck !== '' && $fromLocation !== '' && $destination !== '') {
             $stmt = $pdo->prepare('INSERT INTO fleet_dispatches (
-                trip_number, bol_number, dispatch_date, truck, truck_capacity, loaded_litres, delivered_litres,
-                from_location, destination, product, driver, transport_amount, final_payout, payout_difference,
-                mileage_cost, extra_expenses, breakdown_notes, shortage_notes, client_name, balance, is_subcontracted, agreed_commission,
-                status, seal_numbers, diesel, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                trip_number, bol_number, dispatch_date, truck, truck_capacity, loaded_litres, shortage_litres, delivered_litres,
+                from_location, destination, product, unit_price, driver, transport_amount, final_payout, payout_difference,
+                mileage_cost, diesel_litres, diesel_unit_price, diesel, extra_expenses, breakdown_notes, shortage_notes, client_name, balance, is_subcontracted, agreed_commission,
+                status, seal_numbers, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
             $stmt->execute([
                 $tripNumber,
@@ -193,15 +206,20 @@ class FleetController
                 $truck,
                 $truckCapacity,
                 $loadedLitres,
+                $shortageLitres,
                 $deliveredLitres,
                 $fromLocation,
                 $destination,
                 $product,
+                $unitPrice,
                 $driver,
                 $transportAmount,
                 $finalPayout,
                 $payoutDiff,
                 $mileageCost,
+                $dieselLitres,
+                $dieselUnitPrice,
+                $diesel,
                 $extraExpenses,
                 $breakdownNotes,
                 $shortageNotes,
@@ -211,14 +229,13 @@ class FleetController
                 $agreedCommission,
                 $status,
                 $sealNumbers,
-                $diesel,
                 date('Y-m-d H:i:s'),
             ]);
 
             // Check if temporary / new driver was created
             $isNewDriver = false;
             if ($driver !== '' && $driver !== 'Unassigned') {
-                $chkDrv = $pdo->prepare('SELECT COUNT(*) FROM drivers WHERE LOWER(TRIM(name)) = LOWER(?)');
+                $chkDrv = $pdo->prepare('SELECT COUNT(*) FROM drivers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))');
                 $chkDrv->execute([$driver]);
                 if ((int)$chkDrv->fetchColumn() === 0) {
                     $isNewDriver = true;
@@ -241,13 +258,14 @@ class FleetController
                 'is_new_driver' => $isNewDriver,
             ]);
 
-            // Auto-sync customer account
+            // Auto-sync customer account with case-insensitive matching
             if ($clientName !== '' && $clientName !== 'Regional Fuel Consignee') {
-                $cStmt = $pdo->prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
+                $cStmt = $pdo->prepare('SELECT id, name FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1');
                 $cStmt->execute([$clientName]);
-                if ($cStmt->fetch()) {
-                    $pdo->prepare('UPDATE customers SET orders = orders + 1, total_litres = total_litres + ?, last_dispatch_date = ? WHERE name = ?')
-                        ->execute([$loadedLitres, $dispatchDate, $clientName]);
+                $existingCust = $cStmt->fetch(PDO::FETCH_ASSOC);
+                if ($existingCust) {
+                    $pdo->prepare('UPDATE customers SET orders = orders + 1, total_litres = total_litres + ?, last_dispatch_date = ? WHERE id = ?')
+                        ->execute([$loadedLitres, $dispatchDate, $existingCust['id']]);
                 } else {
                     $pdo->prepare('INSERT INTO customers (name, company, country, orders, total_litres, last_dispatch_date, status) VALUES (?, ?, ?, 1, ?, ?, "Active")')
                         ->execute([$clientName, $clientName, $destination, $loadedLitres, $dispatchDate]);
@@ -291,19 +309,35 @@ class FleetController
         $rate = exchange_rate();
 
         $loadedLitres = (int) $dispatch['loaded_litres'];
-        $rawDelivered = (int) ($_POST['delivered_litres'] ?? 0);
-        $deliveredLitres = $rawDelivered > 0 ? $rawDelivered : $loadedLitres;
+        $unitPrice = (float) ($dispatch['unit_price'] ?? 0);
+        if ($unitPrice <= 0 && $loadedLitres > 0) {
+            $unitPrice = (float) $dispatch['transport_amount'] / $loadedLitres;
+        }
+
+        $shortageLitres = isset($_POST['shortage_litres']) && $_POST['shortage_litres'] !== '' ? max(0, (int)$_POST['shortage_litres']) : null;
+        $rawDelivered = isset($_POST['delivered_litres']) && $_POST['delivered_litres'] !== '' ? (int)$_POST['delivered_litres'] : null;
+
+        if ($shortageLitres !== null) {
+            $deliveredLitres = max(0, $loadedLitres - $shortageLitres);
+        } elseif ($rawDelivered !== null && $rawDelivered > 0) {
+            $deliveredLitres = $rawDelivered;
+            $shortageLitres = max(0, $loadedLitres - $deliveredLitres);
+        } else {
+            $deliveredLitres = $loadedLitres;
+            $shortageLitres = 0;
+        }
 
         $transportAmount = (float) $dispatch['transport_amount'];
         $rawFinal = $_POST['final_payout'] ?? null;
 
-        if ($rawFinal !== null && $rawFinal !== '') {
+        if ($rawFinal !== null && $rawFinal !== '' && (float)$rawFinal > 0) {
             $finalPayout = $isKes ? ((float)$rawFinal / $rate) : (float)$rawFinal;
         } else {
-            $finalPayout = $transportAmount;
+            // Automatically calculated from delivered litres * unit price
+            $finalPayout = (float) ($deliveredLitres * $unitPrice);
         }
 
-        $payoutDiff = $transportAmount - $finalPayout;
+        $payoutDiff = (float) ($shortageLitres * $unitPrice);
         $shortageNotes = trim($_POST['shortage_notes'] ?? '');
 
         // Recalculate balance with confirmed final client payout
@@ -318,6 +352,7 @@ class FleetController
         }
 
         $upd = $pdo->prepare("UPDATE fleet_dispatches SET 
+            shortage_litres = ?,
             delivered_litres = ?, 
             final_payout = ?, 
             payout_difference = ?, 
@@ -325,7 +360,7 @@ class FleetController
             balance = ?, 
             status = 'Delivered' 
             WHERE id = ?");
-        $upd->execute([$deliveredLitres, $finalPayout, $payoutDiff, $shortageNotes, $balance, (int) $id]);
+        $upd->execute([$shortageLitres, $deliveredLitres, $finalPayout, $payoutDiff, $shortageNotes, $balance, (int) $id]);
 
         // If truck plate exists, update truck status to 'Ready'
         if (!empty($dispatch['truck'])) {
@@ -335,7 +370,6 @@ class FleetController
         // Sync trips table status
         $pdo->prepare("UPDATE trips SET status = 'Delivered' WHERE trip_number = ?")->execute([$dispatch['trip_number']]);
 
-        $shortageLitres = $loadedLitres - $deliveredLitres;
         $shortageText = ($shortageLitres > 0) ? " (Shortage: -{$shortageLitres}L)" : " (100% delivered)";
 
         log_audit(
@@ -395,33 +429,80 @@ class FleetController
         $truck = trim($_POST['truck'] ?? $current['truck']);
         $driver = trim($_POST['driver'] ?? $current['driver']);
         $status = trim($_POST['status'] ?? $current['status']);
-        $product = trim($_POST['product'] ?? $current['product']);
+        $product = strtoupper(trim($_POST['product'] ?? $current['product']));
+        if (!in_array($product, ['PMS', 'AGO'])) {
+            $product = 'AGO';
+        }
         $fromLocation = trim($_POST['from_location'] ?? $current['from_location']);
         $destination = trim($_POST['destination'] ?? $current['destination']);
         $clientName = trim($_POST['client_name'] ?? ($current['client_name'] ?? 'Regional Fuel Consignee'));
 
-        $loadedLitres = isset($_POST['loaded_litres']) ? (int)$_POST['loaded_litres'] : (int)$current['loaded_litres'];
-        $deliveredLitres = isset($_POST['delivered_litres']) ? (int)$_POST['delivered_litres'] : (int)($current['delivered_litres'] ?? $loadedLitres);
+        // Unit Price
+        $rawUnitPrice = isset($_POST['unit_price']) ? (float)$_POST['unit_price'] : (float)($current['unit_price'] ?? 0);
+        if ($rawUnitPrice <= 0) {
+            $prodStmt = $pdo->prepare('SELECT unit_price FROM products WHERE UPPER(code) = ? LIMIT 1');
+            $prodStmt->execute([$product]);
+            $rawUnitPrice = (float)($prodStmt->fetchColumn() ?: ($product === 'PMS' ? 10.50 : 9.50));
+        }
+        $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
 
-        $rawTransport = isset($_POST['transport_amount']) ? (float)$_POST['transport_amount'] : (float)$current['transport_amount'];
-        $rawFinal = isset($_POST['final_payout']) ? (float)$_POST['final_payout'] : (float)($current['final_payout'] ?? $current['transport_amount']);
+        $loadedLitres = isset($_POST['loaded_litres']) ? (int)$_POST['loaded_litres'] : (int)$current['loaded_litres'];
+
+        // Shortage & Delivered Litres
+        if (isset($_POST['shortage_litres'])) {
+            $shortageLitres = max(0, (int)$_POST['shortage_litres']);
+            $deliveredLitres = max(0, $loadedLitres - $shortageLitres);
+        } elseif (isset($_POST['delivered_litres'])) {
+            $deliveredLitres = (int)$_POST['delivered_litres'];
+            $shortageLitres = max(0, $loadedLitres - $deliveredLitres);
+        } else {
+            $shortageLitres = (int)($current['shortage_litres'] ?? 0);
+            $deliveredLitres = isset($current['delivered_litres']) && $current['delivered_litres'] !== null ? (int)$current['delivered_litres'] : null;
+        }
+
+        // Expected Transport is automatically: Loaded Litres × Unit Price
+        $transportAmount = (float)($loadedLitres * $unitPrice);
+
+        // Final Payout
+        $isDelivered = (strtolower($status) === 'delivered');
+        if (isset($_POST['final_payout']) && $_POST['final_payout'] !== '') {
+            $rawFinal = (float)$_POST['final_payout'];
+            $finalPayout = $isKes ? ($rawFinal / $rate) : $rawFinal;
+        } elseif ($deliveredLitres !== null && $deliveredLitres > 0) {
+            $finalPayout = (float)($deliveredLitres * $unitPrice);
+        } elseif ($isDelivered) {
+            $finalPayout = $transportAmount;
+        } else {
+            $finalPayout = isset($current['final_payout']) ? (float)$current['final_payout'] : null;
+        }
+
+        $payoutDiff = ($finalPayout !== null) ? ($transportAmount - $finalPayout) : 0.0;
+
+        // Diesel Fueling
+        $dieselLitres = isset($_POST['diesel_litres']) ? (float)$_POST['diesel_litres'] : (float)($current['diesel_litres'] ?? 0);
+        $rawDieselUnitPrice = isset($_POST['diesel_unit_price']) ? (float)$_POST['diesel_unit_price'] : (float)($current['diesel_unit_price'] ?? 0);
+        $dieselUnitPrice = $isKes ? ($rawDieselUnitPrice / $rate) : $rawDieselUnitPrice;
+
+        if ($dieselLitres > 0 && $dieselUnitPrice > 0) {
+            $diesel = $dieselLitres * $dieselUnitPrice;
+        } elseif (isset($_POST['diesel'])) {
+            $rawDiesel = (float)$_POST['diesel'];
+            $diesel = $isKes ? ($rawDiesel / $rate) : $rawDiesel;
+        } else {
+            $diesel = (float)($current['diesel'] ?? 0);
+        }
+
         $rawMileage = isset($_POST['mileage_cost']) ? (float)$_POST['mileage_cost'] : (float)$current['mileage_cost'];
         $rawExtra = isset($_POST['extra_expenses']) ? (float)$_POST['extra_expenses'] : (float)$current['extra_expenses'];
-        $rawDiesel = isset($_POST['diesel']) ? (float)$_POST['diesel'] : (float)($current['diesel'] ?? 0);
 
-        $transportAmount = $isKes ? ($rawTransport / $rate) : $rawTransport;
-        $finalPayout = $isKes ? ($rawFinal / $rate) : $rawFinal;
         $mileageCost = $isKes ? ($rawMileage / $rate) : $rawMileage;
         $extraExpenses = $isKes ? ($rawExtra / $rate) : $rawExtra;
-        $diesel = $isKes ? ($rawDiesel / $rate) : $rawDiesel;
 
-        $payoutDiff = $transportAmount - $finalPayout;
         $isSub = !empty($current['is_subcontracted']);
-
         if ($isSub) {
             $balance = (float)$current['agreed_commission'];
         } else {
-            $effectiveRevenue = ($finalPayout > 0) ? $finalPayout : $transportAmount;
+            $effectiveRevenue = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transportAmount;
             $balance = $effectiveRevenue - ($mileageCost + $extraExpenses + $diesel);
         }
 
@@ -429,26 +510,27 @@ class FleetController
         $breakdownNotes = trim($_POST['breakdown_notes'] ?? ($current['breakdown_notes'] ?? ''));
 
         $updateStmt = $pdo->prepare('UPDATE fleet_dispatches SET 
-            dispatch_date = ?, truck = ?, driver = ?, status = ?, product = ?, 
-            from_location = ?, destination = ?, client_name = ?, loaded_litres = ?, delivered_litres = ?, 
+            dispatch_date = ?, truck = ?, driver = ?, status = ?, product = ?, unit_price = ?,
+            from_location = ?, destination = ?, client_name = ?, loaded_litres = ?, shortage_litres = ?, delivered_litres = ?, 
             transport_amount = ?, final_payout = ?, payout_difference = ?, 
-            mileage_cost = ?, extra_expenses = ?, balance = ?, shortage_notes = ?, breakdown_notes = ?, diesel = ?
+            mileage_cost = ?, diesel_litres = ?, diesel_unit_price = ?, diesel = ?, extra_expenses = ?, balance = ?, shortage_notes = ?, breakdown_notes = ?
             WHERE id = ?');
         $updateStmt->execute([
-            $dispatchDate, $truck, $driver, $status, $product,
-            $fromLocation, $destination, $clientName, $loadedLitres, $deliveredLitres,
+            $dispatchDate, $truck, $driver, $status, $product, $unitPrice,
+            $fromLocation, $destination, $clientName, $loadedLitres, $shortageLitres, $deliveredLitres,
             $transportAmount, $finalPayout, $payoutDiff,
-            $mileageCost, $extraExpenses, $balance, $shortageNotes, $breakdownNotes, $diesel,
+            $mileageCost, $dieselLitres, $dieselUnitPrice, $diesel, $extraExpenses, $balance, $shortageNotes, $breakdownNotes,
             $id
         ]);
 
-        // Auto-sync customer account
+        // Auto-sync customer account with case-insensitive matching
         if ($clientName !== '' && $clientName !== 'Regional Fuel Consignee') {
-            $cStmt = $pdo->prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
+            $cStmt = $pdo->prepare('SELECT id, name FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1');
             $cStmt->execute([$clientName]);
-            if ($cStmt->fetch()) {
-                $pdo->prepare('UPDATE customers SET last_dispatch_date = ? WHERE name = ?')
-                    ->execute([$dispatchDate, $clientName]);
+            $existingCust = $cStmt->fetch(PDO::FETCH_ASSOC);
+            if ($existingCust) {
+                $pdo->prepare('UPDATE customers SET last_dispatch_date = ? WHERE id = ?')
+                    ->execute([$dispatchDate, $existingCust['id']]);
             } else {
                 $pdo->prepare('INSERT INTO customers (name, company, country, orders, total_litres, last_dispatch_date, status) VALUES (?, ?, ?, 1, ?, ?, "Active")')
                     ->execute([$clientName, $clientName, $destination, $loadedLitres, $dispatchDate]);
@@ -547,6 +629,8 @@ class FleetController
 
         $canViewFin = can_view_financials();
         $currencySymbol = app_currency_symbol();
+        $isKes = current_currency() === 'KES';
+        $rate = exchange_rate();
 
         $headers = [
             'Trip Number',
@@ -555,7 +639,11 @@ class FleetController
             'Carrier / Ownership',
             'Truck Capacity (L)',
             'Loaded Litres',
+            'Shortage Litres',
             'Delivered Litres',
+            'Product Unit Price (' . $currencySymbol . '/L)',
+            'Diesel Litres',
+            'Diesel Unit Price (' . $currencySymbol . '/L)',
             'Diesel Fuel Cost (' . $currencySymbol . ')',
             'Origin Loading Depot',
             'Destination',
@@ -586,15 +674,27 @@ class FleetController
             $isContract = !empty($d['is_subcontracted']) || in_array(strtolower($d['truck_ownership'] ?? ''), ['contract', 'subcontracted']);
             $ownership = $isContract ? 'Subcontracted / Haulier' : 'Company Fleet Tanker';
             $loaded = (int) $d['loaded_litres'];
-            $delivered = ($d['delivered_litres'] !== null && $d['delivered_litres'] !== '') ? (int) $d['delivered_litres'] : $loaded;
+            $shortage = (int) ($d['shortage_litres'] ?? 0);
+            $delivered = ($d['delivered_litres'] !== null && $d['delivered_litres'] !== '') ? (int) $d['delivered_litres'] : max(0, $loaded - $shortage);
+            $unitPriceVal = (float) ($d['unit_price'] ?? 0);
+            $displayUnitPrice = $isKes ? ($unitPriceVal * $rate) : $unitPriceVal;
+            $dieselLitres = (float) ($d['diesel_litres'] ?? 0);
+            $dieselUnitPriceVal = (float) ($d['diesel_unit_price'] ?? 0);
+            $displayDieselUnitPrice = $isKes ? ($dieselUnitPriceVal * $rate) : $dieselUnitPriceVal;
             $dieselVal = (float) ($d['diesel'] ?? 0);
             $displayDiesel = $isKes ? ($dieselVal * $rate) : $dieselVal;
             $transport = (float) $d['transport_amount'];
+            $displayTransport = $isKes ? ($transport * $rate) : $transport;
             $finalPayout = ($d['final_payout'] !== null && $d['final_payout'] !== '') ? (float) $d['final_payout'] : $transport;
+            $displayFinalPayout = $isKes ? ($finalPayout * $rate) : $finalPayout;
             $payoutDiff = (float) ($d['payout_difference'] ?? ($transport - $finalPayout));
+            $displayPayoutDiff = $isKes ? ($payoutDiff * $rate) : $payoutDiff;
             $mileage = (float) $d['mileage_cost'];
+            $displayMileage = $isKes ? ($mileage * $rate) : $mileage;
             $extra = (float) $d['extra_expenses'];
+            $displayExtra = $isKes ? ($extra * $rate) : $extra;
             $balance = (float) $d['balance'];
+            $displayBalance = $isKes ? ($balance * $rate) : $balance;
 
             $row = [
                 $d['trip_number'],
@@ -603,21 +703,25 @@ class FleetController
                 $ownership,
                 (int) $d['truck_capacity'],
                 $loaded,
+                $shortage,
                 $delivered,
+                $canViewFin ? round($displayUnitPrice, 2) : '[Restricted]',
+                $dieselLitres,
+                $canViewFin ? round($displayDieselUnitPrice, 2) : '[Restricted]',
                 $canViewFin ? round($displayDiesel, 2) : '[Restricted]',
                 $d['from_location'] ?: 'Eldoret',
                 $d['destination'],
                 $d['client_name'] ?? 'Regional Consignee',
                 $d['product'],
                 $d['driver'],
-                $canViewFin ? $transport : '[Restricted]',
-                $canViewFin ? $finalPayout : '[Restricted]',
-                $canViewFin ? $payoutDiff : '[Restricted]',
-                $canViewFin ? $mileage : '[Restricted]',
-                $canViewFin ? $extra : '[Restricted]',
+                $canViewFin ? round($displayTransport, 2) : '[Restricted]',
+                $canViewFin ? round($displayFinalPayout, 2) : '[Restricted]',
+                $canViewFin ? round($displayPayoutDiff, 2) : '[Restricted]',
+                $canViewFin ? round($displayMileage, 2) : '[Restricted]',
+                $canViewFin ? round($displayExtra, 2) : '[Restricted]',
                 $d['breakdown_notes'] ?? '',
                 $d['shortage_notes'] ?? '',
-                $canViewFin ? $balance : '[Restricted]',
+                $canViewFin ? round($displayBalance, 2) : '[Restricted]',
                 $d['status'],
                 $d['seal_numbers'] ?? '',
                 $d['bol_number'] ?? '',

@@ -1,5 +1,5 @@
 <?php
-    $content = function () use ($title, $expenses, $aggregates, $search, $trucks) {
+    $content = function () use ($title, $expenses, $aggregates, $search, $trucks, $selectedTruck, $selectedYear, $activeTruckReport, $truckReports) {
 ?>
 <section class="view active" id="view-expenses">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
@@ -32,6 +32,111 @@
         </div>
     </div>
 
+    <!-- Dedicated Truck Expense Report Card (Triggered when viewing a specific truck) -->
+    <div id="truckExpenseReportCard" style="<?= empty($activeTruckReport) ? 'display:none;' : '' ?>margin-top:22px;background:var(--card);border:1.5px solid var(--brand);border-radius:14px;padding:22px;box-shadow:var(--shadow-md);">
+        <!-- Header Row: Plate, Ownership, Status, Year Factor Dropdown, Clear Filter -->
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;border-bottom:1px solid var(--border);padding-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div style="background:var(--brand);color:#fff;font-size:24px;width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(14,165,233,0.3);">
+                    🚛
+                </div>
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <h2 id="reportTruckPlate" style="margin:0;font-size:20px;color:var(--text);font-weight:800;">
+                            <?= htmlspecialchars($activeTruckReport['plate_number'] ?? '') ?>
+                        </h2>
+                        <span id="reportTruckOwnership" style="background:var(--card-2);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-size:11.5px;font-weight:700;color:var(--text-2);">
+                            <?= htmlspecialchars($activeTruckReport['ownership'] ?? 'Owner') ?>
+                        </span>
+                        <span id="reportTruckStatus" class="status s-done" style="font-size:11.5px;">
+                            <i></i><span id="reportTruckStatusText"><?= htmlspecialchars($activeTruckReport['status'] ?? 'Ready') ?></span>
+                        </span>
+                    </div>
+                    <div style="font-size:12.5px;color:var(--text-3);margin-top:3px;">
+                        Vehicle Expense Lifecycle, Annual Audit & 12-Month Breakdown Matrix
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Year selector & Reset button -->
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:6px;background:var(--card-2);padding:4px 10px;border-radius:8px;border:1px solid var(--border);">
+                    <label for="truckReportYearSelect" style="font-size:11.5px;font-weight:800;color:var(--text-3);letter-spacing:0.5px;">FACTOR YEAR:</label>
+                    <select id="truckReportYearSelect" onchange="onTruckReportYearChange(this.value)" style="background:transparent;border:0;outline:0;font-size:13.5px;font-weight:800;color:var(--brand);cursor:pointer;">
+                        <?php if (!empty($activeTruckReport)): ?>
+                            <?php foreach ($activeTruckReport['available_years'] as $yr): ?>
+                                <option value="<?= $yr ?>" <?= ((string)$yr === (string)$selectedYear) ? 'selected' : '' ?>><?= $yr ?></option>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <option value="<?= date('Y') ?>"><?= date('Y') ?></option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost" onclick="resetTruckFilter()" style="font-size:12px;font-weight:700;" title="Clear vehicle filter and view all entries">
+                    ✕ Clear Filter
+                </button>
+            </div>
+        </div>
+
+        <!-- Middle Row: 3 KPI Metric Badges -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-top:18px;">
+            <div style="background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;border-left:3px solid var(--red);">
+                <div style="font-size:11.5px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">All-Time Total Expenses</div>
+                <div id="reportAllTimeTotal" style="font-size:24px;font-weight:900;color:var(--red);margin-top:4px;">
+                    <?= !empty($activeTruckReport) ? format_money($activeTruckReport['all_time_total']) : '0.00' ?>
+                </div>
+                <div id="reportAllTimeCount" style="font-size:12px;color:var(--text-3);margin-top:3px;">
+                    <?= !empty($activeTruckReport) ? ((int)$activeTruckReport['all_time_count'] . ' total transactions across all years') : '' ?>
+                </div>
+            </div>
+
+            <div style="background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;border-left:3px solid var(--brand);">
+                <div style="font-size:11.5px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
+                    <span id="reportYearLabel"><?= $selectedYear ?></span> Year Total Expenses
+                </div>
+                <div id="reportYearTotal" style="font-size:24px;font-weight:900;color:var(--brand);margin-top:4px;">
+                    <?= !empty($activeTruckReport) ? format_money($activeTruckReport['yearly_total']) : '0.00' ?>
+                </div>
+                <div id="reportYearCount" style="font-size:12px;color:var(--text-3);margin-top:3px;">
+                    <?= !empty($activeTruckReport) ? ((int)$activeTruckReport['yearly_count'] . ' transactions in ' . $selectedYear) : '' ?>
+                </div>
+            </div>
+
+            <div style="background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;border-left:3px solid var(--amber);">
+                <div style="font-size:11.5px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Factored Monthly Average</div>
+                <div id="reportMonthlyAvg" style="font-size:24px;font-weight:900;color:var(--amber);margin-top:4px;">
+                    <?= !empty($activeTruckReport) ? format_money($activeTruckReport['yearly_total'] / 12) : '0.00' ?>
+                </div>
+                <div style="font-size:12px;color:var(--text-3);margin-top:3px;">
+                    Averaged across 12 calendar months
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Section: 12-Month Expense Matrix Grid (Jan - Dec) -->
+        <div style="margin-top:20px;">
+            <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <span>📅 12-Month Expense Distribution Matrix (<span id="matrixYearLabel"><?= $selectedYear ?></span>)</span>
+                <span style="font-size:11.5px;color:var(--text-3);font-weight:600;">Monthly aggregate repairs, spares, tires & maintenance</span>
+            </div>
+            <div id="reportMonthlyMatrixGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(88px, 1fr));gap:8px;">
+                <?php if (!empty($activeTruckReport)): ?>
+                    <?php foreach ($activeTruckReport['monthly_matrix'] as $m): ?>
+                        <div style="background:var(--card-2);border:1px solid var(--border);border-radius:8px;padding:10px 8px;text-align:center;">
+                            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;"><?= $m['month_name'] ?></div>
+                            <div style="font-size:13.5px;font-weight:900;color:<?= $m['total'] > 0 ? 'var(--red)' : 'var(--text-3)' ?>;margin-top:4px;">
+                                <?= $m['total'] > 0 ? format_money($m['total']) : '—' ?>
+                            </div>
+                            <div style="font-size:10.5px;color:var(--text-3);margin-top:3px;">
+                                <?= $m['count'] > 0 ? ($m['count'] . ' log' . ($m['count'] > 1 ? 's' : '')) : '0 logs' ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
     <!-- Compact Search & Time Horizon Filter Toolbar -->
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:22px 0 14px;">
         <div style="display:flex;align-items:center;gap:10px;background:var(--card);border:1.5px solid var(--border-2);border-radius:10px;padding:6px 14px;min-width:260px;max-width:340px;box-shadow:var(--shadow);">
@@ -40,11 +145,14 @@
         </div>
 
         <!-- Vehicle Filter Dropdown -->
-        <select id="expenseTruckFilter" onchange="applyExpenseFilters()" style="background:var(--card);border:1.5px solid var(--border-2);border-radius:10px;padding:6px 12px;font-size:13px;font-weight:700;color:var(--text);box-shadow:var(--shadow);cursor:pointer;">
-            <option value="all">All Vehicles & Targets</option>
-            <option value="general">General Business Only</option>
+        <select id="expenseTruckFilter" onchange="onExpenseTruckFilterChanged()" style="background:var(--card);border:1.5px solid var(--border-2);border-radius:10px;padding:6px 12px;font-size:13px;font-weight:700;color:var(--text);box-shadow:var(--shadow);cursor:pointer;">
+            <option value="all" <?= ($selectedTruck === '' || strtolower($selectedTruck) === 'all') ? 'selected' : '' ?>>All Vehicles & Targets</option>
+            <option value="general" <?= (strtolower($selectedTruck) === 'general') ? 'selected' : '' ?>>General Business Only</option>
             <?php foreach ($trucks as $trk): ?>
-                <option value="<?= htmlspecialchars(strtolower($trk['plate_number'])) ?>"><?= htmlspecialchars($trk['plate_number']) ?></option>
+                <?php $isSel = (strtolower($trk['plate_number']) === strtolower($selectedTruck)); ?>
+                <option value="<?= htmlspecialchars(strtolower($trk['plate_number'])) ?>" <?= $isSel ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($trk['plate_number']) ?>
+                </option>
             <?php endforeach; ?>
         </select>
 
@@ -107,9 +215,15 @@
                                     <?php endif; ?>
                                 </td>
                                 <td class="cell-truck">
-                                    <span class="view-val" style="font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;font-size:13px;">
-                                        <?= htmlspecialchars($e['truck'] ?: 'General Business') ?>
-                                    </span>
+                                    <?php if (!empty($e['truck']) && strtolower($e['truck']) !== 'general business'): ?>
+                                        <span class="view-val" onclick="selectTruckReport('<?= htmlspecialchars(addslashes($e['truck'])) ?>')" style="font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;font-size:13px;cursor:pointer;" title="Click to view full vehicle expense report">
+                                            🔍 <?= htmlspecialchars($e['truck']) ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="view-val" style="font-weight:700;color:var(--text-3);background:var(--card-2);padding:3px 8px;border-radius:6px;font-size:13px;">
+                                            General Business
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="cell-vendor" style="font-weight:600;color:var(--text-2);">
                                     <span class="view-val"><?= htmlspecialchars($e['garage_vendor'] ?: 'General Vendor') ?></span>
@@ -342,6 +456,140 @@ function matchesExpPeriod(dateStr) {
         return rowDate.getDay() == parseInt(activeExpDay, 10);
     }
     return true;
+}
+
+const TRUCK_REPORTS = <?= json_encode($truckReports) ?>;
+const ACTIVE_TRUCK_REPORT = <?= json_encode($activeTruckReport) ?>;
+const IS_KES = <?= current_currency() === 'KES' ? 'true' : 'false' ?>;
+const EXCHANGE_RATE = <?= (float)exchange_rate() ?>;
+const CURRENCY_SYM = '<?= app_currency_symbol() ?>';
+let currentSelectedYear = <?= (int)$selectedYear ?>;
+
+function onExpenseTruckFilterChanged() {
+    const sel = document.getElementById('expenseTruckFilter');
+    const truckSel = (sel?.value || 'all').toLowerCase().trim();
+
+    if (truckSel === 'all' || truckSel === 'general') {
+        const card = document.getElementById('truckExpenseReportCard');
+        if (card) card.style.display = 'none';
+        applyExpenseFilters();
+        if (window.history && window.history.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('truck');
+            window.history.replaceState({}, '', url.toString());
+        }
+        return;
+    }
+
+    let foundReport = null;
+    for (const plate in TRUCK_REPORTS) {
+        if (plate.toLowerCase() === truckSel) {
+            foundReport = TRUCK_REPORTS[plate];
+            break;
+        }
+    }
+
+    if (foundReport) {
+        renderTruckReportCard(foundReport, currentSelectedYear);
+        if (window.history && window.history.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('truck', foundReport.plate_number);
+            window.history.replaceState({}, '', url.toString());
+        }
+    }
+    applyExpenseFilters();
+}
+
+function selectTruckReport(plate) {
+    const sel = document.getElementById('expenseTruckFilter');
+    if (sel) {
+        sel.value = plate.toLowerCase().trim();
+        onExpenseTruckFilterChanged();
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetTruckFilter() {
+    const sel = document.getElementById('expenseTruckFilter');
+    if (sel) {
+        sel.value = 'all';
+        onExpenseTruckFilterChanged();
+    }
+}
+
+function onTruckReportYearChange(year) {
+    currentSelectedYear = parseInt(year, 10);
+    const sel = document.getElementById('expenseTruckFilter');
+    const truckSel = (sel?.value || '').trim();
+    if (truckSel && truckSel !== 'all' && truckSel !== 'general') {
+        window.location.href = '<?= url("expenses") ?>?truck=' + encodeURIComponent(truckSel) + '&year=' + currentSelectedYear;
+    }
+}
+
+function renderTruckReportCard(rep, year) {
+    const card = document.getElementById('truckExpenseReportCard');
+    if (!card) return;
+
+    card.style.display = 'block';
+    const plateEl = document.getElementById('reportTruckPlate');
+    if (plateEl) plateEl.textContent = rep.plate_number;
+
+    const ownEl = document.getElementById('reportTruckOwnership');
+    if (ownEl) ownEl.textContent = rep.ownership || 'Owner';
+
+    const stEl = document.getElementById('reportTruckStatusText');
+    if (stEl) stEl.textContent = rep.status || 'Ready';
+
+    const mult = IS_KES ? EXCHANGE_RATE : 1;
+    const allTimeTotal = (parseFloat(rep.all_time_total) || 0) * mult;
+    const yrTotal = (parseFloat(rep.yearly_total) || 0) * mult;
+    const moAvg = (yrTotal / 12);
+
+    const allTimeFmt = CURRENCY_SYM + ' ' + allTimeTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const yrFmt = CURRENCY_SYM + ' ' + yrTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const avgFmt = CURRENCY_SYM + ' ' + moAvg.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    const elAll = document.getElementById('reportAllTimeTotal');
+    if (elAll) elAll.textContent = allTimeFmt;
+
+    const elAllCnt = document.getElementById('reportAllTimeCount');
+    if (elAllCnt) elAllCnt.textContent = (rep.all_time_count || 0) + ' total transactions across all years';
+
+    const elYrLbl = document.getElementById('reportYearLabel');
+    if (elYrLbl) elYrLbl.textContent = rep.selected_year || year;
+
+    const elYrTot = document.getElementById('reportYearTotal');
+    if (elYrTot) elYrTot.textContent = yrFmt;
+
+    const elYrCnt = document.getElementById('reportYearCount');
+    if (elYrCnt) elYrCnt.textContent = (rep.yearly_count || 0) + ' transactions in ' + (rep.selected_year || year);
+
+    const elAvg = document.getElementById('reportMonthlyAvg');
+    if (elAvg) elAvg.textContent = avgFmt;
+
+    const elMatLbl = document.getElementById('matrixYearLabel');
+    if (elMatLbl) elMatLbl.textContent = rep.selected_year || year;
+
+    const yrSelect = document.getElementById('truckReportYearSelect');
+    if (yrSelect && rep.available_years) {
+        yrSelect.innerHTML = rep.available_years.map(y => `<option value="${y}" ${String(y) === String(rep.selected_year || year) ? 'selected' : ''}>${y}</option>`).join('');
+    }
+
+    const grid = document.getElementById('reportMonthlyMatrixGrid');
+    if (grid && rep.monthly_matrix) {
+        grid.innerHTML = Object.values(rep.monthly_matrix).map(m => {
+            const amt = (parseFloat(m.total) || 0) * mult;
+            const amtFmt = amt > 0 ? (CURRENCY_SYM + ' ' + amt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '—';
+            const col = amt > 0 ? 'var(--red)' : 'var(--text-3)';
+            return `
+                <div style="background:var(--card-2);border:1px solid var(--border);border-radius:8px;padding:10px 8px;text-align:center;">
+                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">${m.month_name}</div>
+                    <div style="font-size:13.5px;font-weight:900;color:${col};margin-top:4px;">${amtFmt}</div>
+                    <div style="font-size:10.5px;color:var(--text-3);margin-top:3px;">${m.count > 0 ? (m.count + ' log' + (m.count > 1 ? 's' : '')) : '0 logs'}</div>
+                </div>
+            `;
+        }).join('');
+    }
 }
 
 function applyExpenseFilters() {

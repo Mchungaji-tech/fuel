@@ -11,14 +11,14 @@ class CustomerController
     {
         $pdo = Database::connection();
 
-        // Auto-sync clients from fleet_dispatches into customers table
+        // Auto-sync clients from fleet_dispatches into customers table case-insensitively
         $dispatches = $pdo->query('SELECT client_name, destination, loaded_litres, dispatch_date FROM fleet_dispatches WHERE client_name IS NOT NULL AND client_name != ""')->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($dispatches as $d) {
             $client = trim($d['client_name']);
-            if ($client === '' || $client === 'Regional Fuel Consignee') continue;
+            if ($client === '' || strcasecmp($client, 'Regional Fuel Consignee') === 0) continue;
 
-            $stmt = $pdo->prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT id FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1');
             $stmt->execute([$client]);
             if (!$stmt->fetch()) {
                 $ins = $pdo->prepare('INSERT INTO customers (name, company, country, orders, total_litres, last_dispatch_date, status) VALUES (?, ?, ?, 1, ?, ?, "Active")');
@@ -26,11 +26,12 @@ class CustomerController
             }
         }
 
-        // Fetch customer list with aggregated stats from dispatches
+        // Fetch customer list with case-insensitive aggregated stats from fleet dispatches
         $sql = 'SELECT c.*, 
-            (SELECT COUNT(*) FROM fleet_dispatches WHERE client_name = c.name) as trip_count,
-            (SELECT COALESCE(SUM(loaded_litres), 0) FROM fleet_dispatches WHERE client_name = c.name) as total_volume,
-            (SELECT MAX(dispatch_date) FROM fleet_dispatches WHERE client_name = c.name) as last_trip_date
+            (SELECT COUNT(*) FROM fleet_dispatches WHERE LOWER(TRIM(client_name)) = LOWER(TRIM(c.name))) as trip_count,
+            (SELECT COALESCE(SUM(loaded_litres), 0) FROM fleet_dispatches WHERE LOWER(TRIM(client_name)) = LOWER(TRIM(c.name))) as total_volume,
+            (SELECT COALESCE(SUM(shortage_litres), 0) FROM fleet_dispatches WHERE LOWER(TRIM(client_name)) = LOWER(TRIM(c.name))) as total_shortage,
+            (SELECT MAX(dispatch_date) FROM fleet_dispatches WHERE LOWER(TRIM(client_name)) = LOWER(TRIM(c.name))) as last_trip_date
             FROM customers c ORDER BY c.orders DESC, c.id DESC';
 
         $customers = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);

@@ -17,14 +17,28 @@ class ExpenseController
 
         $pdo = Database::connection();
         $search = trim($_GET['search'] ?? '');
+        $selectedTruck = trim($_GET['truck'] ?? '');
+        $selectedYear = (int)($_GET['year'] ?? date('Y'));
+        if ($selectedYear < 2000 || $selectedYear > 2100) {
+            $selectedYear = (int)date('Y');
+        }
 
         $sql = 'SELECT * FROM expenses WHERE 1=1';
         $params = [];
 
+        if ($selectedTruck !== '' && strtolower($selectedTruck) !== 'all') {
+            if (strtolower($selectedTruck) === 'general') {
+                $sql .= ' AND (truck IS NULL OR truck = "" OR LOWER(truck) LIKE "%general%")';
+            } else {
+                $sql .= ' AND LOWER(TRIM(truck)) = LOWER(TRIM(?))';
+                $params[] = $selectedTruck;
+            }
+        }
+
         if ($search !== '') {
             $sql .= ' AND (expense_title LIKE ? OR truck LIKE ? OR garage_vendor LIKE ? OR receipt_number LIKE ? OR receipt_status LIKE ?)';
             $term = "%{$search}%";
-            $params = [$term, $term, $term, $term, $term];
+            $params = array_merge($params, [$term, $term, $term, $term, $term]);
         }
 
         $sql .= ' ORDER BY expense_date DESC, id DESC';
@@ -72,12 +86,88 @@ class ExpenseController
             ];
         }
 
+        // Build comprehensive truck expense reports (all-time total, selected year total, and 12-month matrix)
+        $truckReports = [];
+        foreach ($trucksWithStatus as $trk) {
+            $plate = $trk['plate_number'];
+
+            // All-time sum & count
+            $allTimeStmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt FROM expenses WHERE LOWER(TRIM(truck)) = LOWER(TRIM(?))');
+            $allTimeStmt->execute([$plate]);
+            $allTimeData = $allTimeStmt->fetch(PDO::FETCH_ASSOC);
+
+            // Available years with expenses
+            $yrsStmt = $pdo->prepare('SELECT DISTINCT substr(expense_date, 1, 4) as yr FROM expenses WHERE LOWER(TRIM(truck)) = LOWER(TRIM(?)) AND expense_date IS NOT NULL AND expense_date != "" ORDER BY yr DESC');
+            $yrsStmt->execute([$plate]);
+            $yrs = $yrsStmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            if (!in_array((string)$selectedYear, $yrs, true)) {
+                $yrs[] = (string)$selectedYear;
+                rsort($yrs);
+            }
+
+            // Selected Year total & count
+            $yrStmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt FROM expenses WHERE LOWER(TRIM(truck)) = LOWER(TRIM(?)) AND (expense_date LIKE ? OR substr(expense_date, 1, 4) = ?)');
+            $yrStmt->execute([$plate, "{$selectedYear}%", (string)$selectedYear]);
+            $yrData = $yrStmt->fetch(PDO::FETCH_ASSOC);
+
+            // 12-month matrix for the selected year
+            $moStmt = $pdo->prepare('SELECT substr(expense_date, 6, 2) as mo, COALESCE(SUM(amount), 0) as total, COUNT(*) as cnt FROM expenses WHERE LOWER(TRIM(truck)) = LOWER(TRIM(?)) AND substr(expense_date, 1, 4) = ? GROUP BY substr(expense_date, 6, 2)');
+            $moStmt->execute([$plate, (string)$selectedYear]);
+            $moRows = $moStmt->fetchAll(PDO::FETCH_ASSOC);
+            $moMap = [];
+            foreach ($moRows as $mr) {
+                $moMap[$mr['mo']] = [
+                    'total' => (float)$mr['total'],
+                    'count' => (int)$mr['cnt']
+                ];
+            }
+
+            $months = [];
+            for ($m = 1; $m <= 12; $m++) {
+                $mKey = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
+                $months[$mKey] = [
+                    'month_num' => $mKey,
+                    'month_name' => date('M', mktime(0, 0, 0, $m, 10)),
+                    'month_full' => date('F', mktime(0, 0, 0, $m, 10)),
+                    'total' => $moMap[$mKey]['total'] ?? 0.0,
+                    'count' => $moMap[$mKey]['count'] ?? 0,
+                ];
+            }
+
+            $truckReports[$plate] = [
+                'plate_number' => $plate,
+                'ownership' => $trk['ownership'] ?? 'Owner',
+                'status' => $trk['status'] ?? 'Ready',
+                'all_time_total' => (float)($allTimeData['total'] ?? 0),
+                'all_time_count' => (int)($allTimeData['cnt'] ?? 0),
+                'selected_year' => $selectedYear,
+                'yearly_total' => (float)($yrData['total'] ?? 0),
+                'yearly_count' => (int)($yrData['cnt'] ?? 0),
+                'available_years' => $yrs,
+                'monthly_matrix' => $months,
+            ];
+        }
+
+        $activeTruckReport = null;
+        if ($selectedTruck !== '' && strtolower($selectedTruck) !== 'all' && strtolower($selectedTruck) !== 'general') {
+            foreach ($truckReports as $p => $rep) {
+                if (strtolower($p) === strtolower($selectedTruck)) {
+                    $activeTruckReport = $rep;
+                    break;
+                }
+            }
+        }
+
         return view('expenses.index', [
             'title' => 'Business & Fleet Expenses — Sarura Fuel',
             'expenses' => $expenses,
             'aggregates' => $aggregates,
             'trucks' => $trucksWithStatus,
             'search' => $search,
+            'selectedTruck' => $selectedTruck,
+            'selectedYear' => $selectedYear,
+            'activeTruckReport' => $activeTruckReport,
+            'truckReports' => $truckReports,
         ]);
     }
 

@@ -302,7 +302,7 @@ class Database
                 plate_number VARCHAR(100) NOT NULL UNIQUE,
                 model VARCHAR(150),
                 capacity_litres INT NOT NULL DEFAULT 0,
-                compartments VARCHAR(100) DEFAULT '3 compartments',
+                compartments VARCHAR(100) DEFAULT NULL,
                 ownership_type VARCHAR(50) DEFAULT 'Company',
                 owner_name VARCHAR(150) DEFAULT 'Sarura Fuel Logistics',
                 commission_rate DECIMAL(10,2) DEFAULT 0,
@@ -315,6 +315,7 @@ class Database
                 name VARCHAR(255) NOT NULL,
                 category VARCHAR(100) DEFAULT 'Fuel',
                 unit VARCHAR(50) DEFAULT 'Litres',
+                unit_price DECIMAL(10,2) DEFAULT 0,
                 status VARCHAR(50) DEFAULT 'Active',
                 created_at VARCHAR(50)
             )",
@@ -326,12 +327,16 @@ class Database
                 truck VARCHAR(100) NOT NULL,
                 truck_capacity INT DEFAULT 0,
                 loaded_litres INT DEFAULT 0,
+                shortage_litres INT DEFAULT 0,
                 from_location VARCHAR(255) NOT NULL,
                 destination VARCHAR(255) NOT NULL,
                 product VARCHAR(100) NOT NULL,
+                unit_price DECIMAL(10,2) DEFAULT 0,
                 driver VARCHAR(255) NOT NULL,
                 transport_amount DECIMAL(12,2) DEFAULT 0,
                 mileage_cost DECIMAL(12,2) DEFAULT 0,
+                diesel_litres DECIMAL(10,2) DEFAULT 0,
+                diesel_unit_price DECIMAL(10,2) DEFAULT 0,
                 diesel DECIMAL(12,2) DEFAULT 0,
                 extra_expenses DECIMAL(12,2) DEFAULT 0,
                 breakdown_notes TEXT,
@@ -342,6 +347,7 @@ class Database
                 final_payout DECIMAL(12,2) DEFAULT NULL,
                 payout_difference DECIMAL(12,2) DEFAULT 0,
                 shortage_notes TEXT,
+                is_shortage_recovered INT DEFAULT 0,
                 status VARCHAR(50) DEFAULT 'Planned',
                 seal_numbers VARCHAR(255),
                 created_at VARCHAR(50)
@@ -361,10 +367,11 @@ class Database
                 {$idColumnSql},
                 driver_id INT,
                 driver_name VARCHAR(255) NOT NULL,
-                payment_type VARCHAR(50) NOT NULL DEFAULT 'per_trip',
+                payment_type VARCHAR(50) NOT NULL DEFAULT 'monthly_salary',
                 period_reference VARCHAR(255) NOT NULL,
                 base_salary DECIMAL(12,2) NOT NULL DEFAULT 0,
                 carried_forward DECIMAL(12,2) NOT NULL DEFAULT 0,
+                shortage_deductions DECIMAL(12,2) NOT NULL DEFAULT 0,
                 amount DECIMAL(12,2) NOT NULL DEFAULT 0,
                 status VARCHAR(50) NOT NULL DEFAULT 'Wait',
                 payment_date VARCHAR(50),
@@ -457,9 +464,28 @@ class Database
         // Trucks
         $ensureColumn('trucks', 'ownership_type', "VARCHAR(50) DEFAULT 'Owner'");
         $ensureColumn('trucks', 'owner_name', "VARCHAR(150) DEFAULT 'Sarura Fuel Logistics'");
+        // Products
+        $ensureColumn('products', 'unit_price', 'DECIMAL(10,2) DEFAULT 0');
+
+        // Users
+        $ensureColumn('users', 'last_active_at', 'VARCHAR(50) DEFAULT NULL');
+        $ensureColumn('users', 'last_login_at', 'VARCHAR(50) DEFAULT NULL');
+        $ensureColumn('users', 'is_active', 'INT DEFAULT 1');
+
+        // Trucks
+        $ensureColumn('trucks', 'ownership_type', "VARCHAR(50) DEFAULT 'Owner'");
+        $ensureColumn('trucks', 'owner_name', "VARCHAR(150) DEFAULT 'Sarura Fuel Logistics'");
         $ensureColumn('trucks', 'commission_rate', 'DECIMAL(10,2) DEFAULT 0');
 
+        // Drivers
+        $ensureColumn('drivers', 'fixed_salary', 'DECIMAL(12,2) DEFAULT 35000.00');
+
         // Fleet Dispatches
+        $ensureColumn('fleet_dispatches', 'unit_price', 'DECIMAL(10,2) DEFAULT 0');
+        $ensureColumn('fleet_dispatches', 'shortage_litres', 'INT DEFAULT 0');
+        $ensureColumn('fleet_dispatches', 'diesel_litres', 'DECIMAL(10,2) DEFAULT 0');
+        $ensureColumn('fleet_dispatches', 'diesel_unit_price', 'DECIMAL(10,2) DEFAULT 0');
+        $ensureColumn('fleet_dispatches', 'is_shortage_recovered', 'INT DEFAULT 0');
         $ensureColumn('fleet_dispatches', 'is_subcontracted', 'INT DEFAULT 0');
         $ensureColumn('fleet_dispatches', 'agreed_commission', 'DECIMAL(12,2) DEFAULT 0');
         $ensureColumn('fleet_dispatches', 'delivered_litres', 'INT DEFAULT NULL');
@@ -472,6 +498,7 @@ class Database
         // Driver Salaries
         $ensureColumn('driver_salaries', 'base_salary', 'DECIMAL(12,2) DEFAULT 0');
         $ensureColumn('driver_salaries', 'carried_forward', 'DECIMAL(12,2) DEFAULT 0');
+        $ensureColumn('driver_salaries', 'shortage_deductions', 'DECIMAL(12,2) DEFAULT 0');
 
         // Expenses
         $ensureColumn('expenses', 'receipt_status', "VARCHAR(50) DEFAULT 'Received'");
@@ -493,6 +520,13 @@ class Database
                 ->execute([date('Y-m-d H:i:s')]);
         }
 
+        // Initialize default fixed salary setting for drivers
+        $driverSalCheck = $pdo->query("SELECT COUNT(*) FROM settings WHERE setting_key = 'driver_fixed_salary'")->fetchColumn();
+        if ((int)$driverSalCheck === 0) {
+            $pdo->prepare("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('driver_fixed_salary', '35000', ?)")
+                ->execute([date('Y-m-d H:i:s')]);
+        }
+
         // Initialize default Super Admin if user roster is empty
         $userCount = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
         if ($userCount === 0) {
@@ -501,22 +535,28 @@ class Database
                 ->execute(['Sarura Admin', 'admin@sarurafuel.co.ke', $passwordHash, 'super_admin']);
         }
 
-        // Initialize core fuel product catalog if empty
-        $productCount = (int) $pdo->query('SELECT COUNT(*) FROM products')->fetchColumn();
-        if ($productCount === 0) {
-            $products = [
-                ['PMS', 'Premium Motor Spirit (Super Petrol)', 'Clean Fuel', 'Litres', 'Active'],
-                ['AGO', 'Automotive Gas Oil (Diesel)', 'Heavy Fuel', 'Litres', 'Active'],
-                ['DPK', 'Dual Purpose Kerosene', 'Aviation / Domestic', 'Litres', 'Active'],
-                ['IK', 'Illuminating Kerosene', 'Domestic Fuel', 'Litres', 'Active'],
-                ['JET A-1', 'Aviation Turbine Fuel', 'Aviation Fuel', 'Litres', 'Active'],
-                ['HFO', 'Heavy Fuel Oil (Furnace Oil)', 'Industrial Fuel', 'Litres', 'Active'],
-                ['LPG', 'Liquefied Petroleum Gas', 'Pressurized Gas', 'Litres', 'Active'],
-            ];
-            $stmt = $pdo->prepare('INSERT INTO products (code, name, category, unit, status, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-            foreach ($products as $p) {
-                $stmt->execute([$p[0], $p[1], $p[2], $p[3], $p[4], date('Y-m-d H:i:s')]);
-            }
+        // Products: User explicitly instructed: "product just leave pms and ago only"
+        // Ensure only PMS and AGO remain active with Kenyan transport payout unit prices
+        try {
+            // Delete non PMS/AGO products
+            $pdo->exec("DELETE FROM products WHERE UPPER(code) NOT IN ('PMS', 'AGO')");
+        } catch (\Throwable $e) {}
+
+        // Ensure PMS and AGO exist with unit prices
+        $pmsCheck = $pdo->query("SELECT COUNT(*) FROM products WHERE UPPER(code) = 'PMS'")->fetchColumn();
+        if ((int)$pmsCheck === 0) {
+            $pdo->prepare('INSERT INTO products (code, name, category, unit, unit_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                ->execute(['PMS', 'Premium Motor Spirit (Super Petrol)', 'Clean Fuel', 'Litres', 10.50, 'Active', date('Y-m-d H:i:s')]);
+        } else {
+            $pdo->exec("UPDATE products SET unit_price = 10.50 WHERE UPPER(code) = 'PMS' AND (unit_price = 0 OR unit_price IS NULL)");
+        }
+
+        $agoCheck = $pdo->query("SELECT COUNT(*) FROM products WHERE UPPER(code) = 'AGO'")->fetchColumn();
+        if ((int)$agoCheck === 0) {
+            $pdo->prepare('INSERT INTO products (code, name, category, unit, unit_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                ->execute(['AGO', 'Automotive Gas Oil (Diesel)', 'Heavy Fuel', 'Litres', 9.50, 'Active', date('Y-m-d H:i:s')]);
+        } else {
+            $pdo->exec("UPDATE products SET unit_price = 9.50 WHERE UPPER(code) = 'AGO' AND (unit_price = 0 OR unit_price IS NULL)");
         }
     }
 }

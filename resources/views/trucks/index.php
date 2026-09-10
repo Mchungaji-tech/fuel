@@ -102,7 +102,7 @@
                                     <b class="view-val" style="font-size:15px;color:var(--brand);">
                                         <?= number_format((int) $t['capacity_litres']) ?> L
                                     </b>
-                                    <div class="view-comp" style="font-size:11.5px;color:var(--text-3);"><?= htmlspecialchars($t['compartments']) ?></div>
+                                    <div class="view-comp" style="font-size:11.5px;color:var(--text-3);"><?= htmlspecialchars($t['compartments'] ?: '—') ?></div>
                                 </td>
 
                                 <!-- Lifetime Volume -->
@@ -196,8 +196,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Compartment Setup</label>
-                    <input type="text" name="compartments" value="3 comp (10k/10k/8k)" placeholder="e.g. 4 comp (8k/8k/8k/8k)">
+                    <label>Compartment Setup (Optional)</label>
+                    <input type="text" name="compartments" value="" placeholder="e.g. 4 comp (8k/8k/8k/8k)">
                 </div>
 
                 <div class="form-group">
@@ -270,7 +270,8 @@ function startTruckInlineEdit(id) {
     const isContract = (row.querySelector('.cell-ownership .view-badge')?.textContent.trim() || '').toLowerCase().includes('contract');
     const ownerName = row.querySelector('.cell-ownership .view-owner')?.textContent.trim() || '';
     const cap = parseInt((row.querySelector('.cell-capacity .view-val')?.textContent || '0').replace(/[^0-9]/g, '')) || 0;
-    const comp = row.querySelector('.cell-capacity .view-comp')?.textContent.trim() || '3 comp';
+    const rawComp = row.querySelector('.cell-capacity .view-comp')?.textContent.trim() || '';
+    const comp = (rawComp === '—') ? '' : rawComp;
     const currentStatus = row.querySelector('.cell-status .view-val')?.textContent.trim() || 'Ready';
 
     row.querySelector('.cell-plate').innerHTML = `<input type="text" class="table-inline-input inline-plate" value="${plate}" style="text-transform:uppercase;">`;
@@ -283,7 +284,7 @@ function startTruckInlineEdit(id) {
     `;
     row.querySelector('.cell-capacity').innerHTML = `
         <input type="number" class="table-inline-input inline-cap" value="${cap}" style="margin-bottom:3px;">
-        <input type="text" class="table-inline-input inline-comp" value="${comp}" style="font-size:12px;">
+        <input type="text" class="table-inline-input inline-comp" value="${comp}" placeholder="Optional compartments" style="font-size:12px;">
     `;
     row.querySelector('.cell-status').innerHTML = `
         <select class="table-inline-select inline-status">
@@ -335,7 +336,7 @@ async function saveTruckInlineEdit(id) {
                 <span class="view-badge" style="background:${ownerType === 'Contract' ? 'var(--amber-soft)' : 'var(--green-soft)'};color:${ownerType === 'Contract' ? 'var(--amber)' : 'var(--green)'};padding:4px 9px;border-radius:6px;font-size:12px;font-weight:800;">${ownerType}</span>
                 <div class="view-owner" style="font-size:11.5px;color:var(--text-3);margin-top:2px;">${ownerName}</div>
             `;
-            row.querySelector('.cell-capacity').innerHTML = `<b class="view-val" style="font-size:15px;color:var(--brand);">${parseInt(cap).toLocaleString()} L</b><div class="view-comp" style="font-size:11.5px;color:var(--text-3);">${comp}</div>`;
+            row.querySelector('.cell-capacity').innerHTML = `<b class="view-val" style="font-size:15px;color:var(--brand);">${parseInt(cap).toLocaleString()} L</b><div class="view-comp" style="font-size:11.5px;color:var(--text-3);">${comp || '—'}</div>`;
             row.querySelector('.cell-status').innerHTML = `<span class="status s-done view-val"><i></i>${status}</span>`;
 
             row.querySelector('.row-normal-actions').style.display = 'inline-flex';

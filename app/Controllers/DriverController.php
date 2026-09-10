@@ -31,7 +31,13 @@ class DriverController
         $stmt->execute($params);
         $drivers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch each driver's active/latest dispatch, total trips, litres, and salary totals
+        // Fetch universal fixed salary setting
+        $isKes = current_currency() === 'KES';
+        $rate = exchange_rate();
+        $rawFixedSetting = (float)($pdo->query("SELECT setting_value FROM settings WHERE setting_key = 'driver_fixed_salary'")->fetchColumn() ?: 35000);
+        $universalFixedUsd = ($rawFixedSetting >= 1000) ? ($rawFixedSetting / $rate) : $rawFixedSetting;
+
+        // Fetch each driver's active/latest dispatch, total trips, litres, salary totals, arrears & shortage deductions
         foreach ($drivers as &$drv) {
             $recent = $pdo->prepare('SELECT trip_number, truck, destination, status, dispatch_date FROM fleet_dispatches WHERE driver = ? ORDER BY id DESC LIMIT 1');
             $recent->execute([$drv['name']]);
@@ -58,6 +64,34 @@ class DriverController
             }
             $drv['salary_paid'] = $paid;
             $drv['salary_wait'] = $wait;
+
+            // Fixed monthly salary for this driver (custom or universal)
+            $customFixed = (!empty($drv['fixed_salary']) && (float)$drv['fixed_salary'] > 0) ? (float)$drv['fixed_salary'] : 0.0;
+            if ($customFixed > 0) {
+                $drvFixedUsd = ($customFixed >= 1000) ? ($customFixed / $rate) : $customFixed;
+            } else {
+                $drvFixedUsd = $universalFixedUsd;
+            }
+            $drv['fixed_salary_usd'] = $drvFixedUsd;
+
+            // Pending Arrears (all unpaid vouchers with status = 'Wait')
+            $drv['pending_arrears_usd'] = $wait;
+
+            // Pending Cargo Shortages (loss from shortages on trips that haven't been deducted/recovered yet)
+            $shortageStmt = $pdo->prepare('SELECT COALESCE(SUM(payout_difference), 0) FROM fleet_dispatches WHERE driver = ? AND shortage_litres > 0 AND (is_shortage_recovered = 0 OR is_shortage_recovered IS NULL)');
+            $shortageStmt->execute([$drv['name']]);
+            $drv['pending_shortages_usd'] = (float) $shortageStmt->fetchColumn();
+
+            // Fetch specific shortage trips for reference
+            $shortageTripsStmt = $pdo->prepare('SELECT trip_number, dispatch_date, shortage_litres, unit_price, payout_difference, shortage_notes FROM fleet_dispatches WHERE driver = ? AND shortage_litres > 0 AND (is_shortage_recovered = 0 OR is_shortage_recovered IS NULL) ORDER BY id DESC');
+            $shortageTripsStmt->execute([$drv['name']]);
+            $drv['shortage_trips'] = $shortageTripsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Display amounts (in active session currency: KES or USD)
+            $drv['display_fixed_salary'] = $isKes ? round($drvFixedUsd * $rate, 2) : round($drvFixedUsd, 2);
+            $drv['display_arrears'] = $isKes ? round($drv['pending_arrears_usd'] * $rate, 2) : round($drv['pending_arrears_usd'], 2);
+            $drv['display_shortages'] = $isKes ? round($drv['pending_shortages_usd'] * $rate, 2) : round($drv['pending_shortages_usd'], 2);
+            $drv['display_suggested_net'] = max(0.0, round($drv['display_fixed_salary'] + $drv['display_arrears'] - $drv['display_shortages'], 2));
         }
 
         // Fetch all driver salaries
@@ -68,10 +102,11 @@ class DriverController
             COUNT(*) as total_salaries,
             COALESCE(SUM(CASE WHEN status = "Paid" THEN amount ELSE 0 END), 0) as total_paid,
             COALESCE(SUM(CASE WHEN status = "Wait" THEN amount ELSE 0 END), 0) as total_wait,
+            COALESCE(SUM(shortage_deductions), 0) as total_shortage_deducted,
             COALESCE(SUM(amount), 0) as total_issued
             FROM driver_salaries')->fetch(PDO::FETCH_ASSOC);
 
-        // Fetch recent dispatches for reference in "Per Trip" salary modal
+        // Fetch recent dispatches
         $dispatches = $pdo->query('SELECT trip_number, driver, destination, dispatch_date FROM fleet_dispatches ORDER BY id DESC LIMIT 20')->fetchAll(PDO::FETCH_ASSOC);
 
         return view('drivers.index', [
@@ -81,6 +116,8 @@ class DriverController
             'salaryAgg' => $salaryAgg,
             'dispatches' => $dispatches,
             'search' => $search,
+            'universalFixedUsd' => $universalFixedUsd,
+            'universalFixedDisplay' => $isKes ? round($universalFixedUsd * $rate, 2) : round($universalFixedUsd, 2),
         ]);
     }
 
@@ -116,8 +153,8 @@ class DriverController
 
         $driverId = (int) ($_POST['driver_id'] ?? 0);
         $driverName = trim($_POST['driver_name'] ?? '');
-        $paymentType = trim($_POST['payment_type'] ?? 'per_trip');
-        $periodReference = trim($_POST['period_reference'] ?? '');
+        $paymentType = 'monthly_salary'; // Enforced: strictly monthly salary
+        $periodReference = trim($_POST['period_reference'] ?? (date('F Y')));
         $paymentDate = trim($_POST['payment_date'] ?? date('Y-m-d'));
         $status = trim($_POST['status'] ?? 'Wait');
         $notes = trim($_POST['notes'] ?? '');
@@ -133,18 +170,21 @@ class DriverController
         $rate = exchange_rate();
         $rawBase = (float) ($_POST['base_salary'] ?? 0);
         $rawCarried = (float) ($_POST['carried_forward'] ?? 0);
+        $rawShortage = (float) ($_POST['shortage_deductions'] ?? 0);
+
         if ($rawBase === 0.0 && isset($_POST['amount'])) {
             $rawBase = (float) $_POST['amount'];
         }
 
         $baseSalary = $isKes ? ($rawBase / $rate) : $rawBase;
         $carriedForward = $isKes ? ($rawCarried / $rate) : $rawCarried;
-        $amount = $baseSalary + $carriedForward;
+        $shortageDeductions = $isKes ? ($rawShortage / $rate) : $rawShortage;
+        $amount = max(0.0, $baseSalary + $carriedForward - $shortageDeductions);
 
-        if ($driverName !== '' && $amount > 0) {
+        if ($driverName !== '' && ($amount > 0 || $baseSalary > 0)) {
             $stmt = $pdo->prepare('INSERT INTO driver_salaries (
-                driver_id, driver_name, payment_type, period_reference, base_salary, carried_forward, amount, status, payment_date, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                driver_id, driver_name, payment_type, period_reference, base_salary, carried_forward, shortage_deductions, amount, status, payment_date, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
             $stmt->execute([
                 $driverId,
@@ -153,6 +193,7 @@ class DriverController
                 $periodReference,
                 $baseSalary,
                 $carriedForward,
+                $shortageDeductions,
                 $amount,
                 $status,
                 $paymentDate,
@@ -160,8 +201,14 @@ class DriverController
                 date('Y-m-d H:i:s'),
             ]);
 
-            log_audit('Payroll', 'ISSUE_SALARY', "Issued salary to {$driverName}: Base " . format_money($baseSalary) . ", Carried Forward " . format_money($carriedForward) . ", Total " . format_money($amount) . " [Status: {$status}]");
-            flash('salary_success', "Salary of " . format_money($amount) . " issued to {$driverName} (Base: " . format_money($baseSalary) . ", Carried Forward: " . format_money($carriedForward) . ") [Status: {$status}].");
+            // If shortage deductions were applied, mark corresponding dispatches as shortage recovered
+            if ($shortageDeductions > 0) {
+                $recStmt = $pdo->prepare('UPDATE fleet_dispatches SET is_shortage_recovered = 1 WHERE driver = ? AND shortage_litres > 0 AND (is_shortage_recovered = 0 OR is_shortage_recovered IS NULL)');
+                $recStmt->execute([$driverName]);
+            }
+
+            log_audit('Payroll', 'ISSUE_SALARY', "Issued monthly salary to {$driverName} for {$periodReference}: Base " . format_money($baseSalary) . ", Arrears " . format_money($carriedForward) . ", Shortage Deductions " . format_money($shortageDeductions) . ", Net " . format_money($amount) . " [Status: {$status}]");
+            flash('salary_success', "Monthly salary of " . format_money($amount) . " issued to {$driverName} for {$periodReference} (Base: " . format_money($baseSalary) . ", Arrears: " . format_money($carriedForward) . ", Shortage Deductions: -" . format_money($shortageDeductions) . ") [Status: {$status}].");
         } else {
             flash('salary_error', 'Please provide a valid driver and salary amount.');
         }
@@ -179,7 +226,7 @@ class DriverController
 
         $pdo = Database::connection();
         $driverName = trim($_POST['driver_name'] ?? '');
-        $paymentType = trim($_POST['payment_type'] ?? 'per_trip');
+        $paymentType = 'monthly_salary'; // Enforced: strictly monthly salary
         $periodReference = trim($_POST['period_reference'] ?? '');
         $paymentDate = trim($_POST['payment_date'] ?? date('Y-m-d'));
         $status = trim($_POST['status'] ?? 'Wait');
@@ -189,19 +236,21 @@ class DriverController
         $rate = exchange_rate();
         $rawBase = (float) ($_POST['base_salary'] ?? 0);
         $rawCarried = (float) ($_POST['carried_forward'] ?? 0);
+        $rawShortage = (float) ($_POST['shortage_deductions'] ?? 0);
 
         $baseSalary = $isKes ? ($rawBase / $rate) : $rawBase;
         $carriedForward = $isKes ? ($rawCarried / $rate) : $rawCarried;
-        $amount = $baseSalary + $carriedForward;
+        $shortageDeductions = $isKes ? ($rawShortage / $rate) : $rawShortage;
+        $amount = max(0.0, $baseSalary + $carriedForward - $shortageDeductions);
 
         $stmt = $pdo->prepare('UPDATE driver_salaries SET 
-            driver_name = ?, payment_type = ?, period_reference = ?, base_salary = ?, carried_forward = ?, amount = ?, status = ?, payment_date = ?, notes = ?
+            driver_name = ?, payment_type = ?, period_reference = ?, base_salary = ?, carried_forward = ?, shortage_deductions = ?, amount = ?, status = ?, payment_date = ?, notes = ?
             WHERE id = ?');
         $stmt->execute([
-            $driverName, $paymentType, $periodReference, $baseSalary, $carriedForward, $amount, $status, $paymentDate, $notes, $id
+            $driverName, $paymentType, $periodReference, $baseSalary, $carriedForward, $shortageDeductions, $amount, $status, $paymentDate, $notes, $id
         ]);
 
-        log_audit('Payroll', 'UPDATE_SALARY', "Updated salary #{$id} for {$driverName}: Total " . format_money($amount));
+        log_audit('Payroll', 'UPDATE_SALARY', "Updated salary #{$id} for {$driverName}: Net " . format_money($amount));
         flash('salary_success', "Salary record #{$id} updated successfully.");
         redirect('/drivers#salaries');
     }

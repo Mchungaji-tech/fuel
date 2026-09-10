@@ -35,17 +35,21 @@ class TableSchemaService
                     ['driver', 'Driver Name', 'text', 1],
                     ['status', 'Trip Status', 'status', 1],
                     ['loaded_litres', 'Loaded Litres', 'number', 1],
+                    ['shortage_litres', 'Shortage Litres', 'number', 1],
                     ['delivered_litres', 'Delivered Litres', 'number', 1],
+                    ['product', 'Fuel Product', 'text', 1],
+                    ['unit_price', 'Product Unit Price', 'currency', 1],
                     ['diesel', 'Diesel Fuel Cost', 'currency', 1],
+                    ['diesel_litres', 'Diesel Litres', 'number', 0],
+                    ['diesel_unit_price', 'Diesel Unit Price', 'currency', 0],
                     ['from_location', 'Origin Loading Depot', 'text', 1],
                     ['destination', 'Destination', 'text', 1],
                     ['client_name', 'Client / Consignee', 'text', 1],
-                    ['product', 'Fuel Product', 'text', 1],
                     ['transport_amount', 'Expected Transport', 'currency', 1],
                     ['final_payout', 'Final Client Payout', 'currency', 1],
                     ['payout_difference', 'Payout Diff (Loss)', 'currency', 1],
                     ['mileage_cost', 'Mileage Expense', 'currency', 1],
-                    ['extra_expenses', 'Extra Breakdown Cost', 'currency', 1],
+                    ['extra_expenses', 'Extra Breakdown Cost', 'currency', 0],
                     ['balance', 'Net Trip Profit', 'currency', 1],
                     ['seal_numbers', 'Seal Numbers', 'text', 1],
                     ['breakdown_notes', 'Breakdown / Remarks', 'text', 0],
@@ -139,13 +143,19 @@ class TableSchemaService
         } else {
             // Ensure newly added default columns like diesel are seeded into existing installations
             if ($table === 'fleet_dispatches') {
-                $dCheck = $pdo->query("SELECT COUNT(*) FROM table_columns_meta WHERE table_name = 'fleet_dispatches' AND column_key = 'diesel'")->fetchColumn();
-                if ((int)$dCheck === 0) {
-                    $pdo->prepare("INSERT OR IGNORE INTO table_columns_meta (table_name, column_key, display_label, data_type, is_visible, is_custom, sort_order, created_at) VALUES ('fleet_dispatches', 'diesel', 'Diesel Fuel Cost', 'currency', 1, 0, 8, ?)")
-                        ->execute([date('Y-m-d H:i:s')]);
-                } else {
-                    $pdo->exec("UPDATE table_columns_meta SET display_label = 'Diesel Fuel Cost', data_type = 'currency' WHERE table_name = 'fleet_dispatches' AND column_key = 'diesel'");
-                }
+                $ensureMeta = function($key, $label, $type, $vis, $order) use ($pdo) {
+                    $c = $pdo->query("SELECT COUNT(*) FROM table_columns_meta WHERE table_name = 'fleet_dispatches' AND column_key = '{$key}'")->fetchColumn();
+                    if ((int)$c === 0) {
+                        $pdo->prepare("INSERT OR IGNORE INTO table_columns_meta (table_name, column_key, display_label, data_type, is_visible, is_custom, sort_order, created_at) VALUES ('fleet_dispatches', ?, ?, ?, ?, 0, ?, ?)")
+                            ->execute([$key, $label, $type, $vis, $order, date('Y-m-d H:i:s')]);
+                    }
+                };
+
+                $ensureMeta('diesel', 'Diesel Fuel Cost', 'currency', 1, 8);
+                $ensureMeta('shortage_litres', 'Shortage Litres', 'number', 1, 6);
+                $ensureMeta('unit_price', 'Product Unit Price', 'currency', 1, 7);
+                $ensureMeta('diesel_litres', 'Diesel Litres', 'number', 0, 9);
+                $ensureMeta('diesel_unit_price', 'Diesel Unit Price', 'currency', 0, 10);
             }
             if ($table === 'trucks') {
                 $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'trucks' AND column_key = 'model'");

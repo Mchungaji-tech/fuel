@@ -1,5 +1,5 @@
 <?php
-    $content = function () use ($title, $drivers, $salaries, $salaryAgg, $dispatches, $search) {
+    $content = function () use ($title, $drivers, $salaries, $salaryAgg, $dispatches, $search, $universalFixedUsd, $universalFixedDisplay) {
         $totalTripsAll = array_sum(array_column($drivers, 'total_trips'));
 ?>
 <section class="view active" id="view-drivers">
@@ -7,10 +7,10 @@
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
         <div class="hello">
             <h1>Drivers & Salaries 👷</h1>
-            <p>Active driver roster, quick compensation summary, and extensive career & payment breakdowns.</p>
+            <p>Active driver roster, universal fixed monthly salary, automated arrears tracking, and cargo shortage loss deductions.</p>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <button class="btn btn-brand" onclick="document.getElementById('salaryModal').classList.add('active')">💰 Issue Driver Salary</button>
+            <button class="btn btn-brand" onclick="document.getElementById('salaryModal').classList.add('active')">💰 Issue Driver Monthly Salary</button>
             <a href="<?= url('drivers/new') ?>" class="btn btn-ghost">＋ Add Driver</a>
         </div>
     </div>
@@ -18,9 +18,9 @@
     <!-- Summary KPI Cards -->
     <div class="kpis" style="margin-top:20px;">
         <div class="kpi">
-            <div class="lbl">Registered Driver Fleet</div>
+            <div class="lbl">Registered Drivers</div>
             <div class="val"><?= count($drivers) ?> Drivers</div>
-            <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Ready for dynamic dispatch</div>
+            <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Fixed base: <?= format_money($universalFixedUsd) ?>/mo</div>
         </div>
         <div class="kpi">
             <div class="lbl">Total Trips Dispatched</div>
@@ -33,9 +33,9 @@
             <div style="font-size:13px;color:var(--green);font-weight:700;margin-top:4px;">Disbursed compensation</div>
         </div>
         <div class="kpi" style="border:1.5px solid var(--amber);">
-            <div class="lbl" style="color:var(--amber);font-weight:800;">Pending Payouts (Wait)</div>
+            <div class="lbl" style="color:var(--amber);font-weight:800;">Pending Arrears (Wait)</div>
             <div class="val" style="color:var(--amber);"><?= format_money($salaryAgg['total_wait'] ?? 0) ?></div>
-            <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Awaiting clearance / payment</div>
+            <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Auto-carried into next voucher</div>
         </div>
     </div>
 
@@ -60,16 +60,17 @@
                         <th>Phone Contact</th>
                         <th>License & Class</th>
                         <th>Status</th>
+                        <th>Fixed Base Rate</th>
                         <th>Trips Done</th>
-                        <th>Total Paid</th>
-                        <th>Pending Balance</th>
+                        <th>Cargo Shortages</th>
+                        <th>Pending Arrears</th>
                         <th style="text-align:center;min-width:180px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($drivers)): ?>
                         <tr>
-                            <td colspan="8" style="text-align:center;padding:32px;color:var(--text-3);">No drivers registered. Click "Add Driver".</td>
+                            <td colspan="9" style="text-align:center;padding:32px;color:var(--text-3);">No drivers registered. Click "Add Driver".</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($drivers as $d): ?>
@@ -82,6 +83,8 @@
                                 $paid = (float) ($d['salary_paid'] ?? 0);
                                 $wait = (float) ($d['salary_wait'] ?? 0);
                                 $tripsCount = (int) ($d['total_trips'] ?? 0);
+                                $fixedRate = (float) ($d['fixed_salary_usd'] ?? 0);
+                                $shortageLoss = (float) ($d['pending_shortages_usd'] ?? 0);
                             ?>
                             <tr class="driver-row" id="drv-row-<?= $d['id'] ?>">
                                 <td>
@@ -114,12 +117,23 @@
                                 </td>
 
                                 <td>
-                                    <b style="font-size:15px;color:var(--brand);"><?= $tripsCount ?></b>
+                                    <b style="font-size:14px;color:var(--brand);"><?= format_money($fixedRate) ?></b>
+                                    <small style="display:block;color:var(--text-3);font-size:11px;">/ month</small>
+                                </td>
+
+                                <td>
+                                    <b style="font-size:15px;color:var(--text);"><?= $tripsCount ?></b>
                                     <span style="font-size:12px;color:var(--text-3);">trips</span>
                                 </td>
 
-                                <td style="font-weight:800;color:var(--green);white-space:nowrap;">
-                                    <?= format_money($paid) ?>
+                                <td>
+                                    <?php if ($shortageLoss > 0): ?>
+                                        <span style="display:inline-flex;align-items:center;gap:3px;color:var(--red);background:rgba(239,68,68,0.1);padding:3px 8px;border-radius:6px;border:1px solid var(--red);font-size:12px;font-weight:800;" title="Cargo shortage loss to be deducted on next salary voucher">
+                                            ⚠️ -<?= format_money($shortageLoss) ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span style="color:var(--green);font-size:12px;font-weight:700;">✓ 0 L (Clear)</span>
+                                    <?php endif; ?>
                                 </td>
 
                                 <td style="white-space:nowrap;">
@@ -139,7 +153,7 @@
                                             🔍 View Details
                                         </button>
                                         <!-- Quick Pay Button -->
-                                        <button type="button" class="btn btn-sm btn-ghost" onclick="openDriverSalaryModal(<?= (int)$d['id'] ?>, '<?= htmlspecialchars(addslashes($d['name'])) ?>')" style="padding:4px 8px;font-size:12px;font-weight:700;color:var(--green);" title="Issue salary payment">
+                                        <button type="button" class="btn btn-sm btn-ghost" onclick="openDriverSalaryModal(<?= (int)$d['id'] ?>, '<?= htmlspecialchars(addslashes($d['name'])) ?>')" style="padding:4px 8px;font-size:12px;font-weight:700;color:var(--green);" title="Issue monthly salary voucher">
                                             💰 Pay
                                         </button>
                                         <!-- Delete Button -->
@@ -164,7 +178,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
             <div>
                 <h2 style="margin:0;font-size:18px;color:var(--text);">💰 Salary Disbursements & Arrears Ledger</h2>
-                <p style="margin:3px 0 0 0;font-size:13px;color:var(--text-3);">Track current period base salaries, carried forward unpaid arrears, and payment statuses.</p>
+                <p style="margin:3px 0 0 0;font-size:13px;color:var(--text-3);">Track monthly base salaries, auto-calculated carried forward arrears, transit shortage deductions, and voucher statuses.</p>
             </div>
             <button type="button" class="btn btn-brand btn-sm" onclick="document.getElementById('salaryModal').classList.add('active')">
                 ＋ Issue Salary Voucher
@@ -179,10 +193,11 @@
                             <th style="min-width:90px;">Date</th>
                             <th>Driver Name</th>
                             <th>Type / Structure</th>
-                            <th>Period / Trip Ref</th>
-                            <th>Current Salary</th>
-                            <th>Carried Forward (Arrears)</th>
-                            <th>Total Payable</th>
+                            <th>Month / Period</th>
+                            <th>Base Salary</th>
+                            <th>Arrears (Carried)</th>
+                            <th>Shortage Loss</th>
+                            <th>Net Payable</th>
                             <th>Payment Status</th>
                             <th>Notes</th>
                             <th style="text-align:center;min-width:140px;">Actions</th>
@@ -191,7 +206,7 @@
                     <tbody>
                         <?php if (empty($salaries)): ?>
                             <tr>
-                                <td colspan="10" style="text-align:center;padding:28px;color:var(--text-3);">No salary records issued yet. Click "Issue Salary Voucher".</td>
+                                <td colspan="11" style="text-align:center;padding:28px;color:var(--text-3);">No salary records issued yet. Click "Issue Salary Voucher".</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($salaries as $sal): ?>
@@ -199,6 +214,7 @@
                                     $isPaid = ($sal['status'] === 'Paid');
                                     $base = (float)($sal['base_salary'] ?? 0);
                                     $carried = (float)($sal['carried_forward'] ?? 0);
+                                    $shortage = (float)($sal['shortage_deductions'] ?? 0);
                                     $tot = (float)$sal['amount'];
                                     if ($base == 0 && $carried == 0 && $tot > 0) {
                                         $base = $tot;
@@ -209,7 +225,7 @@
                                     <td><b style="color:var(--text);font-size:14px;"><?= htmlspecialchars($sal['driver_name']) ?></b></td>
                                     <td>
                                         <span style="background:var(--card-2);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-size:11.5px;font-weight:700;color:var(--text-2);">
-                                            <?= htmlspecialchars(ucwords(str_replace('_', ' ', $sal['payment_type'] ?? 'per_trip'))) ?>
+                                            Monthly Fixed
                                         </span>
                                     </td>
                                     <td style="font-weight:600;color:var(--brand);"><?= htmlspecialchars($sal['period_reference'] ?: '—') ?></td>
@@ -218,6 +234,15 @@
                                         <?php if ($carried > 0): ?>
                                             <span style="font-weight:800;color:var(--amber);background:var(--amber-soft);padding:2px 7px;border-radius:6px;font-size:12px;">
                                                 + <?= format_money($carried) ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <span style="color:var(--text-3);">0.00</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php if ($shortage > 0): ?>
+                                            <span style="font-weight:800;color:var(--red);background:rgba(239,68,68,0.1);padding:2px 7px;border-radius:6px;border:1px solid var(--red);font-size:12px;">
+                                                - <?= format_money($shortage) ?>
                                             </span>
                                         <?php else: ?>
                                             <span style="color:var(--text-3);">0.00</span>
@@ -245,6 +270,7 @@
                                                 'period_reference' => $sal['period_reference'],
                                                 'base_salary' => $base,
                                                 'carried_forward' => $carried,
+                                                'shortage_deductions' => $shortage,
                                                 'payment_date' => $sal['payment_date'],
                                                 'status' => $sal['status'],
                                                 'notes' => $sal['notes'],
@@ -357,9 +383,12 @@
 
 <!-- Issue Salary Modal -->
 <div class="modal-backdrop" id="salaryModal" onclick="if(event.target===this)this.classList.remove('active')">
-    <div class="modal-card" style="max-width:540px;">
+    <div class="modal-card" style="max-width:560px;">
         <div class="modal-head">
-            <h2>💰 Issue Driver Salary / Trip Compensation</h2>
+            <div>
+                <h2 style="margin:0;">💰 Issue Driver Monthly Salary Voucher</h2>
+                <span style="font-size:12.5px;color:var(--text-3);">Universal fixed base salary • Automated arrears • Transit shortage loss deductions</span>
+            </div>
             <button class="close-modal" onclick="document.getElementById('salaryModal').classList.remove('active')">✕</button>
         </div>
         <form method="POST" action="<?= url('drivers/salary/store') ?>">
@@ -367,7 +396,7 @@
             <div class="form-grid single" style="gap:14px;">
                 <div class="form-group">
                     <label>Select Driver *</label>
-                    <select name="driver_id" id="salaryDriverSelect" required onchange="updateDriverName()">
+                    <select name="driver_id" id="salaryDriverSelect" required onchange="onDriverSalarySelected()">
                         <option value="">-- Choose Driver --</option>
                         <?php foreach ($drivers as $dr): ?>
                             <option value="<?= $dr['id'] ?>" data-name="<?= htmlspecialchars($dr['name']) ?>">
@@ -379,45 +408,45 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Payment Structure Type *</label>
-                    <select name="payment_type" id="salaryPaymentType" onchange="onPaymentTypeChange()">
-                        <option value="per_trip" selected>Per Trip Compensation (Freight Commission / Allowance)</option>
-                        <option value="monthly_retainer">Monthly Fixed Salary Retainer</option>
-                        <option value="bonus">Performance / Safe Delivery Bonus</option>
-                    </select>
-                </div>
-
-                <div class="form-group" id="tripRefGroup">
-                    <label>Trip Reference / Dispatched Route</label>
-                    <select name="period_reference" id="tripRefSelect">
-                        <option value="">-- Select Trip Assignment --</option>
-                        <?php foreach ($dispatches as $dsp): ?>
-                            <option value="<?= htmlspecialchars($dsp['trip_number']) ?>">
-                                <?= htmlspecialchars($dsp['trip_number']) ?> — <?= htmlspecialchars($dsp['destination']) ?> (<?= format_date_dol($dsp['dispatch_date']) ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label>Compensation Structure *</label>
+                    <input type="text" class="table-inline-input" value="Universal Fixed Monthly Salary" readonly style="background:var(--card-2);font-weight:700;color:var(--text-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+                    <input type="hidden" name="payment_type" value="monthly_salary">
                 </div>
 
                 <div class="form-group">
-                    <label>Current Month / Period Salary [<?= app_currency_symbol() ?>] *</label>
+                    <label>Payroll Month / Period *</label>
+                    <input type="text" name="period_reference" id="salaryPeriodRef" value="<?= date('F Y') ?>" placeholder="e.g. <?= date('F Y') ?>" required>
+                    <small style="color:var(--text-3);">Monthly salary payroll cycle</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Fixed Monthly Base Salary [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="base_salary" id="salaryBaseInput" placeholder="0.00" required oninput="calcSalaryTotal()">
-                    <small style="color:var(--text-3);">Agreed monthly or trip salary for current period</small>
+                    <small style="color:var(--text-3);">Universal fixed base salary for all drivers (Default: <?= format_money($universalFixedUsd) ?>)</small>
                 </div>
 
                 <div class="form-group">
                     <label>Carried Forward Unpaid Balance (Arrears) [<?= app_currency_symbol() ?>]</label>
                     <input type="number" step="0.01" name="carried_forward" id="salaryCarriedInput" placeholder="0.00" value="0.00" oninput="calcSalaryTotal()">
-                    <small style="color:var(--text-3);">Previous months unpaid balance / arrears brought forward</small>
+                    <small style="color:var(--text-3);">Auto-calculated from unpaid past vouchers (Status = Wait)</small>
                 </div>
+
+                <div class="form-group">
+                    <label style="color:var(--red);font-weight:800;">Cargo Shortage Deductions [<?= app_currency_symbol() ?>]</label>
+                    <input type="number" step="0.01" name="shortage_deductions" id="salaryShortageInput" placeholder="0.00" value="0.00" oninput="calcSalaryTotal()" style="border-color:var(--red);color:var(--red);font-weight:800;">
+                    <small style="color:var(--red);font-weight:700;">Transit cargo shortage loss automatically forwarded from fleet dispatches</small>
+                </div>
+
+                <!-- Shortage Alert Banner -->
+                <div id="salaryShortageAlert" style="display:none;background:rgba(239,68,68,0.08);border:1.5px solid var(--red);border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--text);line-height:1.4;"></div>
 
                 <!-- Live Total Preview -->
                 <div style="background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <div style="font-size:12px;color:var(--text-3);font-weight:700;text-transform:uppercase;">Total Payable Voucher</div>
-                        <div style="font-size:12px;color:var(--text-2);">Current Salary + Carried Forward</div>
+                        <div style="font-size:11.5px;color:var(--text-3);font-weight:800;text-transform:uppercase;letter-spacing:0.5px;">Net Payable Voucher</div>
+                        <div id="salaryFormulaBreakdown" style="font-size:12px;color:var(--text-2);margin-top:2px;">Base + Arrears - Shortage Deductions</div>
                     </div>
-                    <div id="salaryTotalDisplay" style="font-size:22px;font-weight:900;color:var(--green);">
+                    <div id="salaryTotalDisplay" style="font-size:24px;font-weight:900;color:var(--green);">
                         <?= app_currency_symbol() ?> 0.00
                     </div>
                 </div>
@@ -437,7 +466,7 @@
 
                 <div class="form-group">
                     <label>Notes / Voucher Reference</label>
-                    <input type="text" name="notes" placeholder="e.g. Bank transfer ref / M-Pesa code / Trip allowance">
+                    <input type="text" name="notes" placeholder="e.g. Bank transfer ref / M-Pesa code / Salary balance">
                 </div>
             </div>
 
@@ -466,21 +495,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Payment Structure Type *</label>
-                    <select name="payment_type" id="editSalPaymentType">
-                        <option value="per_trip">Per Trip Compensation (Freight Commission / Allowance)</option>
-                        <option value="monthly_retainer">Monthly Fixed Salary Retainer</option>
-                        <option value="bonus">Performance / Safe Delivery Bonus</option>
-                    </select>
+                    <label>Compensation Structure *</label>
+                    <input type="text" class="table-inline-input" value="Monthly Fixed Salary" readonly style="background:var(--card-2);font-weight:700;color:var(--text-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+                    <input type="hidden" name="payment_type" value="monthly_salary">
                 </div>
 
                 <div class="form-group">
-                    <label>Period / Trip Reference</label>
-                    <input type="text" name="period_reference" id="editSalPeriodRef" placeholder="e.g. May 2026 or TRP-2026-001">
+                    <label>Payroll Month / Period Reference</label>
+                    <input type="text" name="period_reference" id="editSalPeriodRef" placeholder="e.g. May 2026">
                 </div>
 
                 <div class="form-group">
-                    <label>Current Month / Period Salary [<?= app_currency_symbol() ?>] *</label>
+                    <label>Fixed Monthly Base Salary [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="base_salary" id="editSalBase" placeholder="0.00" required oninput="calcEditSalaryTotal()">
                 </div>
 
@@ -489,11 +515,16 @@
                     <input type="number" step="0.01" name="carried_forward" id="editSalCarried" placeholder="0.00" oninput="calcEditSalaryTotal()">
                 </div>
 
+                <div class="form-group">
+                    <label style="color:var(--red);font-weight:800;">Cargo Shortage Deductions [<?= app_currency_symbol() ?>]</label>
+                    <input type="number" step="0.01" name="shortage_deductions" id="editSalShortage" placeholder="0.00" oninput="calcEditSalaryTotal()" style="border-color:var(--red);color:var(--red);font-weight:800;">
+                </div>
+
                 <!-- Live Total Preview -->
                 <div style="background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <div style="font-size:12px;color:var(--text-3);font-weight:700;text-transform:uppercase;">Total Payable Amount</div>
-                        <div style="font-size:12px;color:var(--text-2);">Base + Carried Forward</div>
+                        <div style="font-size:12px;color:var(--text-3);font-weight:700;text-transform:uppercase;">Net Payable Amount</div>
+                        <div style="font-size:12px;color:var(--text-2);">Base + Arrears - Shortages</div>
                     </div>
                     <div id="editSalTotalDisplay" style="font-size:22px;font-weight:900;color:var(--green);">
                         <?= app_currency_symbol() ?> 0.00
@@ -530,32 +561,71 @@
 <script>
 const DRIVER_DATA = <?= json_encode($drivers) ?>;
 const CURRENCY_SYM = '<?= app_currency_symbol() ?>';
+const IS_KES = <?= current_currency() === 'KES' ? 'true' : 'false' ?>;
+const EXCHANGE_RATE = <?= (float)exchange_rate() ?>;
 const TOGGLE_SALARY_URL = '<?= url("drivers/salary/toggle") ?>';
 const CSRF_TOKEN = '<?= csrf_token() ?>';
 
 function calcSalaryTotal() {
     const base = parseFloat(document.getElementById('salaryBaseInput')?.value) || 0;
     const carried = parseFloat(document.getElementById('salaryCarriedInput')?.value) || 0;
-    const total = base + carried;
+    const shortage = parseFloat(document.getElementById('salaryShortageInput')?.value) || 0;
+    const net = Math.max(0, base + carried - shortage);
     const disp = document.getElementById('salaryTotalDisplay');
-    if (disp) disp.textContent = CURRENCY_SYM + ' ' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (disp) disp.textContent = CURRENCY_SYM + ' ' + net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const bd = document.getElementById('salaryFormulaBreakdown');
+    if (bd) {
+        bd.textContent = `${CURRENCY_SYM} ${base.toLocaleString('en-US',{minimumFractionDigits:2})} (Base) + ${CURRENCY_SYM} ${carried.toLocaleString('en-US',{minimumFractionDigits:2})} (Arrears) - ${CURRENCY_SYM} ${shortage.toLocaleString('en-US',{minimumFractionDigits:2})} (Shortage)`;
+    }
 }
 
 function calcEditSalaryTotal() {
     const base = parseFloat(document.getElementById('editSalBase')?.value) || 0;
     const carried = parseFloat(document.getElementById('editSalCarried')?.value) || 0;
-    const total = base + carried;
+    const shortage = parseFloat(document.getElementById('editSalShortage')?.value) || 0;
+    const net = Math.max(0, base + carried - shortage);
     const disp = document.getElementById('editSalTotalDisplay');
-    if (disp) disp.textContent = CURRENCY_SYM + ' ' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (disp) disp.textContent = CURRENCY_SYM + ' ' + net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function onDriverSalarySelected() {
+    const sel = document.getElementById('salaryDriverSelect');
+    const drvId = sel.value;
+    if (!drvId) return;
+    const drv = DRIVER_DATA.find(d => d.id == drvId);
+    if (!drv) return;
+
+    document.getElementById('salaryDriverName').value = drv.name;
+    document.getElementById('salaryBaseInput').value = (drv.display_fixed_salary || 0).toFixed(2);
+    document.getElementById('salaryCarriedInput').value = (drv.display_arrears || 0).toFixed(2);
+    document.getElementById('salaryShortageInput').value = (drv.display_shortages || 0).toFixed(2);
+
+    const alertBox = document.getElementById('salaryShortageAlert');
+    if (alertBox) {
+        if (drv.display_shortages > 0 && drv.shortage_trips && drv.shortage_trips.length > 0) {
+            const tripsList = drv.shortage_trips.map(t => {
+                const lossDisp = (parseFloat(t.payout_difference || 0) * (IS_KES ? EXCHANGE_RATE : 1)).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+                return `<b>${t.trip_number}</b> (${t.shortage_litres} L shortage, loss: ${CURRENCY_SYM} ${lossDisp})`;
+            }).join('; ');
+            alertBox.innerHTML = `⚠️ <b>Cargo Shortage Loss Forwarded:</b> ${CURRENCY_SYM} ${(drv.display_shortages || 0).toLocaleString('en-US', {minimumFractionDigits:2})} automatically deducted from driver salary for transit shortage on: ${tripsList}.`;
+            alertBox.style.display = 'block';
+        } else {
+            alertBox.style.display = 'none';
+            alertBox.innerHTML = '';
+        }
+    }
+
+    calcSalaryTotal();
 }
 
 window.openEditSalaryModal = function(data) {
     document.getElementById('editSalId').value = data.id;
     document.getElementById('editSalDriverName').value = data.driver_name || '';
-    document.getElementById('editSalPaymentType').value = data.payment_type || 'per_trip';
     document.getElementById('editSalPeriodRef').value = data.period_reference || '';
-    document.getElementById('editSalBase').value = data.base_salary || 0;
-    document.getElementById('editSalCarried').value = data.carried_forward || 0;
+    const mult = IS_KES ? EXCHANGE_RATE : 1;
+    document.getElementById('editSalBase').value = (parseFloat(data.base_salary || 0) * mult).toFixed(2);
+    document.getElementById('editSalCarried').value = (parseFloat(data.carried_forward || 0) * mult).toFixed(2);
+    document.getElementById('editSalShortage').value = (parseFloat(data.shortage_deductions || 0) * mult).toFixed(2);
     document.getElementById('editSalDate').value = data.payment_date || '';
     document.getElementById('editSalStatus').value = data.status || 'Wait';
     document.getElementById('editSalNotes').value = data.notes || '';
@@ -568,9 +638,8 @@ function openDriverSalaryModal(driverId, driverName) {
     const sel = document.getElementById('salaryDriverSelect');
     if (sel) {
         sel.value = driverId;
-        updateDriverName();
+        onDriverSalarySelected();
     }
-    calcSalaryTotal();
     document.getElementById('salaryModal').classList.add('active');
 }
 
