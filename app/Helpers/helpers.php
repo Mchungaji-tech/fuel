@@ -111,7 +111,12 @@ function view(string $view, array $data = []): string
 
     extract($data);
     ob_start();
-    require $viewPath;
+    try {
+        require $viewPath;
+    } catch (\Throwable $e) {
+        ob_end_clean();
+        throw $e;
+    }
     return ob_get_clean();
 }
 

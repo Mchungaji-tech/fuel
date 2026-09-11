@@ -67,6 +67,9 @@ if (!$isDebug) {
     ini_set('log_errors', '1');
     set_exception_handler(function (\Throwable $e) {
         error_log("Unhandled Exception: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString());
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         http_response_code(500);
         if (function_exists('view')) {
             echo view('errors.500', [
