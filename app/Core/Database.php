@@ -423,7 +423,7 @@ class Database
                 table_key VARCHAR(100) NOT NULL UNIQUE,
                 display_name VARCHAR(150) NOT NULL,
                 description TEXT,
-                icon VARCHAR(50) DEFAULT '📋',
+                icon VARCHAR(50) DEFAULT NULL,
                 created_at VARCHAR(50)
             )",
         ];
