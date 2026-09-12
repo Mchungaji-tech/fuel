@@ -26,7 +26,10 @@
                     CSV
                 </a>
             </div>
-            <button class="btn btn-brand" onclick="document.getElementById('dispatchModal').classList.add('active')">＋ New Dispatch</button>
+            <button type="button" class="btn btn-amber" onclick="openDieselLogModal()" style="font-weight:800;background:var(--amber);color:#fff;box-shadow:0 4px 14px rgba(217,119,6,0.3);" title="Record cross-border diesel fuel top-up for any trip (Kenya, Uganda, Congo)">
+                ⛽ Log Diesel
+            </button>
+            <button type="button" class="btn btn-brand" onclick="openProceduralDispatchModal()">＋ New Dispatch</button>
         </div>
     </div>
 
@@ -345,7 +348,7 @@
                                 </td>
 
                                 <!-- Diesel Fuel Cost (Owner Expense) -->
-                                <td class="cell-diesel" style="white-space:nowrap;font-weight:700;">
+                                <td class="cell-diesel" style="white-space:nowrap;font-weight:700;cursor:pointer;" onclick="openDieselLogModal(<?= $d['id'] ?>)" title="Click to view & log cross-border diesel fuel stops for <?= htmlspecialchars($d['trip_number']) ?>">
                                     <?php 
                                         $dVal = (float)($d['diesel'] ?? 0); 
                                         $dLitres = (float)($d['diesel_litres'] ?? 0);
@@ -354,7 +357,7 @@
                                     <span class="view-val"><?= $canViewFin ? ($dVal > 0 ? format_money($dVal) : '—') : '[Restricted]' ?></span>
                                     <?php if ($canViewFin && $dLitres > 0): ?>
                                         <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px;">
-                                            <?= number_format($dLitres, 1) ?>L<?= $dUnitPrice > 0 ? ' @ ' . format_money($dUnitPrice) : '' ?>
+                                            ⛽ <?= number_format($dLitres, 1) ?>L<?= $dUnitPrice > 0 ? ' @ ' . format_money($dUnitPrice) : '' ?>
                                         </div>
                                     <?php endif; ?>
                                 </td>
@@ -503,226 +506,603 @@
     </div>
 </section>
 
-<!-- New Dispatch Modal -->
+<style>
+/* Procedural Wizard Stepper Styles */
+.wizard-stepper {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+    background: var(--card-2);
+    padding: 6px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+}
+.wizard-step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: .18s;
+    user-select: none;
+}
+.wizard-step-indicator .step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--border-2);
+    color: var(--text-2);
+    display: grid;
+    place-items: center;
+    font-size: 11.5px;
+    font-weight: 800;
+    transition: .18s;
+}
+.wizard-step-indicator .step-lbl {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-3);
+    white-space: nowrap;
+    transition: .18s;
+}
+.wizard-step-indicator.active {
+    background: var(--card);
+    box-shadow: var(--shadow);
+}
+.wizard-step-indicator.active .step-num {
+    background: var(--brand);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(79,70,229,0.35);
+}
+.wizard-step-indicator.active .step-lbl {
+    color: var(--brand);
+    font-weight: 800;
+}
+.wizard-step-indicator.completed .step-num {
+    background: var(--green-soft);
+    color: var(--green);
+    border: 1px solid var(--green);
+}
+.wizard-step-indicator.completed .step-lbl {
+    color: var(--text);
+}
+@media (max-width: 768px) {
+    .wizard-stepper { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+
+<!-- New Dispatch Procedural Wizard Modal -->
 <div class="modal-backdrop" id="dispatchModal" onclick="if(event.target===this)this.classList.remove('active')">
-    <div class="modal-card">
-        <div class="modal-head">
-            <h2>🚚 New Fleet Dispatch</h2>
-            <button class="close-modal" onclick="document.getElementById('dispatchModal').classList.remove('active')">✕</button>
+    <div class="modal-card" style="max-width:760px;">
+        <div class="modal-head" style="margin-bottom:14px;">
+            <div>
+                <h2 style="font-size:20px;display:flex;align-items:center;gap:8px;">
+                    <span>🚚</span>
+                    <span>New Fleet Dispatch Wizard</span>
+                </h2>
+                <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">
+                    Guided 4-step workflow: Vehicle crew, cargo specs, route & diesel fuel, and financial review.
+                </div>
+            </div>
+            <button type="button" class="close-modal" onclick="document.getElementById('dispatchModal').classList.remove('active')">✕</button>
         </div>
-        <form method="POST" action="<?= url('fleet/store') ?>">
+
+        <!-- Wizard Step Progress Stepper Bar -->
+        <div class="wizard-stepper">
+            <div class="wizard-step-indicator active" id="stepPill1" onclick="goToWizardStep(1)">
+                <span class="step-num">1</span>
+                <span class="step-lbl">Tanker & Crew</span>
+            </div>
+            <div class="wizard-step-indicator" id="stepPill2" onclick="goToWizardStep(2)">
+                <span class="step-num">2</span>
+                <span class="step-lbl">Cargo & Client</span>
+            </div>
+            <div class="wizard-step-indicator" id="stepPill3" onclick="goToWizardStep(3)">
+                <span class="step-num">3</span>
+                <span class="step-lbl">Route & Fuel</span>
+            </div>
+            <div class="wizard-step-indicator" id="stepPill4" onclick="goToWizardStep(4)">
+                <span class="step-num">4</span>
+                <span class="step-lbl">Review & Launch</span>
+            </div>
+        </div>
+
+        <form method="POST" action="<?= url('fleet/store') ?>" id="dispatchWizardForm" onsubmit="return onWizardFormSubmit(event)">
             <?= csrf_field() ?>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>DOL (Date of Loading) *</label>
-                    <input type="date" name="dispatch_date" value="<?= date('Y-m-d') ?>" required>
-                </div>
-                <div class="form-group">
-                    <label>Trip Reference (Optional)</label>
-                    <input type="text" name="trip_number" placeholder="Auto-generated e.g. TRP-2026-015">
+
+            <!-- STEP 1: Tanker Truck & Driver Crew -->
+            <div class="wizard-step-panel" id="wizardStep1">
+                <div style="background:var(--card-2);border-left:3px solid var(--brand);padding:10px 14px;border-radius:8px;margin-bottom:16px;">
+                    <b style="font-size:13.5px;color:var(--text);">Step 1: Vehicle & Driver Assignment (Trip Departure)</b>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Choose loading date, trip reference number, assigned tanker truck and driver.</div>
                 </div>
 
-                <div class="form-group" style="grid-column:1/-1;">
-                    <label>Select Tanker Truck *</label>
-                    <select name="truck" id="dispatchTruckSelect" required onchange="onTruckSelected()">
-                        <option value="">-- Choose Truck --</option>
-                        <?php foreach ($trucks as $trk): ?>
-                            <?php $isContractTruck = in_array(strtolower($trk['ownership_type'] ?? ''), ['contract', 'subcontracted', 'sub']); ?>
-                            <option value="<?= htmlspecialchars($trk['plate_number']) ?>" 
-                                data-capacity="<?= (int) $trk['capacity_litres'] ?>"
-                                data-subcontracted="<?= $isContractTruck ? '1' : '0' ?>"
-                                data-owner="<?= htmlspecialchars($trk['owner_name'] ?? 'Sarura Fuel') ?>"
-                                data-commission="<?= (float) ($trk['commission_rate'] ?? 0) ?>">
-                                <?= htmlspecialchars($trk['plate_number']) ?> (<?= number_format($trk['capacity_litres']) ?> L) 
-                                <?= $isContractTruck ? '— [Contract Tanker]' : '— [Owner Fleet]' ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>DOL (Date of Loading) *</label>
+                        <input type="date" name="dispatch_date" id="wizardDispatchDate" value="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Trip Reference (Optional)</label>
+                        <input type="text" name="trip_number" id="wizardTripNumber" placeholder="Auto e.g. TRP-<?= date('Y') ?>-015">
+                    </div>
 
-                <!-- Truck Ownership Info Banner -->
-                <div id="truckOwnershipNotice" style="display:none;grid-column:1/-1;padding:12px 16px;border-radius:10px;background:var(--amber-soft);border:1px solid var(--amber);font-size:13.5px;color:var(--text);">
-                    <b style="color:var(--amber);">⚠️ Contract Haulier Truck Detected:</b>
-                    <div id="subcontractedDetailsText" style="margin-top:2px;">
-                        Only the agreed company commission will act as profit for this vehicle.
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label>Select Tanker Truck *</label>
+                        <select name="truck" id="dispatchTruckSelect" required onchange="onTruckSelected()">
+                            <option value="">-- Choose Tanker Truck --</option>
+                            <?php foreach ($trucks as $trk): ?>
+                                <?php $isContractTruck = in_array(strtolower($trk['ownership_type'] ?? ''), ['contract', 'subcontracted', 'sub']); ?>
+                                <option value="<?= htmlspecialchars($trk['plate_number']) ?>" 
+                                    data-capacity="<?= (int) $trk['capacity_litres'] ?>"
+                                    data-subcontracted="<?= $isContractTruck ? '1' : '0' ?>"
+                                    data-owner="<?= htmlspecialchars($trk['owner_name'] ?? 'Sarura Fuel') ?>"
+                                    data-commission="<?= (float) ($trk['commission_rate'] ?? 0) ?>">
+                                    <?= htmlspecialchars($trk['plate_number']) ?> (<?= number_format($trk['capacity_litres']) ?> L) 
+                                    <?= $isContractTruck ? '— [Contract Tanker]' : '— [Owner Fleet]' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <!-- Truck Ownership Notice -->
+                    <div id="truckOwnershipNotice" style="display:none;grid-column:1/-1;padding:12px 16px;border-radius:10px;background:var(--amber-soft);border:1px solid var(--amber);font-size:13px;color:var(--text);">
+                        <b style="color:var(--amber);">⚠️ Contract Haulier Truck Detected:</b>
+                        <div id="subcontractedDetailsText" style="margin-top:2px;">
+                            Only the agreed company commission will act as profit for this vehicle.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Truck Tanker Capacity (Litres) *</label>
+                        <input type="number" name="truck_capacity" id="dispatchTruckCapacity" placeholder="e.g. 28000" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Loading Depot (Origin) *</label>
+                        <input type="text" name="from_location" id="wizardFromLocation" value="Eldoret" required placeholder="e.g. Eldoret Depot / Kisumu">
+                    </div>
+
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label>Assigned Driver *</label>
+                        <select name="driver" id="dispatchDriverSelect" required onchange="onDriverSelected(this.value)">
+                            <option value="">-- Assign Driver to this Trip --</option>
+                            <?php foreach ($drivers as $drv): ?>
+                                <option value="<?= htmlspecialchars($drv['name']) ?>"><?= htmlspecialchars($drv['name']) ?> (<?= htmlspecialchars($drv['status']) ?>)</option>
+                            <?php endforeach; ?>
+                            <option value="__other__">➕ Other Driver (Enter Name)...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="otherDriverGroup" style="display:none;grid-column:1/-1;background:var(--card-2);padding:12px 16px;border-radius:10px;border:1.5px dashed var(--brand);">
+                        <label style="color:var(--brand);font-weight:700;">➕ Enter Temporary Driver Name *</label>
+                        <input type="text" name="other_driver_name" id="otherDriverInput" placeholder="e.g. Samuel Kiprono (New/Relief Driver)">
+                        <small style="color:var(--text-3);display:block;margin-top:3px;">You will be prompted to save this driver permanently to your roster after dispatch.</small>
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label>Truck Tanker Capacity (Litres) *</label>
-                    <input type="number" name="truck_capacity" id="dispatchTruckCapacity" placeholder="e.g. 28000" required>
+                <div style="margin-top:22px;display:flex;justify-content:space-between;align-items:center;">
+                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('dispatchModal').classList.remove('active')">Cancel</button>
+                    <button type="button" class="btn btn-brand" onclick="goToWizardStep(2)">Next: Cargo & Consignee →</button>
+                </div>
+            </div>
+
+            <!-- STEP 2: Fuel Cargo & Consignee Customer -->
+            <div class="wizard-step-panel" id="wizardStep2" style="display:none;">
+                <div style="background:var(--card-2);border-left:3px solid var(--green);padding:10px 14px;border-radius:8px;margin-bottom:16px;">
+                    <b style="font-size:13.5px;color:var(--text);">Step 2: Fuel Cargo & Consignee Customer</b>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Cargo specifications, loaded volume, transport unit rate, and customer destination.</div>
                 </div>
 
-                <div class="form-group">
-                    <label>Litres Loaded (DOL Volume) *</label>
-                    <input type="number" name="loaded_litres" id="dispatchLoadedLitres" placeholder="Litres loaded into tanker" required oninput="calcExpectedTransport()">
-                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Product (Kenya Fuel Specs) *</label>
+                        <select name="product" id="dispatchProductSelect" required onchange="onProductSelected(this)">
+                            <?php foreach ($products as $pr): ?>
+                                <?php 
+                                    $rawPrPrice = (float)($pr['unit_price'] ?? 0);
+                                    $displayPrPrice = convert_currency($rawPrPrice);
+                                ?>
+                                <option value="<?= htmlspecialchars($pr['code']) ?>" data-price="<?= number_format($displayPrPrice, 2, '.', '') ?>">
+                                    <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?> (<?= format_money($rawPrPrice) ?>/L)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="form-group" style="background:rgba(245,158,11,0.08);border:1.5px dashed var(--amber);border-radius:10px;padding:10px 14px;">
-                    <span style="font-size:12px;color:var(--amber);font-weight:800;display:block;">🚚 EN-ROUTE LOADING NOTICE:</span>
-                    <span style="font-size:12px;color:var(--text-2);">
-                        Truck departs Eldoret in <b>In Transit</b> status. Expected transport payout is calculated automatically.
-                    </span>
+                    <div class="form-group">
+                        <label>Product Unit Price (<?= app_currency_symbol() ?>/L) *</label>
+                        <?php 
+                            $firstPrPrice = !empty($products) ? (float)($products[0]['unit_price'] ?? 0) : 0.08;
+                            $initPrPrice = convert_currency($firstPrPrice);
+                        ?>
+                        <input type="number" step="0.01" name="unit_price" id="dispatchUnitPrice" value="<?= number_format($initPrPrice, 2, '.', '') ?>" placeholder="0.00" required oninput="calcExpectedTransport()">
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Transport rate billed to customer per litre</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Litres Loaded (DOL Volume L20) *</label>
+                        <input type="number" name="loaded_litres" id="dispatchLoadedLitres" placeholder="Volume loaded into tanker" required oninput="calcExpectedTransport()">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Expected Transport Billed [<?= app_currency_symbol() ?>] (Auto-Calculated) *</label>
+                        <input type="number" step="0.01" name="transport_amount" id="dispTransport" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--brand);cursor:not-allowed;" required>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= Litres Loaded × Unit Price</span>
+                    </div>
+
+                    <!-- Hidden Shortage & Status -->
+                    <input type="hidden" name="shortage_litres" id="dispatchShortageLitres" value="0">
+                    <input type="hidden" name="final_payout" id="dispFinalPayout" value="">
                     <input type="hidden" name="status" value="In Transit">
-                </div>
 
-                <div class="form-group">
-                    <label>Product (Kenya Fuel Specs) *</label>
-                    <select name="product" id="dispatchProductSelect" required onchange="onProductSelected(this)">
-                        <?php foreach ($products as $pr): ?>
-                            <?php 
-                                $rawPrPrice = (float)($pr['unit_price'] ?? 0);
-                                $displayPrPrice = convert_currency($rawPrPrice);
-                            ?>
-                            <option value="<?= htmlspecialchars($pr['code']) ?>" data-price="<?= number_format($displayPrPrice, 2, '.', '') ?>">
-                                <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?> (<?= format_money($rawPrPrice) ?>/L)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Product Unit Price (<?= app_currency_symbol() ?>/L) *</label>
-                    <?php 
-                        $firstPrPrice = !empty($products) ? (float)($products[0]['unit_price'] ?? 0) : 0.08;
-                        $initPrPrice = convert_currency($firstPrPrice);
-                    ?>
-                    <input type="number" step="0.01" name="unit_price" id="dispatchUnitPrice" value="<?= number_format($initPrPrice, 2, '.', '') ?>" placeholder="0.00" required oninput="calcExpectedTransport()">
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Rate per litre billed to customer</span>
-                </div>
-
-                <div class="form-group">
-                    <label>Expected Transport Billed [<?= app_currency_symbol() ?>] (Auto-Calculated) *</label>
-                    <input type="number" step="0.01" name="transport_amount" id="dispTransport" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--brand);cursor:not-allowed;" required>
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= Litres Loaded × Unit Price</span>
-                </div>
-
-                <div class="form-group">
-                    <label>Shortage Litres (If Any)</label>
-                    <input type="number" name="shortage_litres" id="dispatchShortageLitres" placeholder="0" value="0" oninput="calcExpectedTransport()">
-                    <span style="font-size:11.5px;color:var(--red);display:block;margin-top:2px;">Transit shortage deducted from final client payout</span>
-                </div>
-
-                <div class="form-group">
-                    <label>Final Client Payout [<?= app_currency_symbol() ?>] (Auto-Calculated)</label>
-                    <input type="number" step="0.01" name="final_payout" id="dispFinalPayout" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--green);cursor:not-allowed;">
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= (Loaded - Shortage) × Unit Price</span>
-                </div>
-
-                <div class="form-group">
-                    <label>👤 Client / Customer Name *</label>
-                    <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd" required style="width:100%;box-sizing:border-box;">
-                    <datalist id="customersList">
-                        <?php foreach (($customers ?? []) as $cust): ?>
-                            <option value="<?= htmlspecialchars($cust) ?>">
-                        <?php endforeach; ?>
-                    </datalist>
-                    <span style="font-size:11px;color:var(--text-3);display:block;margin-top:2px;">Consignee profile auto-syncs across dispatches</span>
-                </div>
-
-                <div class="form-group">
-                    <label>Assigned Driver *</label>
-                    <select name="driver" id="dispatchDriverSelect" required onchange="onDriverSelected(this.value)">
-                        <option value="">-- Assign Driver to this Trip --</option>
-                        <?php foreach ($drivers as $drv): ?>
-                            <option value="<?= htmlspecialchars($drv['name']) ?>"><?= htmlspecialchars($drv['name']) ?> (<?= htmlspecialchars($drv['status']) ?>)</option>
-                        <?php endforeach; ?>
-                        <option value="__other__">➕ Other Driver (Enter Name)...</option>
-                    </select>
-                </div>
-
-                <div class="form-group" id="otherDriverGroup" style="display:none;grid-column:1/-1;background:var(--card-2);padding:12px 16px;border-radius:10px;border:1.5px dashed var(--brand);">
-                    <label style="color:var(--brand);font-weight:700;">➕ Enter Temporary Driver Name *</label>
-                    <input type="text" name="other_driver_name" id="otherDriverInput" placeholder="e.g. Samuel Kiprono (New/Relief Driver)">
-                    <small style="color:var(--text-3);display:block;margin-top:3px;">You will be prompted to save this driver permanently to your roster after dispatch.</small>
-                </div>
-
-                <div class="form-group">
-                    <label>From (Loading Depot) *</label>
-                    <input type="text" name="from_location" value="Eldoret" required>
-                </div>
-
-                <div class="form-group">
-                    <label>Destination Country / City *</label>
-                    <input list="destPresets" name="destination" placeholder="e.g. Uganda (Kampala), DR Congo (Goma), Kenya (Kisumu)" required>
-                    <datalist id="destPresets">
-                        <option value="Uganda (Kampala)">
-                        <option value="DR Congo (Goma)">
-                        <option value="DR Congo (Lubumbashi)">
-                        <option value="South Sudan (Juba)">
-                        <option value="Sudan (Khartoum / Port Sudan)">
-                        <option value="Rwanda (Kigali)">
-                        <option value="Tanzania (Dar es Salaam)">
-                        <option value="Kenya (Kisumu Depot)">
-                        <option value="Kenya (Eldoret Depot)">
-                        <option value="Kenya (Nairobi Terminal)">
-                        <option value="Kenya (Mombasa Refinery)">
-                        <option value="Kenya (Nakuru)">
-                    </datalist>
-                </div>
-
-                <!-- Trip Expenses: Strictly Mileage and Diesel Fueling (Owner Expense) -->
-                <div class="form-group">
-                    <label>Mileage & En-route Allowance [<?= app_currency_symbol() ?>] *</label>
-                    <input type="number" step="0.01" name="mileage_cost" id="dispMileage" placeholder="0.00" value="0.00" required oninput="calcBalance()">
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Driver trip allowances and road tolls</span>
-                </div>
-
-                <div class="form-group" style="background:rgba(245,158,11,0.06);border:1.5px solid var(--amber);border-radius:10px;padding:12px 14px;grid-column:1/-1;box-sizing:border-box;width:100%;overflow:hidden;">
-                    <div style="font-size:13px;color:var(--amber);font-weight:800;margin-bottom:8px;">
-                        ⛽ Diesel Fueling (Owner's Expense)
+                    <div class="form-group">
+                        <label>Destination Country / City *</label>
+                        <input list="destPresets" name="destination" id="wizardDestination" placeholder="e.g. Uganda (Kampala), DR Congo (Goma)" required>
+                        <datalist id="destPresets">
+                            <option value="Uganda (Kampala)">
+                            <option value="DR Congo (Goma)">
+                            <option value="DR Congo (Lubumbashi)">
+                            <option value="South Sudan (Juba)">
+                            <option value="Sudan (Khartoum / Port Sudan)">
+                            <option value="Rwanda (Kigali)">
+                            <option value="Tanzania (Dar es Salaam)">
+                            <option value="Kenya (Kisumu Depot)">
+                            <option value="Kenya (Eldoret Depot)">
+                            <option value="Kenya (Nairobi Terminal)">
+                        </datalist>
                     </div>
-                    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;box-sizing:border-box;width:100%;">
-                        <div style="min-width:0;">
-                            <label style="font-size:12px;color:var(--text-2);font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Litres *</label>
-                            <input type="number" step="0.01" name="diesel_litres" id="dispDieselLitres" placeholder="e.g. 450" oninput="calcDieselExpense()" style="width:100%;box-sizing:border-box;min-width:0;">
-                        </div>
-                        <div style="min-width:0;">
-                            <label style="font-size:12px;color:var(--text-2);font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Rate (<?= app_currency_symbol() ?>/L) *</label>
-                            <input type="number" step="0.01" name="diesel_unit_price" id="dispDieselUnitPrice" placeholder="e.g. 175.50" oninput="calcDieselExpense()" style="width:100%;box-sizing:border-box;min-width:0;">
-                        </div>
-                        <div style="min-width:0;">
-                            <label style="font-size:12px;color:var(--text-2);font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Total Cost [<?= app_currency_symbol() ?>]</label>
-                            <input type="number" step="0.01" name="diesel" id="dispDiesel" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--amber);cursor:not-allowed;width:100%;box-sizing:border-box;min-width:0;" oninput="calcBalance()">
-                        </div>
+
+                    <div class="form-group">
+                        <label>👤 Client / Consignee Name *</label>
+                        <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd" required style="width:100%;">
                     </div>
-                    <span style="font-size:11px;color:var(--amber);display:block;margin-top:6px;font-weight:600;">
-                        ⛽ Owner expense deducted from profit. Any roadside breakdown or mechanical repairs are managed on the <a href="<?= url('expenses') ?>" target="_blank" style="color:var(--brand);text-decoration:underline;">Expenses</a> page.
-                    </span>
                 </div>
 
-                <div class="form-group" id="commissionGroup" style="display:none;">
-                    <label>Agreed Company Commission [<?= app_currency_symbol() ?>] *</label>
-                    <input type="number" step="0.01" name="agreed_commission" id="dispCommission" placeholder="e.g. 350.00" oninput="calcBalance()">
-                </div>
-
-                <div class="form-group" style="grid-column:1/-1;">
-                    <label>Shortage / Transit Loss Notes</label>
-                    <input type="text" name="shortage_notes" placeholder="e.g. 400 L dipstick discrepancy deducted by depot manager">
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:3px;">Explanation for any cargo volume loss, temperature shrinkage, evaporation, or client payout deductions upon delivery.</span>
+                <div style="margin-top:22px;display:flex;justify-content:space-between;align-items:center;">
+                    <button type="button" class="btn btn-ghost" onclick="goToWizardStep(1)">← Back to Tanker & Crew</button>
+                    <button type="button" class="btn btn-brand" onclick="goToWizardStep(3)">Next: Route & Fuel →</button>
                 </div>
             </div>
 
-            <!-- Real-time Balance / Payout & Shortage Loss Preview Card -->
-            <div style="margin-top:18px;padding:16px 20px;background:var(--card-2);border:1.5px solid var(--border);border-radius:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                    <div>
-                        <div id="balanceLabel" style="font-size:12px;color:var(--text-3);font-weight:800;text-transform:uppercase;">Estimated Net Yield</div>
-                        <div id="payoutDiffNotice" style="font-size:13px;color:var(--text-2);margin-top:2px;">Full Payout • 0 Litres Loss</div>
+            <!-- STEP 3: Route Allowances & Diesel Fueling -->
+            <div class="wizard-step-panel" id="wizardStep3" style="display:none;">
+                <div style="background:var(--card-2);border-left:3px solid var(--amber);padding:10px 14px;border-radius:8px;margin-bottom:16px;">
+                    <b style="font-size:13.5px;color:var(--text);">Step 3: Route Allowances & Diesel Fueling (Owner Expense)</b>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Driver en-route mileage allowance and departure diesel with multi-currency conversion.</div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label>Driver Mileage & En-route Allowance [<?= app_currency_symbol() ?>] *</label>
+                        <input type="number" step="0.01" name="mileage_cost" id="dispMileage" placeholder="0.00" value="0.00" required oninput="calcBalance()">
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Road transit allowances, driver per diem, and border toll fees</span>
                     </div>
-                    <div id="liveBalanceDisplay" style="font-size:26px;font-weight:900;color:var(--green);">
-                        <?= app_currency_symbol() ?> 0.00
+
+                    <!-- Departure Diesel Fueling Card -->
+                    <div style="grid-column:1/-1;background:rgba(245,158,11,0.06);border:1.5px solid var(--amber);border-radius:12px;padding:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:18px;">⛽</span>
+                                <b style="font-size:14px;color:var(--amber);">Departure Diesel Fueling (Owner's Expense)</b>
+                            </div>
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;">
+                                <input type="checkbox" id="wizardEnableDepartureDiesel" checked onchange="toggleWizardDepartureDiesel(this.checked)">
+                                <span>Record departure top-up now</span>
+                            </label>
+                        </div>
+
+                        <div id="wizardDepartureFuelInputs">
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:12px;">
+                                <div>
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Refueling Country & Currency</label>
+                                    <select id="wzDieselCountry" onchange="onWizardDieselCountryChange()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;">
+                                        <option value="KES" data-rate="<?= exchange_rate() ?>" data-country="Kenya" selected>🇰🇪 Kenya (KES)</option>
+                                        <option value="UGX" data-rate="3750" data-country="Uganda">🇺🇬 Uganda (UGX)</option>
+                                        <option value="USD" data-rate="1.0" data-country="DR Congo">🇨🇩 DR Congo (USD)</option>
+                                        <option value="CDF" data-rate="2850" data-country="DR Congo">🇨🇩 DR Congo (CDF)</option>
+                                        <option value="SSP" data-rate="1300" data-country="South Sudan">🇸🇸 South Sudan (SSP)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Departure Station / Location</label>
+                                    <input type="text" name="diesel_station" id="wzDieselStation" value="Eldoret KPC Depot Shell" placeholder="e.g. Shell Eldoret" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;">
+                                </div>
+                                <div>
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Litres Pumped *</label>
+                                    <input type="number" step="0.01" id="wzDieselLitres" placeholder="e.g. 400" value="400" oninput="calcWizardDiesel()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                                </div>
+                                <div>
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Local Price / Litre *</label>
+                                    <input type="number" step="0.01" id="wzDieselLocalPrice" placeholder="e.g. 180.00" value="180.00" oninput="calcWizardDiesel()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                                </div>
+                                <div>
+                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Exchange Rate (per $1 USD)</label>
+                                    <input type="number" step="0.0001" id="wzDieselExRate" value="<?= exchange_rate() ?>" oninput="calcWizardDiesel()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                                </div>
+                            </div>
+
+                            <!-- Live Multi-Currency Conversion Card -->
+                            <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                                <div>
+                                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Calculated Diesel Cost:</div>
+                                    <div style="font-size:13px;color:var(--text-2);margin-top:2px;">
+                                        Local: <b id="wzDieselLocalTotalDisplay" style="color:var(--text);">KES 72,000.00</b> • Base USD: <b id="wzDieselUsdDisplay" style="color:var(--brand);">$ 553.85</b>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style="font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;text-align:right;">Trip Deduction (<?= app_currency_symbol() ?>):</div>
+                                    <div id="wzDieselSysDisplay" style="font-size:18px;font-weight:900;color:var(--amber);text-align:right;">
+                                        <?= app_currency_symbol() ?> 72,000.00
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="wizardDepartureFuelDisabledNotice" style="display:none;padding:10px;text-align:center;color:var(--text-3);font-size:12.5px;">
+                            ℹ️ Departure fueling skipped. You can record en-route fuel stops anytime using the <b>⛽ Log Diesel</b> button next to New Dispatch.
+                        </div>
+
+                        <!-- Hidden Inputs synced for database -->
+                        <input type="hidden" name="diesel_litres" id="dispDieselLitres" value="400">
+                        <input type="hidden" name="diesel_unit_price" id="dispDieselUnitPrice" value="180">
+                        <input type="hidden" name="diesel" id="dispDiesel" value="72000">
+                        <input type="hidden" name="diesel_country" id="wzDieselCountryHidden" value="Kenya">
+                        <input type="hidden" name="diesel_currency" id="wzDieselCurrencyHidden" value="KES">
+                        <input type="hidden" name="diesel_exchange_rate" id="wzDieselExRateHidden" value="<?= exchange_rate() ?>">
+                        <input type="hidden" name="diesel_local_unit_price" id="wzDieselLocalPriceHidden" value="180">
                     </div>
+
+                    <div class="form-group" id="commissionGroup" style="display:none;grid-column:1/-1;">
+                        <label>Agreed Company Commission [<?= app_currency_symbol() ?>] *</label>
+                        <input type="number" step="0.01" name="agreed_commission" id="dispCommission" placeholder="e.g. 350.00" oninput="calcBalance()">
+                    </div>
+                </div>
+
+                <div style="margin-top:22px;display:flex;justify-content:space-between;align-items:center;">
+                    <button type="button" class="btn btn-ghost" onclick="goToWizardStep(2)">← Back to Cargo & Consignee</button>
+                    <button type="button" class="btn btn-brand" onclick="goToWizardStep(4)">Next: Review & Launch →</button>
                 </div>
             </div>
 
-            <div style="margin-top:22px;display:flex;justify-content:flex-end;gap:12px;">
-                <button type="button" class="btn btn-ghost" onclick="document.getElementById('dispatchModal').classList.remove('active')">Cancel</button>
-                <button type="submit" class="btn btn-brand">Create Dispatch Record</button>
+            <!-- STEP 4: Review, Financial Yield & Launch Dispatch -->
+            <div class="wizard-step-panel" id="wizardStep4" style="display:none;">
+                <div style="background:var(--card-2);border-left:3px solid var(--green);padding:10px 14px;border-radius:8px;margin-bottom:16px;">
+                    <b style="font-size:13.5px;color:var(--text);">Step 4: Final Trip Review & Launch Confirmation</b>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Review trip assignment, billed revenue vs owner expenses, and launch the dispatch record.</div>
+                </div>
+
+                <!-- Executive Briefing Card -->
+                <div style="background:var(--card-2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+                        <div>
+                            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Trip & Vehicle</div>
+                            <div id="wzRevTripTruck" style="font-weight:800;font-size:14px;color:var(--text);margin-top:2px;">—</div>
+                            <div id="wzRevDriver" style="font-size:12px;color:var(--text-2);margin-top:1px;">—</div>
+                        </div>
+                        <div>
+                            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Route & Consignee</div>
+                            <div id="wzRevRoute" style="font-weight:800;font-size:14px;color:var(--brand);margin-top:2px;">—</div>
+                            <div id="wzRevClient" style="font-size:12px;color:var(--text-2);margin-top:1px;">—</div>
+                        </div>
+                        <div>
+                            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Fuel Cargo Volume</div>
+                            <div id="wzRevCargo" style="font-weight:800;font-size:14px;color:var(--text);margin-top:2px;">—</div>
+                            <div id="wzRevDate" style="font-size:12px;color:var(--text-3);margin-top:1px;">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Financial Yield Audit Grid -->
+                <div style="background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;">
+                    <div style="font-size:11.5px;font-weight:800;color:var(--text-3);text-transform:uppercase;margin-bottom:10px;">Financial Yield Breakdown</div>
+                    
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;">
+                        <span style="color:var(--text-2);">Expected Transport Billed (Gross Revenue):</span>
+                        <b id="wzRevRevenue" style="color:var(--green);">—</b>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;border-top:1px dashed var(--border);">
+                        <span style="color:var(--text-2);">Driver Mileage Allowance:</span>
+                        <b id="wzRevMileage" style="color:var(--amber);">—</b>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;border-top:1px dashed var(--border);">
+                        <span style="color:var(--text-2);">⛽ Diesel Fuel (Owner Expense):</span>
+                        <b id="wzRevDiesel" style="color:var(--amber);">—</b>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0 4px;border-top:2px solid var(--border);margin-top:6px;">
+                        <div>
+                            <b style="font-size:14px;color:var(--text);" id="wzRevYieldLabel">Estimated Net Balance (Profit / Commission):</b>
+                            <div style="font-size:11.5px;color:var(--text-3);">Revenue - (Diesel + Mileage)</div>
+                        </div>
+                        <div id="wzRevBalance" style="font-size:24px;font-weight:900;color:var(--green);">
+                            —
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Security Seal Numbers (Optional)</label>
+                        <input type="text" name="seal_numbers" placeholder="e.g. KPC-89211, KPC-89212">
+                    </div>
+                    <div class="form-group">
+                        <label>Trip Instructions / Notes (Optional)</label>
+                        <input type="text" name="shortage_notes" placeholder="e.g. Escort required at Malaba customs">
+                    </div>
+                </div>
+
+                <div style="margin-top:16px;padding:12px 14px;background:var(--brand-soft);border:1px solid var(--brand);border-radius:10px;font-size:12.5px;color:var(--text);">
+                    ℹ️ <b>Ready to Dispatch:</b> Clicking <b>"🚀 Launch & Create Dispatch"</b> will register this trip into Fleet Management, generate electronic BOL documents, and update the Trips Board.
+                </div>
+
+                <div style="margin-top:22px;display:flex;justify-content:space-between;align-items:center;">
+                    <button type="button" class="btn btn-ghost" onclick="goToWizardStep(3)">← Back to Route & Fuel</button>
+                    <button type="submit" class="btn btn-brand" style="font-size:15px;padding:10px 24px;box-shadow:0 4px 16px rgba(79,70,229,0.4);">
+                        🚀 Launch & Create Dispatch
+                    </button>
+                </div>
             </div>
         </form>
     </div>
 </div>
+
+<!-- Dedicated Cross-Border Diesel Fueling Modal -->
+<div class="modal-backdrop" id="dieselLogModal" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="modal-card" style="max-width:680px;">
+        <div class="modal-head">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:24px;background:var(--amber-soft);padding:6px;border-radius:10px;">⛽</span>
+                <div>
+                    <h2 style="margin:0;font-size:19px;">Log Cross-Border Diesel Fueling</h2>
+                    <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">Kenya, Uganda & DR Congo en-route fuel stops (Owner Expense)</div>
+                </div>
+            </div>
+            <button type="button" class="close-modal" onclick="document.getElementById('dieselLogModal').classList.remove('active')">✕</button>
+        </div>
+
+        <form id="dieselLogForm" onsubmit="return handleDieselLogSubmit(event)">
+            <?= csrf_field() ?>
+            <div class="form-grid">
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label>Select Dispatch Trip *</label>
+                    <select name="dispatch_id" id="dlmDispatchSelect" required onchange="onDlmDispatchChanged(this.value)">
+                        <option value="">-- Choose Active Dispatch --</option>
+                        <?php foreach ($dispatches as $disp): ?>
+                            <option value="<?= $disp['id'] ?>" 
+                                data-trip="<?= htmlspecialchars($disp['trip_number']) ?>"
+                                data-truck="<?= htmlspecialchars($disp['truck']) ?>"
+                                data-destination="<?= htmlspecialchars($disp['destination']) ?>"
+                                data-driver="<?= htmlspecialchars($disp['driver']) ?>"
+                                data-diesel="<?= (float)$disp['diesel'] ?>">
+                                <?= htmlspecialchars($disp['trip_number']) ?> • <?= htmlspecialchars($disp['truck']) ?> (<?= htmlspecialchars($disp['destination']) ?>) — <?= htmlspecialchars($disp['driver']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Date of Fueling *</label>
+                    <input type="date" name="fuel_date" id="dlmFuelDate" value="<?= date('Y-m-d') ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Refuel Country & Currency *</label>
+                    <select name="currency_code" id="dlmCountrySelect" required onchange="onDlmCountryChange()">
+                        <option value="UGX" data-rate="3750" data-country="Uganda">🇺🇬 Uganda (UGX Shillings)</option>
+                        <option value="KES" data-rate="<?= exchange_rate() ?>" data-country="Kenya" <?= current_currency() === 'KES' ? 'selected' : '' ?>>🇰🇪 Kenya (KES Shillings)</option>
+                        <option value="USD" data-rate="1.0" data-country="DR Congo">🇨🇩 DR Congo (USD Dollars)</option>
+                        <option value="CDF" data-rate="2850" data-country="DR Congo">🇨🇩 DR Congo (CDF Francs)</option>
+                        <option value="SSP" data-rate="1300" data-country="South Sudan">🇸🇸 South Sudan (SSP Pounds)</option>
+                        <option value="TZS" data-rate="2600" data-country="Tanzania">🇹🇿 Tanzania (TZS Shillings)</option>
+                    </select>
+                    <input type="hidden" name="country" id="dlmCountryName" value="Uganda">
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label>Fuel Station / Road Location *</label>
+                    <input type="text" name="station_location" id="dlmStationLocation" placeholder="e.g. Total Malaba Border, Shell Jinja Road, Goma Depot Station" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Litres Pumped *</label>
+                    <input type="number" step="0.01" name="litres" id="dlmLitres" placeholder="e.g. 350" required oninput="calcDlmDiesel()">
+                </div>
+
+                <div class="form-group">
+                    <label>Local Pump Price / Litre *</label>
+                    <input type="number" step="0.01" name="local_unit_price" id="dlmLocalPrice" placeholder="Local price per litre" required oninput="calcDlmDiesel()">
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <label>Exchange Rate (Local units per $1 USD) *</label>
+                        <button type="button" onclick="resetDlmRate()" style="background:transparent;border:0;color:var(--brand);font-size:11.5px;font-weight:700;cursor:pointer;">Reset Default Rate</button>
+                    </div>
+                    <input type="number" step="0.0001" name="exchange_rate" id="dlmExchangeRate" value="3750" required oninput="calcDlmDiesel()">
+                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Freely editable to match the exact bureau exchange rate or bank card conversion.</span>
+                </div>
+
+                <!-- Live Auto-Calculation Box -->
+                <div style="grid-column:1/-1;background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:14px;">
+                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Financial Conversion</div>
+                    
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;margin-top:8px;">
+                        <div>
+                            <span style="font-size:12px;color:var(--text-2);">Local Pump Total:</span>
+                            <div id="dlmLocalTotalDisplay" style="font-size:16px;font-weight:800;color:var(--text);margin-top:2px;">UGX 0.00</div>
+                        </div>
+                        <div>
+                            <span style="font-size:12px;color:var(--text-2);">Standard USD Base:</span>
+                            <div id="dlmUsdDisplay" style="font-size:16px;font-weight:800;color:var(--brand);margin-top:2px;">$ 0.00</div>
+                        </div>
+                        <div>
+                            <span style="font-size:12px;color:var(--text-2);">Active Display (<?= current_currency() ?>):</span>
+                            <div id="dlmSysDisplay" style="font-size:16px;font-weight:900;color:var(--green);margin-top:2px;"><?= app_currency_symbol() ?> 0.00</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Receipt Status *</label>
+                    <select name="receipt_status" id="dlmReceiptStatus" required>
+                        <option value="Received" selected>🧾 Received (Receipt in hand / verified)</option>
+                        <option value="Pending">⏳ Pending (Awaiting receipt from driver)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Receipt / Voucher Number</label>
+                    <input type="text" name="receipt_number" id="dlmReceiptNumber" placeholder="e.g. REC-98231">
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label>Notes (Optional)</label>
+                    <input type="text" name="notes" id="dlmNotes" placeholder="e.g. Pre-customs tank fill before border crossing">
+                </div>
+            </div>
+
+            <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:12px;">
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('dieselLogModal').classList.remove('active')">Cancel</button>
+                <button type="submit" id="dlmSubmitBtn" class="btn btn-amber" style="background:var(--amber);color:#fff;font-weight:800;">
+                    ⛽ Record Fuel Stop
+                </button>
+            </div>
+        </form>
+
+        <!-- Existing Trip Fuel Stops History Table -->
+        <div id="dlmHistorySection" style="margin-top:24px;border-top:1.5px solid var(--border);padding-top:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <b style="font-size:13.5px;color:var(--text);">📍 Recorded Fuel Stops for this Trip</b>
+                <span id="dlmHistorySummary" style="font-size:12px;color:var(--amber);font-weight:700;">0 stops • Total: $0.00</span>
+            </div>
+            
+            <div class="table-responsive" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+                <table style="width:100%;font-size:12.5px;margin:0;">
+                    <thead>
+                        <tr>
+                            <th style="padding:8px 10px;">Date</th>
+                            <th style="padding:8px 10px;">Country & Station</th>
+                            <th style="padding:8px 10px;">Litres</th>
+                            <th style="padding:8px 10px;">Local Cost</th>
+                            <th style="padding:8px 10px;">USD Base</th>
+                            <th style="padding:8px 10px;text-align:center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dlmHistoryTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align:center;padding:20px;color:var(--text-3);">
+                                Select a dispatch trip above to view its recorded fuel stops.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <!-- Import CSV Modal -->
 <div class="modal-backdrop" id="importModal" onclick="if(event.target===this)this.classList.remove('active')">
@@ -1109,9 +1489,20 @@
                     <!-- Operational Costs (Deductions) Side -->
                     <div style="display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
                         <div style="font-size:11px;font-weight:800;color:var(--red);text-transform:uppercase;">Owner Expenses (Deductions)</div>
-                        <div style="display:flex;justify-content:space-between;font-size:13.5px;">
-                            <span style="color:var(--amber);font-weight:700;">⛽ Diesel Fuel (Owner Paid):</span>
+                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13.5px;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="color:var(--amber);font-weight:700;">⛽ Diesel Fuel:</span>
+                                <button type="button" class="btn btn-ghost btn-xs" id="vdmAddFuelStopBtn" style="padding:2px 7px;font-size:11px;color:var(--amber);border:1px solid var(--amber);" title="View or Add Cross-Border Fuel Stops">⛽ Log Stops</button>
+                            </div>
                             <b id="vdmDiesel" style="color:var(--amber);">—</b>
+                        </div>
+                        <!-- Corridor Fuel Stops Container -->
+                        <div id="vdmFuelStopsBox" style="display:none;background:var(--card-2);border:1px dashed var(--amber);border-radius:8px;padding:8px 10px;margin:4px 0;">
+                            <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:var(--amber);margin-bottom:4px;">
+                                <span>Refueling Stops Along Corridor</span>
+                                <span id="vdmFuelStopsCount">0 stops</span>
+                            </div>
+                            <div id="vdmFuelStopsList" style="display:flex;flex-direction:column;gap:4px;font-size:12px;"></div>
                         </div>
                         <div style="display:flex;justify-content:space-between;font-size:13.5px;">
                             <span style="color:var(--text-2);">Mileage / Allowances:</span>
@@ -1171,6 +1562,648 @@ const CSRF_TOKEN = '<?= csrf_token() ?>';
 const CURRENCY_SYM = '<?= app_currency_symbol() ?>';
 const DRIVER_OPTIONS = <?= json_encode(array_column($drivers, 'name')) ?>;
 window.FLEET_ROWS_MAP = <?= json_encode($fleetDetailsMap ?? []) ?>;
+
+const IS_KES = ('<?= current_currency() ?>' === 'KES');
+const SYS_EX_RATE = <?= exchange_rate() ?>;
+
+function toSystemCurrency(baseUsd) {
+    return IS_KES ? (Number(baseUsd || 0) * SYS_EX_RATE) : Number(baseUsd || 0);
+}
+
+function formatSystemMoney(val) {
+    return CURRENCY_SYM + ' ' + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* =========================================================================
+   PROCEDURAL DISPATCH WIZARD (STEPS 1 -> 4)
+   ========================================================================= */
+let currentWizardStep = 1;
+
+window.openProceduralDispatchModal = function() {
+    currentWizardStep = 1;
+    const form = document.getElementById('dispatchWizardForm');
+    if (form) form.reset();
+
+    // Reset default dates and numbers
+    const dDate = document.getElementById('wizardDispatchDate');
+    if (dDate) dDate.value = '<?= date('Y-m-d') ?>';
+    const fromLoc = document.getElementById('wizardFromLocation');
+    if (fromLoc) fromLoc.value = 'Eldoret';
+
+    // Reset departure fuel
+    const fuelChk = document.getElementById('wizardEnableDepartureDiesel');
+    if (fuelChk) {
+        fuelChk.checked = true;
+        toggleWizardDepartureDiesel(true);
+    }
+    const stEl = document.getElementById('wzDieselStation');
+    if (stEl) stEl.value = 'Eldoret KPC Depot Shell';
+    const litEl = document.getElementById('wzDieselLitres');
+    if (litEl) litEl.value = '400';
+    const prEl = document.getElementById('wzDieselLocalPrice');
+    if (prEl) prEl.value = '180.00';
+    const exEl = document.getElementById('wzDieselExRate');
+    if (exEl) exEl.value = '<?= exchange_rate() ?>';
+
+    calcWizardDiesel();
+    updateWizardUI();
+    document.getElementById('dispatchModal').classList.add('active');
+};
+
+window.goToWizardStep = function(targetStep) {
+    if (targetStep > currentWizardStep) {
+        for (let s = currentWizardStep; s < targetStep; s++) {
+            if (!validateWizardStep(s)) return;
+        }
+    }
+    currentWizardStep = targetStep;
+    updateWizardUI();
+    if (currentWizardStep === 4) {
+        renderWizardReview();
+    }
+};
+
+function updateWizardUI() {
+    for (let i = 1; i <= 4; i++) {
+        const panel = document.getElementById('wizardStep' + i);
+        if (panel) panel.style.display = (i === currentWizardStep) ? 'block' : 'none';
+
+        const pill = document.getElementById('stepPill' + i);
+        if (pill) {
+            pill.classList.remove('active', 'completed');
+            if (i === currentWizardStep) {
+                pill.classList.add('active');
+            } else if (i < currentWizardStep) {
+                pill.classList.add('completed');
+            }
+        }
+    }
+}
+
+function validateWizardStep(step) {
+    if (step === 1) {
+        const date = document.getElementById('wizardDispatchDate');
+        if (!date || !date.value) {
+            alert('Please specify the Date of Loading (DOL).');
+            date?.focus();
+            return false;
+        }
+        const truck = document.getElementById('dispatchTruckSelect');
+        if (!truck || !truck.value) {
+            alert('Please select an assigned Tanker Truck.');
+            truck?.focus();
+            return false;
+        }
+        const cap = document.getElementById('dispatchTruckCapacity');
+        if (!cap || Number(cap.value) <= 0) {
+            alert('Please enter a valid Truck Tanker Capacity in litres.');
+            cap?.focus();
+            return false;
+        }
+        const origin = document.getElementById('wizardFromLocation');
+        if (!origin || !origin.value.trim()) {
+            alert('Please specify the Loading Depot / Origin.');
+            origin?.focus();
+            return false;
+        }
+        const driver = document.getElementById('dispatchDriverSelect');
+        if (!driver || !driver.value) {
+            alert('Please assign a Driver to this trip.');
+            driver?.focus();
+            return false;
+        }
+        if (driver.value === '__other__') {
+            const otherDrv = document.getElementById('otherDriverInput');
+            if (!otherDrv || !otherDrv.value.trim()) {
+                alert('Please enter the temporary driver name.');
+                otherDrv?.focus();
+                return false;
+            }
+        }
+    } else if (step === 2) {
+        const pr = document.getElementById('dispatchProductSelect');
+        if (!pr || !pr.value) {
+            alert('Please choose a cargo product.');
+            pr?.focus();
+            return false;
+        }
+        const unitPrice = document.getElementById('dispatchUnitPrice');
+        if (!unitPrice || Number(unitPrice.value) <= 0) {
+            alert('Please specify the Product Unit Price billed to customer per litre.');
+            unitPrice?.focus();
+            return false;
+        }
+        const loaded = document.getElementById('dispatchLoadedLitres');
+        if (!loaded || Number(loaded.value) <= 0) {
+            alert('Please enter actual Loaded Litres (DOL volume).');
+            loaded?.focus();
+            return false;
+        }
+        const dest = document.getElementById('wizardDestination');
+        if (!dest || !dest.value.trim()) {
+            alert('Please specify Destination Country / City.');
+            dest?.focus();
+            return false;
+        }
+        const client = document.getElementById('dispatchClientName');
+        if (!client || !client.value.trim()) {
+            alert('Please enter the Client / Consignee name.');
+            client?.focus();
+            return false;
+        }
+    } else if (step === 3) {
+        const mileage = document.getElementById('dispMileage');
+        if (!mileage || isNaN(parseFloat(mileage.value))) {
+            alert('Please enter driver mileage & en-route allowance (0.00 if none).');
+            mileage?.focus();
+            return false;
+        }
+        const fuelEnabled = document.getElementById('wizardEnableDepartureDiesel')?.checked;
+        if (fuelEnabled) {
+            const litres = parseFloat(document.getElementById('wzDieselLitres')?.value) || 0;
+            const price = parseFloat(document.getElementById('wzDieselLocalPrice')?.value) || 0;
+            const exRate = parseFloat(document.getElementById('wzDieselExRate')?.value) || 0;
+            if (litres <= 0) {
+                alert('Please enter departure diesel litres pumped (or uncheck departure diesel).');
+                document.getElementById('wzDieselLitres')?.focus();
+                return false;
+            }
+            if (price <= 0) {
+                alert('Please enter the local diesel pump price per litre.');
+                document.getElementById('wzDieselLocalPrice')?.focus();
+                return false;
+            }
+            if (exRate <= 0) {
+                alert('Please enter a valid exchange rate for multi-currency conversion.');
+                document.getElementById('wzDieselExRate')?.focus();
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+window.toggleWizardDepartureDiesel = function(enabled) {
+    const fields = document.getElementById('wizardDepartureFuelInputs');
+    const notice = document.getElementById('wizardDepartureFuelDisabledNotice');
+    if (fields) fields.style.display = enabled ? 'block' : 'none';
+    if (notice) notice.style.display = enabled ? 'none' : 'block';
+
+    if (enabled) {
+        calcWizardDiesel();
+    } else {
+        const dispLit = document.getElementById('dispDieselLitres');
+        const dispUp = document.getElementById('dispDieselUnitPrice');
+        const dispD = document.getElementById('dispDiesel');
+        if (dispLit) dispLit.value = '0';
+        if (dispUp) dispUp.value = '0.00';
+        if (dispD) dispD.value = '0.00';
+
+        const locEl = document.getElementById('wzDieselLocalTotalDisplay');
+        const usdEl = document.getElementById('wzDieselUsdDisplay');
+        const sysEl = document.getElementById('wzDieselSysDisplay');
+        if (locEl) locEl.textContent = 'None';
+        if (usdEl) usdEl.textContent = '$ 0.00';
+        if (sysEl) sysEl.textContent = formatSystemMoney(0);
+
+        calcBalance();
+    }
+};
+
+window.onWizardDieselCountryChange = function() {
+    const sel = document.getElementById('wzDieselCountry');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const rate = opt.dataset.rate || '1.0';
+    const country = opt.dataset.country || 'Kenya';
+    const currency = opt.value;
+
+    const exInput = document.getElementById('wzDieselExRate');
+    if (exInput) exInput.value = rate;
+
+    const cHidden = document.getElementById('wzDieselCountryHidden');
+    if (cHidden) cHidden.value = country;
+    const curHidden = document.getElementById('wzDieselCurrencyHidden');
+    if (curHidden) curHidden.value = currency;
+    const rHidden = document.getElementById('wzDieselExRateHidden');
+    if (rHidden) rHidden.value = rate;
+
+    calcWizardDiesel();
+};
+
+window.calcWizardDiesel = function() {
+    const fuelEnabled = document.getElementById('wizardEnableDepartureDiesel')?.checked;
+    if (!fuelEnabled) return;
+
+    const litres = parseFloat(document.getElementById('wzDieselLitres')?.value) || 0;
+    const localPrice = parseFloat(document.getElementById('wzDieselLocalPrice')?.value) || 0;
+    const exRate = parseFloat(document.getElementById('wzDieselExRate')?.value) || 1;
+    const currCode = document.getElementById('wzDieselCountry')?.value || 'KES';
+
+    const localTotal = litres * localPrice;
+    const usdCost = exRate > 0 ? (localTotal / exRate) : 0;
+    const sysCost = toSystemCurrency(usdCost);
+    const unitPriceSys = litres > 0 ? (sysCost / litres) : 0;
+
+    const locEl = document.getElementById('wzDieselLocalTotalDisplay');
+    const usdEl = document.getElementById('wzDieselUsdDisplay');
+    const sysEl = document.getElementById('wzDieselSysDisplay');
+    if (locEl) locEl.textContent = currCode + ' ' + localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (usdEl) usdEl.textContent = '$ ' + usdCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (sysEl) sysEl.textContent = formatSystemMoney(sysCost);
+
+    const dispLit = document.getElementById('dispDieselLitres');
+    const dispUp = document.getElementById('dispDieselUnitPrice');
+    const dispD = document.getElementById('dispDiesel');
+    const rHidden = document.getElementById('wzDieselExRateHidden');
+    const lpHidden = document.getElementById('wzDieselLocalPriceHidden');
+
+    if (dispLit) dispLit.value = litres;
+    if (dispUp) dispUp.value = unitPriceSys.toFixed(2);
+    if (dispD) dispD.value = sysCost.toFixed(2);
+    if (rHidden) rHidden.value = exRate;
+    if (lpHidden) lpHidden.value = localPrice;
+
+    calcBalance();
+};
+
+function renderWizardReview() {
+    const tripNum = document.getElementById('wizardTripNumber')?.value || 'Auto Ref';
+    const truck = document.getElementById('dispatchTruckSelect')?.value || '—';
+    const driverVal = document.getElementById('dispatchDriverSelect')?.value || '—';
+    const otherDrv = document.getElementById('otherDriverInput')?.value;
+    const finalDriver = driverVal === '__other__' ? (otherDrv || 'Temporary Driver') : driverVal;
+
+    const fromLoc = document.getElementById('wizardFromLocation')?.value || 'Eldoret';
+    const dest = document.getElementById('wizardDestination')?.value || '—';
+    const client = document.getElementById('dispatchClientName')?.value || '—';
+
+    const product = document.getElementById('dispatchProductSelect')?.value || '—';
+    const loaded = Number(document.getElementById('dispatchLoadedLitres')?.value || 0);
+    const date = document.getElementById('wizardDispatchDate')?.value || '—';
+
+    const revTripTruck = document.getElementById('wzRevTripTruck');
+    if (revTripTruck) revTripTruck.textContent = tripNum + ' • ' + truck;
+    const revDriver = document.getElementById('wzRevDriver');
+    if (revDriver) revDriver.textContent = 'Driver: ' + finalDriver;
+
+    const revRoute = document.getElementById('wzRevRoute');
+    if (revRoute) revRoute.textContent = fromLoc + ' ➔ ' + dest;
+    const revClient = document.getElementById('wzRevClient');
+    if (revClient) revClient.textContent = 'Consignee: ' + client;
+
+    const revCargo = document.getElementById('wzRevCargo');
+    if (revCargo) revCargo.textContent = product + ' • ' + loaded.toLocaleString() + ' L';
+    const revDate = document.getElementById('wzRevDate');
+    if (revDate) revDate.textContent = 'Loading: ' + date;
+
+    // Financial calculations
+    const transportAmt = parseFloat(document.getElementById('dispTransport')?.value) || 0;
+    const mileageAmt = parseFloat(document.getElementById('dispMileage')?.value) || 0;
+    const dieselAmt = parseFloat(document.getElementById('dispDiesel')?.value) || 0;
+    const commAmt = parseFloat(document.getElementById('dispCommission')?.value) || 0;
+
+    const revRevenue = document.getElementById('wzRevRevenue');
+    if (revRevenue) revRevenue.textContent = formatSystemMoney(transportAmt);
+    const revMileage = document.getElementById('wzRevMileage');
+    if (revMileage) revMileage.textContent = '- ' + formatSystemMoney(mileageAmt);
+    const revDiesel = document.getElementById('wzRevDiesel');
+    if (revDiesel) revDiesel.textContent = '- ' + formatSystemMoney(dieselAmt);
+
+    const yieldLabel = document.getElementById('wzRevYieldLabel');
+    const revBalance = document.getElementById('wzRevBalance');
+
+    let bal = 0;
+    if (isSubcontractedTruck) {
+        bal = commAmt;
+        if (yieldLabel) yieldLabel.textContent = 'Contract Tanker Commission:';
+    } else {
+        bal = transportAmt - (mileageAmt + dieselAmt);
+        if (yieldLabel) yieldLabel.textContent = 'Estimated Net Yield (Company Profit):';
+    }
+
+    if (revBalance) {
+        revBalance.textContent = formatSystemMoney(bal);
+        revBalance.style.color = (bal >= 0) ? 'var(--green)' : 'var(--red)';
+    }
+}
+
+window.onWizardFormSubmit = function(e) {
+    for (let s = 1; s <= 3; s++) {
+        if (!validateWizardStep(s)) {
+            if (e) e.preventDefault();
+            goToWizardStep(s);
+            return false;
+        }
+    }
+    return true;
+};
+
+/* =========================================================================
+   DEDICATED CROSS-BORDER DIESEL FUELING MODAL & HISTORY
+   ========================================================================= */
+window.openDieselLogModal = function(dispatchId = null) {
+    const sel = document.getElementById('dlmDispatchSelect');
+    if (!sel) return;
+
+    const dDate = document.getElementById('dlmFuelDate');
+    if (dDate) dDate.value = '<?= date('Y-m-d') ?>';
+
+    if (dispatchId) {
+        sel.value = dispatchId;
+        onDlmDispatchChanged(dispatchId);
+    } else if (sel.value) {
+        onDlmDispatchChanged(sel.value);
+    } else if (sel.options.length > 1) {
+        sel.selectedIndex = 1;
+        onDlmDispatchChanged(sel.value);
+    }
+
+    onDlmCountryChange();
+    document.getElementById('dieselLogModal').classList.add('active');
+};
+
+window.onDlmDispatchChanged = function(dispatchId) {
+    if (dispatchId) {
+        loadDispatchFuelHistory(dispatchId);
+    } else {
+        const body = document.getElementById('dlmHistoryTableBody');
+        if (body) {
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-3);">Select a dispatch trip above to view its recorded fuel stops.</td></tr>';
+        }
+        const summ = document.getElementById('dlmHistorySummary');
+        if (summ) summ.textContent = '0 stops • Total: $0.00';
+    }
+};
+
+window.onDlmCountryChange = function() {
+    const sel = document.getElementById('dlmCountrySelect');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const rate = opt.dataset.rate || '1.0';
+    const country = opt.dataset.country || 'Uganda';
+
+    const cName = document.getElementById('dlmCountryName');
+    if (cName) cName.value = country;
+    const exRate = document.getElementById('dlmExchangeRate');
+    if (exRate) exRate.value = rate;
+
+    calcDlmDiesel();
+};
+
+window.resetDlmRate = function() {
+    const sel = document.getElementById('dlmCountrySelect');
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const rate = opt.dataset.rate || '1.0';
+    const exRate = document.getElementById('dlmExchangeRate');
+    if (exRate) exRate.value = rate;
+    calcDlmDiesel();
+};
+
+window.calcDlmDiesel = function() {
+    const litres = parseFloat(document.getElementById('dlmLitres')?.value) || 0;
+    const localPrice = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
+    const exRate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || 1;
+    const currCode = document.getElementById('dlmCountrySelect')?.value || 'UGX';
+
+    const localTotal = litres * localPrice;
+    const usdCost = exRate > 0 ? (localTotal / exRate) : 0;
+    const sysCost = toSystemCurrency(usdCost);
+
+    const locEl = document.getElementById('dlmLocalTotalDisplay');
+    const usdEl = document.getElementById('dlmUsdDisplay');
+    const sysEl = document.getElementById('dlmSysDisplay');
+
+    if (locEl) locEl.textContent = currCode + ' ' + localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (usdEl) usdEl.textContent = '$ ' + usdCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (sysEl) sysEl.textContent = formatSystemMoney(sysCost);
+};
+
+window.handleDieselLogSubmit = async function(e) {
+    if (e) e.preventDefault();
+    const form = document.getElementById('dieselLogForm');
+    const dispatchId = document.getElementById('dlmDispatchSelect')?.value;
+    if (!dispatchId) {
+        alert('Please select the dispatch trip for this refueling.');
+        return false;
+    }
+    const litres = parseFloat(document.getElementById('dlmLitres')?.value) || 0;
+    if (litres <= 0) {
+        alert('Please enter a valid volume of litres pumped.');
+        return false;
+    }
+    const price = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
+    if (price <= 0) {
+        alert('Please enter the local price per litre.');
+        return false;
+    }
+
+    const btn = document.getElementById('dlmSubmitBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving Fuel Stop...';
+    }
+
+    try {
+        const formData = new FormData(form);
+        const res = await fetch('<?= url("fleet/diesel/store") ?>', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        });
+        const json = await res.json();
+        if (json.success) {
+            // Reset input values for next stop
+            const litEl = document.getElementById('dlmLitres');
+            if (litEl) litEl.value = '';
+            const prEl = document.getElementById('dlmLocalPrice');
+            if (prEl) prEl.value = '';
+            const stEl = document.getElementById('dlmStationLocation');
+            if (stEl) stEl.value = '';
+            const recEl = document.getElementById('dlmReceiptNumber');
+            if (recEl) recEl.value = '';
+            const noteEl = document.getElementById('dlmNotes');
+            if (noteEl) noteEl.value = '';
+
+            calcDlmDiesel();
+            loadDispatchFuelHistory(dispatchId);
+
+            if (json.data && json.data.totals) {
+                updateFleetRowTotals(dispatchId, json.data.totals);
+            }
+        } else {
+            alert('Could not save fuel record: ' + (json.error || 'Server error'));
+        }
+    } catch(err) {
+        console.error(err);
+        alert('Network error while saving fuel record.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '⛽ Record Fuel Stop';
+        }
+    }
+    return false;
+};
+
+window.loadDispatchFuelHistory = async function(dispatchId) {
+    const body = document.getElementById('dlmHistoryTableBody');
+    const summ = document.getElementById('dlmHistorySummary');
+    if (!body) return;
+
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:15px;color:var(--text-3);">Loading fuel stops...</td></tr>';
+
+    try {
+        const res = await fetch('<?= url("fleet/diesel/list") ?>/' + dispatchId);
+        const json = await res.json();
+        if (json.success && json.data) {
+            if (json.data.length === 0) {
+                body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text-3);">No fuel stops recorded yet for this dispatch trip.</td></tr>';
+                if (summ) summ.textContent = '0 stops • Total: $0.00';
+            } else {
+                let html = '';
+                json.data.forEach(s => {
+                    const localTot = parseFloat(s.local_total_cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    const localUnit = parseFloat(s.local_unit_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    const usdTot = parseFloat(s.base_usd_cost || 0).toFixed(2);
+                    const sysTot = formatSystemMoney(toSystemCurrency(s.base_usd_cost));
+
+                    html += `<tr>
+                        <td style="padding:8px 10px;white-space:nowrap;">${s.fuel_date}</td>
+                        <td style="padding:8px 10px;">
+                            <b>${s.country}</b><br>
+                            <small style="color:var(--text-3);">${s.station_location || 'Depot Pump'}</small>
+                        </td>
+                        <td style="padding:8px 10px;font-weight:700;">${Number(s.litres).toLocaleString()} L</td>
+                        <td style="padding:8px 10px;">
+                            ${s.currency_code} ${localTot}<br>
+                            <small style="color:var(--text-3);">@ ${localUnit}</small>
+                        </td>
+                        <td style="padding:8px 10px;white-space:nowrap;">
+                            <b style="color:var(--brand);">$${usdTot}</b><br>
+                            <small style="color:var(--amber);font-weight:700;">${sysTot}</small>
+                        </td>
+                        <td style="padding:8px 10px;text-align:center;">
+                            <button type="button" class="btn btn-ghost btn-xs" style="color:var(--red);padding:2px 6px;" onclick="deleteDieselLogAjax(${s.id}, ${dispatchId})" title="Delete this fueling stop">✕</button>
+                        </td>
+                    </tr>`;
+                });
+                body.innerHTML = html;
+
+                if (summ && json.totals) {
+                    const totUsd = Number(json.totals.total_usd || 0).toFixed(2);
+                    const totSys = formatSystemMoney(toSystemCurrency(json.totals.total_usd));
+                    const totLit = Number(json.totals.total_litres || 0).toLocaleString();
+                    summ.textContent = `${json.data.length} stops • ${totLit} L • Total: $${totUsd} (${totSys})`;
+                }
+            }
+        }
+    } catch(err) {
+        console.error('Error fetching fuel stops history:', err);
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:15px;color:var(--red);">Error loading fuel stops history.</td></tr>';
+    }
+};
+
+window.deleteDieselLogAjax = async function(logId, dispatchId) {
+    if (!confirm('Are you sure you want to delete this diesel fueling stop? The trip diesel total and balance will be recalculated.')) {
+        return;
+    }
+    try {
+        const res = await fetch('<?= url("fleet/diesel/delete") ?>/' + logId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({ _csrf_token: CSRF_TOKEN }).toString()
+        });
+        const json = await res.json();
+        if (json.success) {
+            loadDispatchFuelHistory(dispatchId);
+            if (json.data && json.data.totals) {
+                updateFleetRowTotals(dispatchId, json.data.totals);
+            }
+        } else {
+            alert('Could not delete fuel stop: ' + (json.error || 'Server error'));
+        }
+    } catch(err) {
+        console.error(err);
+        alert('Network error while deleting fuel stop.');
+    }
+};
+
+window.updateFleetRowTotals = function(dispatchId, totals) {
+    if (window.FLEET_ROWS_MAP && window.FLEET_ROWS_MAP[dispatchId]) {
+        const d = window.FLEET_ROWS_MAP[dispatchId];
+        d.diesel = totals.diesel;
+        d.diesel_litres = totals.diesel_litres;
+        d.diesel_unit_price = totals.diesel_unit_price;
+        d.diesel_formatted = formatSystemMoney(totals.diesel);
+        d.balance = totals.balance;
+        d.balance_formatted = formatSystemMoney(totals.balance);
+    }
+
+    const row = document.getElementById('fleet-row-' + dispatchId);
+    if (row) {
+        row.dataset.diesel = totals.diesel;
+        const cellDiesel = row.querySelector('.cell-diesel');
+        if (cellDiesel) {
+            const dVal = parseFloat(totals.diesel || 0);
+            const dLit = parseFloat(totals.diesel_litres || 0);
+            const dUp = parseFloat(totals.diesel_unit_price || 0);
+
+            let dHtml = `<span class="view-val">${dVal > 0 ? formatSystemMoney(dVal) : '—'}</span>`;
+            if (dLit > 0) {
+                dHtml += `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px;">⛽ ${dLit.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})}L @ ${formatSystemMoney(dUp)}</div>`;
+            }
+            cellDiesel.innerHTML = dHtml;
+        }
+
+        const cellBalance = row.querySelector('.cell-balance');
+        if (cellBalance) {
+            const balVal = parseFloat(totals.balance || 0);
+            cellBalance.innerHTML = `<span class="view-val" style="color:${balVal >= 0 ? 'var(--green)' : 'var(--red)'};">${formatSystemMoney(balVal)}</span>`;
+        }
+
+        row.style.transition = 'background .4s';
+        row.style.background = 'var(--green-soft)';
+        setTimeout(() => { row.style.background = ''; }, 1200);
+    }
+};
+
+window.loadVdmFuelStops = async function(dispatchId) {
+    const box = document.getElementById('vdmFuelStopsBox');
+    const list = document.getElementById('vdmFuelStopsList');
+    const countEl = document.getElementById('vdmFuelStopsCount');
+    if (!box || !list) return;
+    box.style.display = 'none';
+    list.innerHTML = '';
+
+    try {
+        const res = await fetch('<?= url("fleet/diesel/list") ?>/' + dispatchId);
+        const json = await res.json();
+        if (json.success && json.data && json.data.length > 0) {
+            box.style.display = 'block';
+            if (countEl) countEl.textContent = json.data.length + (json.data.length === 1 ? ' stop' : ' stops');
+            list.innerHTML = json.data.map(s => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px dashed var(--border);">
+                    <div>
+                        <b>${s.country}</b> • <span style="color:var(--text-2);">${s.station_location || 'Depot Pump'}</span> (${Number(s.litres).toLocaleString()} L)
+                    </div>
+                    <div style="font-weight:700;color:var(--amber);">
+                        ${s.currency_code} ${parseFloat(s.local_total_cost || 0).toLocaleString(undefined, {minimumFractionDigits:2})} 
+                        <span style="font-size:11px;color:var(--brand);font-weight:800;">($${parseFloat(s.base_usd_cost || 0).toFixed(2)})</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+    } catch(e) {
+        console.error('Error loading fuel stops for view modal:', e);
+    }
+};
 
 window.openViewDispatchModal = function(param) {
     let d = null;
@@ -1268,6 +2301,14 @@ window.openViewDispatchModal = function(param) {
         document.getElementById('viewDispatchModal').classList.remove('active');
         startFleetInlineEdit(d.id);
     };
+
+    if (document.getElementById('vdmAddFuelStopBtn')) {
+        document.getElementById('vdmAddFuelStopBtn').onclick = function() {
+            document.getElementById('viewDispatchModal').classList.remove('active');
+            openDieselLogModal(d.id);
+        };
+    }
+    loadVdmFuelStops(d.id);
 
     document.getElementById('viewDispatchModal').classList.add('active');
 };

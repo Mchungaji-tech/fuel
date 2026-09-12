@@ -174,5 +174,99 @@ assertCondition("Truck monthly matrix recorded zero for January", empty($monthly
 // Cleanup test truck expenses
 $pdo->prepare("DELETE FROM expenses WHERE truck = ?")->execute([$testTruck]);
 
+// 7. Cross-Border Multi-Currency Diesel Fueling & Automated Dynamic Recalculation
+echo "\n--- Testing Cross-Border Multi-Currency Diesel Fueling ---\n";
+// 7.1 Verify fleet_diesel_logs schema
+$dieselTableCheck = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='fleet_diesel_logs'")->fetchColumn();
+assertCondition("fleet_diesel_logs table exists in database", !empty($dieselTableCheck));
+
+// 7.2 Create a test dispatch record
+$dieselTrip = 'TRP-FX-' . rand(1000, 9999);
+$testTruck = 'KBX 999Z';
+$insTripStmt = $pdo->prepare("INSERT INTO fleet_dispatches (
+    trip_number, bol_number, dispatch_date, truck, loaded_litres, delivered_litres,
+    from_location, destination, product, unit_price, driver,
+    transport_amount, final_payout, payout_difference, diesel_litres, diesel_unit_price, diesel,
+    mileage_cost, extra_expenses, balance, status, created_at
+) VALUES (?, 'BOL-FX', '2026-09-12', ?, 35000, 35000, 'Eldoret', 'DR Congo (Goma)', 'AGO', 0.08, 'Safari Driver', 2800.00, 2800.00, 0, 0, 0, 0, 300.00, 0, 2500.00, 'In Transit', ?)");
+$insTripStmt->execute([$dieselTrip, $testTruck, date('Y-m-d H:i:s')]);
+$dispId = (int)$pdo->lastInsertId();
+
+// 7.3 Log Stop 1: Kenya Departure Top-up in KES
+// 400 Litres @ 180 KES = 72,000 KES. Ex rate = 130 KES/USD -> Base USD = 72,000 / 130 = $553.846
+$stop1Litres = 400.0;
+$stop1LocalUnit = 180.0;
+$stop1LocalTotal = 72000.0;
+$stop1Rate = 130.0;
+$stop1Usd = round($stop1LocalTotal / $stop1Rate, 2); // 553.85
+
+$pdo->prepare("INSERT INTO fleet_diesel_logs (
+    dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code, exchange_rate,
+    litres, local_unit_price, local_total_cost, base_usd_cost, receipt_status, receipt_number, notes, created_at
+) VALUES (?, ?, ?, '2026-09-12', 'Eldoret KPC Shell', 'Kenya', 'KES', ?, ?, ?, ?, ?, 'Received', 'REC-KE-01', 'Departure fill', ?)")
+    ->execute([$dispId, $dieselTrip, $testTruck, $stop1Rate, $stop1Litres, $stop1LocalUnit, $stop1LocalTotal, $stop1Usd, date('Y-m-d H:i:s')]);
+
+$t1 = \App\Controllers\FleetController::recalculateDispatchDiesel($pdo, $dispId);
+assertCondition("Recalculate after Stop 1 matches 400 Litres", (float)$t1['diesel_litres'] === 400.0);
+assertCondition("Recalculate after Stop 1 matches Base USD cost ($553.85)", (float)$t1['diesel'] === $stop1Usd);
+assertCondition("Trip balance after Stop 1 deducted from payout (2800 - 300 - 553.85 = 1946.15)", (float)$t1['balance'] === (2800.00 - 300.00 - $stop1Usd));
+
+// 7.4 Log Stop 2: Uganda Malaba En-Route in UGX
+// 250 Litres @ 5,500 UGX = 1,375,000 UGX. Ex rate = 3,750 UGX/USD -> Base USD = 1,375,000 / 3,750 = $366.67
+$stop2Litres = 250.0;
+$stop2LocalUnit = 5500.0;
+$stop2LocalTotal = 1375000.0;
+$stop2Rate = 3750.0;
+$stop2Usd = round($stop2LocalTotal / $stop2Rate, 2); // 366.67
+
+$pdo->prepare("INSERT INTO fleet_diesel_logs (
+    dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code, exchange_rate,
+    litres, local_unit_price, local_total_cost, base_usd_cost, receipt_status, receipt_number, notes, created_at
+) VALUES (?, ?, ?, '2026-09-13', 'Malaba Total Station', 'Uganda', 'UGX', ?, ?, ?, ?, ?, 'Received', 'REC-UG-02', 'En-route border topup', ?)")
+    ->execute([$dispId, $dieselTrip, $testTruck, $stop2Rate, $stop2Litres, $stop2LocalUnit, $stop2LocalTotal, $stop2Usd, date('Y-m-d H:i:s')]);
+
+$t2 = \App\Controllers\FleetController::recalculateDispatchDiesel($pdo, $dispId);
+$expectedTotalLitres2 = 400.0 + 250.0; // 650.0
+$expectedDieselUsd2 = round($stop1Usd + $stop2Usd, 2); // 553.85 + 366.67 = 920.52
+assertCondition("Cumulative litres across Kenya & Uganda is 650 Litres", (float)$t2['diesel_litres'] === $expectedTotalLitres2);
+assertCondition("Cumulative diesel expense in Base USD matches multi-currency converted sum", (float)$t2['diesel'] === $expectedDieselUsd2);
+
+// 7.5 Log Stop 3: DR Congo Goma Arrival in USD
+// 150 Litres @ 1.70 USD = 255.00 USD. Ex rate = 1.0 -> Base USD = 255.00
+$stop3Litres = 150.0;
+$stop3LocalUnit = 1.70;
+$stop3LocalTotal = 255.0;
+$stop3Rate = 1.0;
+$stop3Usd = 255.00;
+
+$pdo->prepare("INSERT INTO fleet_diesel_logs (
+    dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code, exchange_rate,
+    litres, local_unit_price, local_total_cost, base_usd_cost, receipt_status, receipt_number, notes, created_at
+) VALUES (?, ?, ?, '2026-09-15', 'Goma Station', 'DR Congo', 'USD', ?, ?, ?, ?, ?, 'Received', 'REC-CD-03', 'Destination buffer fill', ?)")
+    ->execute([$dispId, $dieselTrip, $testTruck, $stop3Rate, $stop3Litres, $stop3LocalUnit, $stop3LocalTotal, $stop3Usd, date('Y-m-d H:i:s')]);
+$stop3Id = (int)$pdo->lastInsertId();
+
+$t3 = \App\Controllers\FleetController::recalculateDispatchDiesel($pdo, $dispId);
+$expectedTotalLitres3 = 800.0;
+$expectedDieselUsd3 = round($stop1Usd + $stop2Usd + $stop3Usd, 2); // 1175.52
+$expectedUnitAvg3 = round($expectedDieselUsd3 / 800.0, 4);
+assertCondition("Three-country cumulative fuel logged: 800 Litres total", (float)$t3['diesel_litres'] === 800.0);
+assertCondition("Three-country total base USD matches: \${$expectedDieselUsd3}", (float)$t3['diesel'] === $expectedDieselUsd3);
+assertCondition("Net profit balance automatically re-synchronized: \${$t3['balance']}", (float)$t3['balance'] === (2800.00 - (300.00 + $expectedDieselUsd3)));
+
+// 7.6 Delete Stop 3 and verify cascading recalculation
+$pdo->prepare("DELETE FROM fleet_diesel_logs WHERE id = ?")->execute([$stop3Id]);
+$tAfterDelete = \App\Controllers\FleetController::recalculateDispatchDiesel($pdo, $dispId);
+assertCondition("After deleting Stop 3, litres automatically drop back to 650 Litres", (float)$tAfterDelete['diesel_litres'] === 650.0);
+assertCondition("After deleting Stop 3, diesel drops back to \${$expectedDieselUsd2}", (float)$tAfterDelete['diesel'] === $expectedDieselUsd2);
+assertCondition("After deleting Stop 3, trip profit recovers by \${$stop3Usd}", (float)$tAfterDelete['balance'] === (2800.00 - (300.00 + $expectedDieselUsd2)));
+
+// 7.7 Cascade cleanup when dispatch is deleted
+$pdo->prepare("DELETE FROM fleet_diesel_logs WHERE dispatch_id = ?")->execute([$dispId]);
+$pdo->prepare("DELETE FROM fleet_dispatches WHERE id = ?")->execute([$dispId]);
+$remainingLogs = (int)$pdo->query("SELECT COUNT(*) FROM fleet_diesel_logs WHERE dispatch_id = {$dispId}")->fetchColumn();
+assertCondition("Cascade cleanup removes all diesel logs for dispatch", $remainingLogs === 0);
+
 echo "\n=== Test Results: {$passCount} Passed, {$failCount} Failed ===\n";
 exit($failCount > 0 ? 1 : 0);
+

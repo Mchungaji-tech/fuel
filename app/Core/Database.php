@@ -426,6 +426,25 @@ class Database
                 icon VARCHAR(50) DEFAULT NULL,
                 created_at VARCHAR(50)
             )",
+            "CREATE TABLE IF NOT EXISTS fleet_diesel_logs (
+                {$idColumnSql},
+                dispatch_id INT NOT NULL,
+                trip_number VARCHAR(100) NOT NULL,
+                truck VARCHAR(100) NOT NULL,
+                fuel_date VARCHAR(50) NOT NULL,
+                station_location VARCHAR(255) NOT NULL,
+                country VARCHAR(100) NOT NULL,
+                currency_code VARCHAR(10) NOT NULL,
+                exchange_rate DECIMAL(12,4) NOT NULL,
+                litres DECIMAL(10,2) NOT NULL,
+                local_unit_price DECIMAL(12,2) NOT NULL,
+                local_total_cost DECIMAL(14,2) NOT NULL,
+                base_usd_cost DECIMAL(12,2) NOT NULL,
+                receipt_status VARCHAR(50) DEFAULT 'Received',
+                receipt_number VARCHAR(100),
+                notes TEXT,
+                created_at VARCHAR(50)
+            )",
         ];
 
         foreach ($tables as $sql) {
@@ -494,6 +513,11 @@ class Database
         $ensureColumn('fleet_dispatches', 'shortage_notes', 'TEXT');
         $ensureColumn('fleet_dispatches', 'client_name', 'VARCHAR(255) DEFAULT NULL');
         $ensureColumn('fleet_dispatches', 'diesel', 'DECIMAL(12,2) DEFAULT 0');
+
+        // Fleet Diesel Logs
+        $ensureColumn('fleet_diesel_logs', 'receipt_status', "VARCHAR(50) DEFAULT 'Received'");
+        $ensureColumn('fleet_diesel_logs', 'receipt_number', "VARCHAR(100)");
+        $ensureColumn('fleet_diesel_logs', 'notes', "TEXT");
 
         // Driver Salaries
         $ensureColumn('driver_salaries', 'base_salary', 'DECIMAL(12,2) DEFAULT 0');

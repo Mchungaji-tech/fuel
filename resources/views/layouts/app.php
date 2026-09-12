@@ -949,6 +949,12 @@ async function triggerDbSync() {
         <span class="rate-badge">1$ = 130 KES</span>
       </form>
 
+      <!-- Regional FX & Diesel Converter Drawer Trigger -->
+      <button type="button" class="btn btn-sm btn-ghost" onclick="toggleFxDrawer()" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;border-radius:10px;padding:6px 12px;background:var(--card);border:1px solid var(--border-2);box-shadow:var(--shadow-sm);" title="Open Regional Currency & Diesel Fuel Converter (KES, UGX, USD, CDF, SSP)">
+        <span style="font-size:14px;">💱</span>
+        <span style="font-size:12.5px;color:var(--text);">FX & Fuel Tool</span>
+      </button>
+
       <!-- WiFi Network Status Badge (Online / Offline Mode) -->
       <div class="wifi-pill online" id="topbarWifiPill" onclick="toggleSimulatedOffline()" title="Network Status. Click to simulate Offline / Online mode">
         <span id="topbarWifiIcon">
@@ -1154,6 +1160,343 @@ if(globalSearch){
   });
 }
 
+/* Quick FX & Cross-Border Fuel Tool Logic */
+const FX_RATES_BASE = {
+  'USD': 1.0,
+  'KES': <?= (float)exchange_rate() ?>,
+  'UGX': 3750.0,
+  'CDF': 2850.0,
+  'SSP': 1300.0,
+  'TZS': 2600.0
+};
+const IS_SYS_KES = ('<?= current_currency() ?>' === 'KES');
+const SYS_RATE = <?= (float)exchange_rate() ?>;
+const SYS_SYM = '<?= app_currency_symbol() ?>';
+
+function toggleFxDrawer(forceOpen) {
+  const drawer = document.getElementById('quickFxDrawer');
+  if (!drawer) return;
+  const shouldOpen = (forceOpen !== undefined) ? forceOpen : !drawer.classList.contains('active');
+  if (shouldOpen) {
+    drawer.classList.add('active');
+    calcQfFuel();
+    calcQcConvert();
+  } else {
+    drawer.classList.remove('active');
+  }
+}
+
+function switchFxTab(tab) {
+  const fTab = document.getElementById('fxTabFuel');
+  const cTab = document.getElementById('fxTabConv');
+  const fBtn = document.getElementById('fxTabFuelBtn');
+  const cBtn = document.getElementById('fxTabConvBtn');
+
+  if (tab === 'fuel') {
+    if (fTab) fTab.style.display = 'block';
+    if (cTab) cTab.style.display = 'none';
+    if (fBtn) fBtn.classList.add('active');
+    if (cBtn) cBtn.classList.remove('active');
+    calcQfFuel();
+  } else {
+    if (fTab) fTab.style.display = 'none';
+    if (cTab) cTab.style.display = 'block';
+    if (fBtn) fBtn.classList.remove('active');
+    if (cBtn) cBtn.classList.add('active');
+    calcQcConvert();
+  }
+}
+
+function onQfCountryChange() {
+  const sel = document.getElementById('qfCountry');
+  const opt = sel.options[sel.selectedIndex];
+  const rateInput = document.getElementById('qfRate');
+  const priceInput = document.getElementById('qfPrice');
+  
+  if (opt && rateInput) {
+    rateInput.value = opt.dataset.rate || '1.0';
+    if (opt.value === 'UGX') priceInput.value = '5200';
+    else if (opt.value === 'KES') priceInput.value = '180.00';
+    else if (opt.value === 'CDF') priceInput.value = '3850';
+    else if (opt.value === 'USD') priceInput.value = '1.38';
+    else if (opt.value === 'SSP') priceInput.value = '1750';
+    else priceInput.value = '2900';
+    calcQfFuel();
+  }
+}
+
+function resetQfRate() {
+  const sel = document.getElementById('qfCountry');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && document.getElementById('qfRate')) {
+    document.getElementById('qfRate').value = opt.dataset.rate || '1.0';
+    calcQfFuel();
+  }
+}
+
+function calcQfFuel() {
+  const litres = parseFloat(document.getElementById('qfLitres')?.value) || 0;
+  const price = parseFloat(document.getElementById('qfPrice')?.value) || 0;
+  const rate = parseFloat(document.getElementById('qfRate')?.value) || 1;
+  const sel = document.getElementById('qfCountry');
+  const currCode = sel?.value || 'UGX';
+
+  const localTotal = litres * price;
+  const baseUsd = rate > 0 ? (localTotal / rate) : 0;
+  const sysTotal = IS_SYS_KES ? (baseUsd * SYS_RATE) : baseUsd;
+
+  const resLoc = document.getElementById('qfResultLocal');
+  if (resLoc) {
+    resLoc.textContent = currCode + ' ' + localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  const resUsd = document.getElementById('qfResultUsd');
+  if (resUsd) {
+    resUsd.textContent = '$ ' + baseUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  const resSys = document.getElementById('qfResultSys');
+  if (resSys) {
+    resSys.textContent = SYS_SYM + ' ' + sysTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+}
+
+function copyQfValue(type) {
+  const litres = parseFloat(document.getElementById('qfLitres')?.value) || 0;
+  const price = parseFloat(document.getElementById('qfPrice')?.value) || 0;
+  const rate = parseFloat(document.getElementById('qfRate')?.value) || 1;
+  const localTotal = litres * price;
+  const baseUsd = rate > 0 ? (localTotal / rate) : 0;
+  const sysTotal = IS_SYS_KES ? (baseUsd * SYS_RATE) : baseUsd;
+
+  let val = '';
+  if (type === 'usd') val = baseUsd.toFixed(2);
+  else if (type === 'kes') val = (baseUsd * SYS_RATE).toFixed(2);
+  else if (type === 'local') val = localTotal.toFixed(2);
+
+  navigator.clipboard.writeText(val).then(() => {
+    alert('Copied ' + val + ' to clipboard!');
+  }).catch(() => {
+    prompt('Copy value:', val);
+  });
+}
+
+function calcQcConvert() {
+  const amt = parseFloat(document.getElementById('qcAmount')?.value) || 0;
+  const from = document.getElementById('qcFrom')?.value || 'USD';
+  const to = document.getElementById('qcTo')?.value || 'KES';
+
+  const fromRate = FX_RATES_BASE[from] || 1;
+  const toRate = FX_RATES_BASE[to] || 1;
+
+  // Convert to base USD, then to target currency
+  const inUsd = amt / fromRate;
+  const result = inUsd * toRate;
+
+  const disp = document.getElementById('qcResultDisplay');
+  if (disp) {
+    disp.textContent = to + ' ' + result.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  const note = document.getElementById('qcRateNote');
+  if (note) {
+    const singleConv = (1 / fromRate) * toRate;
+    note.textContent = `1 ${from} ≈ ${singleConv.toLocaleString('en-US', {maximumFractionDigits: 4})} ${to}`;
+  }
+}
+
+function copyQcResult() {
+  const amt = parseFloat(document.getElementById('qcAmount')?.value) || 0;
+  const from = document.getElementById('qcFrom')?.value || 'USD';
+  const to = document.getElementById('qcTo')?.value || 'KES';
+  const inUsd = amt / (FX_RATES_BASE[from] || 1);
+  const result = (inUsd * (FX_RATES_BASE[to] || 1)).toFixed(2);
+
+  navigator.clipboard.writeText(result).then(() => {
+    alert('Copied ' + to + ' ' + result + ' to clipboard!');
+  }).catch(() => {
+    prompt('Copy value:', result);
+  });
+}
 </script>
+
+<style>
+/* Slide-Out Quick FX & Cross-Border Fuel Converter Drawer */
+.quick-fx-drawer {
+  position: fixed;
+  top: 0;
+  right: -450px;
+  width: 410px;
+  max-width: 95vw;
+  height: 100vh;
+  background: var(--card);
+  border-left: 1.5px solid var(--border-2);
+  box-shadow: -8px 0 35px rgba(0,0,0,0.22);
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  transition: right .28s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+}
+.quick-fx-drawer.active {
+  right: 0;
+}
+.fx-tab-btn {
+  flex: 1;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 2.5px solid transparent;
+  transition: .15s;
+}
+.fx-tab-btn:hover {
+  color: var(--text);
+  background: var(--card-2);
+}
+.fx-tab-btn.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  background: var(--brand-soft);
+}
+</style>
+
+<!-- Slide-Out Quick FX & Cross-Border Fuel Converter Drawer Markup -->
+<div id="quickFxDrawer" class="quick-fx-drawer">
+  <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--card-2);">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:22px;background:var(--brand-soft);padding:6px;border-radius:8px;">💱</span>
+      <div>
+        <b style="font-size:15px;color:var(--text);display:block;font-weight:800;">Cross-Border FX & Fuel Tool</b>
+        <span style="font-size:11.5px;color:var(--text-3);font-weight:600;">Kenya (KES) • Uganda (UGX) • Congo (USD/CDF)</span>
+      </div>
+    </div>
+    <button type="button" class="close-modal" onclick="toggleFxDrawer()" style="font-size:20px;cursor:pointer;">✕</button>
+  </div>
+
+  <!-- Mode Selector Tabs -->
+  <div style="display:flex;border-bottom:1px solid var(--border);background:var(--card);">
+    <button type="button" id="fxTabFuelBtn" class="fx-tab-btn active" onclick="switchFxTab('fuel')">
+      ⛽ Fuel Pump Calc
+    </button>
+    <button type="button" id="fxTabConvBtn" class="fx-tab-btn" onclick="switchFxTab('conv')">
+      💱 Currency Exchange
+    </button>
+  </div>
+
+  <div style="padding:20px;overflow-y:auto;flex:1;">
+    <!-- Tab 1: Fuel Top-up Calculator -->
+    <div id="fxTabFuel">
+      <div style="font-size:12.5px;color:var(--text-2);margin-bottom:14px;background:rgba(217,119,6,0.06);border:1px solid var(--amber);padding:10px 12px;border-radius:8px;">
+        ⛽ <b>Refuel Rate & Cost Estimator:</b> Calculate pump receipts from Eldoret, Malaba, Kampala, or Goma into base USD and system <?= current_currency() ?>.
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:700;color:var(--text-2);">Refueling Country / Currency</label>
+        <select id="qfCountry" onchange="onQfCountryChange()" style="width:100%;padding:8px 12px;border:1px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;color:var(--text);">
+          <option value="UGX" data-rate="3750" data-country="Uganda">🇺🇬 Uganda (UGX Shilling)</option>
+          <option value="KES" data-rate="<?= exchange_rate() ?>" data-country="Kenya" <?= current_currency() === 'KES' ? 'selected' : '' ?>>🇰🇪 Kenya (KES Shilling)</option>
+          <option value="USD" data-rate="1.0" data-country="DR Congo / Transit">🇨🇩 DR Congo (USD Dollars)</option>
+          <option value="CDF" data-rate="2850" data-country="DR Congo">🇨🇩 DR Congo (CDF Franc)</option>
+          <option value="SSP" data-rate="1300" data-country="South Sudan">🇸🇸 South Sudan (SSP Pound)</option>
+          <option value="TZS" data-rate="2600" data-country="Tanzania">🇹🇿 Tanzania (TZS Shilling)</option>
+        </select>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:700;color:var(--text-2);">Litres Pumped</label>
+          <input type="number" step="0.01" id="qfLitres" placeholder="e.g. 350" value="350" oninput="calcQfFuel()" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;">
+        </div>
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:700;color:var(--text-2);">Local Price / Litre</label>
+          <input type="number" step="0.01" id="qfPrice" placeholder="Price in local currency" value="5200" oninput="calcQfFuel()" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label style="font-size:12px;font-weight:700;color:var(--text-2);">Exchange Rate (Local units per $1 USD)</label>
+          <button type="button" onclick="resetQfRate()" style="background:transparent;border:0;color:var(--brand);font-size:11px;font-weight:700;cursor:pointer;">Reset Default</button>
+        </div>
+        <input type="number" step="0.0001" id="qfRate" value="3750" oninput="calcQfFuel()" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;color:var(--text);">
+        <small style="font-size:11px;color:var(--text-3);margin-top:2px;">Edit this rate to match today's exact border forex slip.</small>
+      </div>
+
+      <!-- Real-time Results Card -->
+      <div style="background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Calculation Results</div>
+        
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;">
+          <span style="font-size:12.5px;color:var(--text-2);">Local Pump Receipt:</span>
+          <b id="qfResultLocal" style="font-size:15px;color:var(--text);">UGX 1,820,000.00</b>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+          <span style="font-size:12.5px;color:var(--text-2);">Base USD Equivalent:</span>
+          <b id="qfResultUsd" style="font-size:16px;color:var(--brand);">$ 485.33</b>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;">
+          <span style="font-size:12.5px;font-weight:700;color:var(--text);">Active System View (<?= current_currency() ?>):</span>
+          <b id="qfResultSys" style="font-size:18px;color:var(--green);"><?= current_currency() === 'KES' ? 'KES 63,093.33' : '$ 485.33' ?></b>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="copyQfValue('usd')" style="flex:1;font-size:12px;font-weight:700;">📋 Copy USD</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="copyQfValue('kes')" style="flex:1;font-size:12px;font-weight:700;">📋 Copy KES</button>
+        <button type="button" class="btn btn-sm btn-brand" onclick="copyQfValue('local')" style="flex:1;font-size:12px;">📋 Copy Local</button>
+      </div>
+    </div>
+
+    <!-- Tab 2: General Currency Converter -->
+    <div id="fxTabConv" style="display:none;">
+      <div style="font-size:12.5px;color:var(--text-2);margin-bottom:14px;background:var(--brand-soft);border:1px solid var(--brand);padding:10px 12px;border-radius:8px;">
+        💱 <b>Quick Forex Exchange:</b> Convert arbitrary amounts across East & Central African currencies.
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:700;color:var(--text-2);">Amount</label>
+        <input type="number" step="0.01" id="qcAmount" value="1000" oninput="calcQcConvert()" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:15px;font-weight:800;">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:700;color:var(--text-2);">From</label>
+          <select id="qcFrom" onchange="calcQcConvert()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;">
+            <option value="USD" selected>USD ($)</option>
+            <option value="KES">KES (Kenya)</option>
+            <option value="UGX">UGX (Uganda)</option>
+            <option value="CDF">CDF (DR Congo)</option>
+            <option value="SSP">SSP (South Sudan)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:700;color:var(--text-2);">To</label>
+          <select id="qcTo" onchange="calcQcConvert()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;">
+            <option value="KES" selected>KES (Kenya)</option>
+            <option value="USD">USD ($)</option>
+            <option value="UGX">UGX (Uganda)</option>
+            <option value="CDF">CDF (DR Congo)</option>
+            <option value="SSP">SSP (South Sudan)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px;">
+        <div style="font-size:12px;color:var(--text-3);font-weight:700;text-transform:uppercase;">Converted Result</div>
+        <div id="qcResultDisplay" style="font-size:24px;font-weight:900;color:var(--brand);margin-top:6px;">KES 130,000.00</div>
+        <div id="qcRateNote" style="font-size:12px;color:var(--text-3);margin-top:4px;">1 USD = 130 KES</div>
+      </div>
+
+      <button type="button" class="btn btn-brand" onclick="copyQcResult()" style="width:100%;font-size:13px;">📋 Copy Converted Amount</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
+

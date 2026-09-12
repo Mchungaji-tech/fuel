@@ -241,6 +241,41 @@ class FleetController
                 date('Y-m-d H:i:s'),
             ]);
 
+            $newDispatchId = (int)$pdo->lastInsertId();
+            if ($newDispatchId > 0 && $dieselLitres > 0 && ($dieselUnitPrice > 0 || $diesel > 0)) {
+                $fuelCountry = trim($_POST['diesel_country'] ?? 'Kenya');
+                $fuelCurrency = strtoupper(trim($_POST['diesel_currency'] ?? ($isKes ? 'KES' : 'USD')));
+                $fuelExRate = (float)($_POST['diesel_exchange_rate'] ?? ($fuelCurrency === 'KES' ? $rate : 1.0));
+                if ($fuelExRate <= 0) $fuelExRate = 1.0;
+                $fuelLocPrice = (float)($_POST['diesel_local_unit_price'] ?? ($fuelCurrency === 'KES' ? ($dieselUnitPrice * $rate) : $dieselUnitPrice));
+                $fuelLocTotal = round($dieselLitres * $fuelLocPrice, 2);
+                $fuelBaseUsd = round($diesel, 2);
+
+                $dLogStmt = $pdo->prepare('INSERT INTO fleet_diesel_logs (
+                    dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code,
+                    exchange_rate, litres, local_unit_price, local_total_cost, base_usd_cost,
+                    receipt_status, receipt_number, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $dLogStmt->execute([
+                    $newDispatchId,
+                    $tripNumber,
+                    $truck,
+                    $dispatchDate,
+                    trim($_POST['diesel_station'] ?? ($fromLocation . ' Depot Station')),
+                    $fuelCountry,
+                    $fuelCurrency,
+                    $fuelExRate,
+                    $dieselLitres,
+                    $fuelLocPrice,
+                    $fuelLocTotal,
+                    $fuelBaseUsd,
+                    'Received',
+                    trim($_POST['diesel_receipt_number'] ?? ''),
+                    'Departure fuel logged during dispatch creation',
+                    date('Y-m-d H:i:s')
+                ]);
+            }
+
             // Check if temporary / new driver was created
             $isNewDriver = false;
             if ($driver !== '' && $driver !== 'Unassigned') {
@@ -1233,6 +1268,8 @@ class FleetController
         $stmt = $pdo->prepare('DELETE FROM fleet_dispatches WHERE id = ?');
         $stmt->execute([$id]);
 
+        $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE dispatch_id = ?')->execute([(int) $id]);
+
         if ($row && !empty($row['trip_number'])) {
             $pdo->prepare('DELETE FROM trips WHERE trip_number = ?')->execute([$row['trip_number']]);
         }
@@ -1243,4 +1280,257 @@ class FleetController
         flash('fleet_success', 'Dispatch record removed successfully.');
         redirect('/fleet');
     }
+
+    public static function recalculateDispatchDiesel(PDO $pdo, int $dispatchId): array
+    {
+        $stmt = $pdo->prepare('SELECT 
+            COALESCE(SUM(base_usd_cost), 0) as total_diesel_usd,
+            COALESCE(SUM(litres), 0) as total_litres
+            FROM fleet_diesel_logs WHERE dispatch_id = ?');
+        $stmt->execute([$dispatchId]);
+        $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $totalDiesel = round((float)($stats['total_diesel_usd'] ?? 0), 2);
+        $totalLitres = round((float)($stats['total_litres'] ?? 0), 2);
+        $unitPrice = $totalLitres > 0 ? round($totalDiesel / $totalLitres, 4) : 0;
+
+        $dStmt = $pdo->prepare('SELECT transport_amount, final_payout, mileage_cost, is_subcontracted, agreed_commission FROM fleet_dispatches WHERE id = ?');
+        $dStmt->execute([$dispatchId]);
+        $d = $dStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$d) {
+            return ['diesel' => $totalDiesel, 'diesel_litres' => $totalLitres, 'diesel_unit_price' => $unitPrice, 'balance' => 0];
+        }
+
+        $isSub = (int)($d['is_subcontracted'] ?? 0);
+        if ($isSub === 1) {
+            $balance = (float)($d['agreed_commission'] ?? 0);
+        } else {
+            $effectiveRev = ($d['final_payout'] !== null && (float)$d['final_payout'] > 0) ? (float)$d['final_payout'] : (float)$d['transport_amount'];
+            $mileage = (float)($d['mileage_cost'] ?? 0);
+            $balance = round($effectiveRev - ($mileage + $totalDiesel), 2);
+        }
+
+        $upStmt = $pdo->prepare('UPDATE fleet_dispatches SET diesel = ?, diesel_litres = ?, diesel_unit_price = ?, balance = ? WHERE id = ?');
+        $upStmt->execute([$totalDiesel, $totalLitres, $unitPrice, $balance, $dispatchId]);
+
+        return [
+            'diesel' => $totalDiesel,
+            'diesel_litres' => $totalLitres,
+            'diesel_unit_price' => $unitPrice,
+            'balance' => $balance
+        ];
+    }
+
+    public function storeDieselLog(): void
+    {
+        $pdo = Database::connection();
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        $dispatchId = (int)($_POST['dispatch_id'] ?? 0);
+        if ($dispatchId <= 0) {
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Valid dispatch trip is required.']);
+                exit;
+            }
+            flash('fleet_error', 'Invalid dispatch selected for fuel entry.');
+            redirect('/fleet');
+            return;
+        }
+
+        $dStmt = $pdo->prepare('SELECT id, trip_number, truck FROM fleet_dispatches WHERE id = ? LIMIT 1');
+        $dStmt->execute([$dispatchId]);
+        $dispatch = $dStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$dispatch) {
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Dispatch not found.']);
+                exit;
+            }
+            flash('fleet_error', 'Dispatch record not found.');
+            redirect('/fleet');
+            return;
+        }
+
+        $fuelDate = trim($_POST['fuel_date'] ?? date('Y-m-d'));
+        $station = trim($_POST['station_location'] ?? 'Highway Fuel Depot');
+        $country = trim($_POST['country'] ?? 'Kenya');
+        $currencyCode = strtoupper(trim($_POST['currency_code'] ?? 'KES'));
+        $litres = max(0, (float)($_POST['litres'] ?? 0));
+        $localUnitPrice = max(0, (float)($_POST['local_unit_price'] ?? 0));
+        $exchangeRate = (float)($_POST['exchange_rate'] ?? 1);
+
+        // Fallback default rates if missing/invalid
+        if ($exchangeRate <= 0) {
+            if ($currencyCode === 'KES') $exchangeRate = (float)exchange_rate();
+            elseif ($currencyCode === 'UGX') $exchangeRate = 3750.0;
+            elseif ($currencyCode === 'CDF') $exchangeRate = 2850.0;
+            elseif ($currencyCode === 'SSP') $exchangeRate = 1300.0;
+            else $exchangeRate = 1.0;
+        }
+
+        $localTotal = round($litres * $localUnitPrice, 2);
+        $baseUsdCost = round($localTotal / $exchangeRate, 2);
+        $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
+        $receiptNumber = trim($_POST['receipt_number'] ?? '');
+        $notes = trim($_POST['notes'] ?? '');
+
+        $ins = $pdo->prepare('INSERT INTO fleet_diesel_logs (
+            dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code,
+            exchange_rate, litres, local_unit_price, local_total_cost, base_usd_cost,
+            receipt_status, receipt_number, notes, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+        $ins->execute([
+            $dispatchId,
+            $dispatch['trip_number'],
+            $dispatch['truck'],
+            $fuelDate,
+            $station,
+            $country,
+            $currencyCode,
+            $exchangeRate,
+            $litres,
+            $localUnitPrice,
+            $localTotal,
+            $baseUsdCost,
+            $receiptStatus,
+            $receiptNumber,
+            $notes,
+            date('Y-m-d H:i:s')
+        ]);
+        $newLogId = (int)$pdo->lastInsertId();
+
+        // Recalculate dispatch aggregates
+        $updatedTotals = self::recalculateDispatchDiesel($pdo, $dispatchId);
+
+        log_audit('Diesel Fueling', 'LOG_FUEL_STOP', "Logged {$litres}L fueling in {$country} ({$currencyCode} {$localTotal}) for trip {$dispatch['trip_number']}");
+
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Fuel stop recorded successfully!',
+                'log_id' => $newLogId,
+                'totals' => [
+                    'diesel_raw' => $updatedTotals['diesel'],
+                    'diesel_formatted' => format_money($updatedTotals['diesel']),
+                    'diesel_litres' => $updatedTotals['diesel_litres'],
+                    'balance_raw' => $updatedTotals['balance'],
+                    'balance_formatted' => format_money($updatedTotals['balance']),
+                ]
+            ]);
+            exit;
+        }
+
+        flash('fleet_success', "Diesel fuel stop logged successfully ({$litres} L in {$country}). Total trip diesel and net balance updated!");
+        redirect('/fleet');
+    }
+
+    public function getDieselLogs(string $dispatchId): void
+    {
+        $pdo = Database::connection();
+        $id = (int)$dispatchId;
+
+        $dStmt = $pdo->prepare('SELECT id, trip_number, truck, diesel, diesel_litres, balance FROM fleet_dispatches WHERE id = ? LIMIT 1');
+        $dStmt->execute([$id]);
+        $dispatch = $dStmt->fetch(PDO::FETCH_ASSOC);
+
+        $stmt = $pdo->prepare('SELECT * FROM fleet_diesel_logs WHERE dispatch_id = ? ORDER BY fuel_date ASC, id ASC');
+        $stmt->execute([$id]);
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $isKes = current_currency() === 'KES';
+        $rate = exchange_rate();
+        $formattedLogs = [];
+
+        foreach ($logs as $l) {
+            $baseUsd = (float)$l['base_usd_cost'];
+            $formattedLogs[] = [
+                'id' => $l['id'],
+                'dispatch_id' => $l['dispatch_id'],
+                'trip_number' => $l['trip_number'],
+                'truck' => $l['truck'],
+                'fuel_date' => $l['fuel_date'],
+                'fuel_date_formatted' => format_date_dol($l['fuel_date']),
+                'station_location' => $l['station_location'],
+                'country' => $l['country'],
+                'currency_code' => $l['currency_code'],
+                'exchange_rate' => (float)$l['exchange_rate'],
+                'litres' => (float)$l['litres'],
+                'local_unit_price' => (float)$l['local_unit_price'],
+                'local_total_cost' => (float)$l['local_total_cost'],
+                'base_usd_cost' => $baseUsd,
+                'display_cost_formatted' => format_money($baseUsd),
+                'receipt_status' => $l['receipt_status'] ?? 'Received',
+                'receipt_number' => $l['receipt_number'] ?? '',
+                'notes' => $l['notes'] ?? '',
+            ];
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'dispatch' => $dispatch ? [
+                'id' => $dispatch['id'],
+                'trip_number' => $dispatch['trip_number'],
+                'truck' => $dispatch['truck'],
+                'total_diesel_formatted' => format_money($dispatch['diesel']),
+                'total_diesel_litres' => (float)$dispatch['diesel_litres'],
+                'balance_formatted' => format_money($dispatch['balance'])
+            ] : null,
+            'logs' => $formattedLogs
+        ]);
+        exit;
+    }
+
+    public function deleteDieselLog(string $id): void
+    {
+        $pdo = Database::connection();
+        $logId = (int)$id;
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        $stmt = $pdo->prepare('SELECT dispatch_id, trip_number, country, litres, currency_code, local_total_cost FROM fleet_diesel_logs WHERE id = ? LIMIT 1');
+        $stmt->execute([$logId]);
+        $log = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$log) {
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Diesel log not found.']);
+                exit;
+            }
+            flash('fleet_error', 'Diesel fuel record not found.');
+            redirect('/fleet');
+            return;
+        }
+
+        $dispatchId = (int)$log['dispatch_id'];
+        $del = $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE id = ?');
+        $del->execute([$logId]);
+
+        $updatedTotals = self::recalculateDispatchDiesel($pdo, $dispatchId);
+
+        log_audit('Diesel Fueling', 'DELETE_FUEL_STOP', "Deleted fuel stop #{$logId} for trip {$log['trip_number']}");
+
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Fuel stop deleted successfully.',
+                'totals' => [
+                    'diesel_raw' => $updatedTotals['diesel'],
+                    'diesel_formatted' => format_money($updatedTotals['diesel']),
+                    'diesel_litres' => $updatedTotals['diesel_litres'],
+                    'balance_raw' => $updatedTotals['balance'],
+                    'balance_formatted' => format_money($updatedTotals['balance']),
+                ]
+            ]);
+            exit;
+        }
+
+        flash('fleet_success', 'Fuel record removed and dispatch balance updated.');
+        redirect('/fleet');
+    }
 }
+
