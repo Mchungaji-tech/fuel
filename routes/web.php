@@ -40,6 +40,7 @@ return [
     ['POST', '/fleet/inline-update', [FleetController::class, 'inlineUpdate']],
     ['POST', '/fleet/confirm-delivery/{id}', [FleetController::class, 'confirmDelivery']],
     ['POST', '/fleet/diesel/store', [FleetController::class, 'storeDieselLog']],
+    ['POST', '/fleet/diesel/update/{id}', [FleetController::class, 'updateDieselLog']],
     ['GET', '/fleet/diesel/list/{id}', [FleetController::class, 'getDieselLogs']],
     ['POST', '/fleet/diesel/delete/{id}', [FleetController::class, 'deleteDieselLog']],
     ['GET', '/fleet/bol/{id}', [FleetController::class, 'bol']],

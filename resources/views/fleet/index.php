@@ -609,7 +609,7 @@
             </div>
         </div>
 
-        <form method="POST" action="<?= url('fleet/store') ?>" id="dispatchWizardForm" onsubmit="return onWizardFormSubmit(event)">
+        <form method="POST" action="<?= url('fleet/store') ?>" id="dispatchWizardForm" novalidate onsubmit="return onWizardFormSubmit(event)">
             <?= csrf_field() ?>
 
             <!-- STEP 1: Tanker Truck & Driver Crew -->
@@ -657,7 +657,7 @@
 
                     <div class="form-group">
                         <label>Truck Tanker Capacity (Litres) *</label>
-                        <input type="number" name="truck_capacity" id="dispatchTruckCapacity" placeholder="e.g. 28000" required>
+                        <input type="number" name="truck_capacity" id="dispatchTruckCapacity" placeholder="e.g. 28000" required oninput="onTruckCapacityInput(this.value)">
                     </div>
 
                     <div class="form-group">
@@ -733,6 +733,20 @@
                         <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= Litres Loaded × Unit Price</span>
                     </div>
 
+                    <!-- Dynamic Live Expected Transport Display Banner -->
+                    <div id="dispTransportLiveCard" style="grid-column:1/-1;background:linear-gradient(135deg, var(--card), var(--brand-soft));border:1.5px solid var(--brand);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px;">
+                        <div>
+                            <div style="font-size:11px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Transport Revenue (Gross Billed)</div>
+                            <div id="dispTransportFormulaText" style="font-size:13px;color:var(--text-2);margin-top:2px;">0 Litres × <?= app_currency_symbol() ?> 0.00/L</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div id="dispTransportBigDisplay" style="font-size:22px;font-weight:900;color:var(--brand);">
+                                <?= app_currency_symbol() ?> 0.00
+                            </div>
+                            <div id="dispTransportAltDisplay" style="font-size:12px;color:var(--text-3);font-weight:700;"></div>
+                        </div>
+                    </div>
+
                     <!-- Hidden Shortage & Status -->
                     <input type="hidden" name="shortage_litres" id="dispatchShortageLitres" value="0">
                     <input type="hidden" name="final_payout" id="dispFinalPayout" value="">
@@ -756,8 +770,8 @@
                     </div>
 
                     <div class="form-group">
-                        <label>👤 Client / Consignee Name *</label>
-                        <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd" required style="width:100%;">
+                        <label>👤 Client / Consignee Name (Optional)</label>
+                        <input type="text" list="customersList" name="client_name" id="dispatchClientName" placeholder="e.g. TotalEnergies Uganda Ltd (or leave blank)" style="width:100%;">
                     </div>
                 </div>
 
@@ -775,10 +789,59 @@
                 </div>
 
                 <div class="form-grid">
-                    <div class="form-group" style="grid-column:1/-1;">
-                        <label>Driver Mileage & En-route Allowance [<?= app_currency_symbol() ?>] *</label>
-                        <input type="number" step="0.01" name="mileage_cost" id="dispMileage" placeholder="0.00" value="0.00" required oninput="calcBalance()">
-                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Road transit allowances, driver per diem, and border toll fees</span>
+                    <!-- Driver Mileage Dual-Currency Card (KSh & USD) -->
+                    <div style="grid-column:1/-1;background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                            <div>
+                                <b style="font-size:13.5px;color:var(--text);display:flex;align-items:center;gap:6px;">
+                                    <span>🛣️</span>
+                                    <span>Driver Mileage & Transit Allowance</span>
+                                </b>
+                                <div style="font-size:12px;color:var(--text-3);margin-top:2px;">
+                                    Per diem, toll fees & allowances paid in KSh (KES) with real-time Dollar equivalent.
+                                </div>
+                            </div>
+                            <span style="font-size:11.5px;background:var(--card-2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);font-weight:700;color:var(--text-2);">
+                                1 USD = <?= exchange_rate() ?> KES
+                            </span>
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
+                            <div>
+                                <label style="font-size:12px;font-weight:700;color:var(--amber);display:block;margin-bottom:4px;">
+                                    🇰🇪 Amount in Kenya Shillings (KSh / KES) *
+                                </label>
+                                <div style="position:relative;">
+                                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:12px;">KES</span>
+                                    <input type="number" step="1" id="dispMileageKes" placeholder="e.g. 50000" oninput="onMileageKesInput(this.value)" style="width:100%;padding:9px 10px 9px 44px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:15px;color:var(--amber);background:var(--card);">
+                                </div>
+                                <span style="font-size:11px;color:var(--text-3);display:block;margin-top:3px;">Cash / M-Pesa allowance handed to driver</span>
+                            </div>
+
+                            <div>
+                                <label style="font-size:12px;font-weight:700;color:var(--brand);display:block;margin-bottom:4px;">
+                                    💵 Base Dollar Equivalent (USD $) *
+                                </label>
+                                <div style="position:relative;">
+                                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--brand);font-size:13px;">$</span>
+                                    <input type="number" step="0.01" id="dispMileageUsd" placeholder="0.00" oninput="onMileageUsdInput(this.value)" style="width:100%;padding:9px 10px 9px 28px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;font-size:15px;color:var(--brand);background:var(--card);">
+                                </div>
+                                <span style="font-size:11px;color:var(--text-3);display:block;margin-top:3px;">Accounting base cost deducted from trip yield</span>
+                            </div>
+                        </div>
+
+                        <!-- Real-time Dual Badge Banner -->
+                        <div style="margin-top:12px;padding:10px 14px;background:var(--card-2);border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+                            <span style="color:var(--text-2);">Active Deduction:</span>
+                            <div style="font-weight:800;">
+                                <span id="mileageBadgeKes" style="color:var(--amber);">KES 0.00</span>
+                                <span style="color:var(--text-3);margin:0 6px;">⇄</span>
+                                <span id="mileageBadgeUsd" style="color:var(--brand);">$ 0.00</span>
+                            </div>
+                        </div>
+
+                        <!-- Hidden synced field submitted to backend -->
+                        <input type="hidden" name="mileage_cost" id="dispMileage" value="0.00">
                     </div>
 
                     <!-- Departure Diesel Fueling Card -->
@@ -964,6 +1027,20 @@
 
         <form id="dieselLogForm" onsubmit="return handleDieselLogSubmit(event)">
             <?= csrf_field() ?>
+            <input type="hidden" name="edit_log_id" id="dlmEditLogId" value="">
+
+            <div id="dlmFeedbackBanner" style="display:none;padding:10px 14px;background:var(--green-soft);border:1px solid var(--green);border-radius:10px;margin-bottom:14px;color:var(--green);font-weight:700;font-size:13px;"></div>
+
+            <div id="dlmEditModeBanner" style="display:none;padding:10px 14px;background:var(--brand-soft);border:1.5px solid var(--brand);border-radius:10px;margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                    <div>
+                        <b id="dlmEditModeTitle" style="color:var(--brand);font-size:13.5px;">✏️ Editing Fuel Stop</b>
+                        <div style="font-size:12px;color:var(--text-2);margin-top:1px;">Modify litres, pump price, exchange rate, or station. Dispatch totals will automatically recalculate.</div>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-xs" onclick="cancelDieselLogEdit(false)" style="color:var(--red);border:1px solid var(--red);font-weight:700;">✕ Cancel Edit</button>
+                </div>
+            </div>
+
             <div class="form-grid">
                 <div class="form-group" style="grid-column:1/-1;">
                     <label>Select Dispatch Trip *</label>
@@ -1001,8 +1078,8 @@
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
-                    <label>Fuel Station / Road Location *</label>
-                    <input type="text" name="station_location" id="dlmStationLocation" placeholder="e.g. Total Malaba Border, Shell Jinja Road, Goma Depot Station" required>
+                    <label>Fuel Station / Road Location (Optional)</label>
+                    <input type="text" name="station_location" id="dlmStationLocation" placeholder="e.g. Total Malaba Border, Shell Jinja Road, Goma Depot Station (or leave blank)">
                 </div>
 
                 <div class="form-group">
@@ -1063,8 +1140,8 @@
                 </div>
             </div>
 
-            <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:12px;">
-                <button type="button" class="btn btn-ghost" onclick="document.getElementById('dieselLogModal').classList.remove('active')">Cancel</button>
+            <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:12px;align-items:center;">
+                <button type="button" id="dlmCancelBtn" class="btn btn-ghost" onclick="cancelDieselLogEdit(true)">Cancel</button>
                 <button type="submit" id="dlmSubmitBtn" class="btn btn-amber" style="background:var(--amber);color:#fff;font-weight:800;">
                     ⛽ Record Fuel Stop
                 </button>
@@ -1590,6 +1667,13 @@ window.openProceduralDispatchModal = function() {
     const fromLoc = document.getElementById('wizardFromLocation');
     if (fromLoc) fromLoc.value = 'Eldoret';
 
+    // Reset mileage inputs in dual KES/USD
+    const milKesEl = document.getElementById('dispMileageKes');
+    if (milKesEl) milKesEl.value = '';
+    const milUsdEl = document.getElementById('dispMileageUsd');
+    if (milUsdEl) milUsdEl.value = '';
+    syncMileageFields(0, 0);
+
     // Reset departure fuel
     const fuelChk = document.getElementById('wizardEnableDepartureDiesel');
     if (fuelChk) {
@@ -1606,8 +1690,17 @@ window.openProceduralDispatchModal = function() {
     if (exEl) exEl.value = '<?= exchange_rate() ?>';
 
     calcWizardDiesel();
+    calcExpectedTransport();
     updateWizardUI();
     document.getElementById('dispatchModal').classList.add('active');
+};
+
+window.onTruckCapacityInput = function(val) {
+    const loadedEl = document.getElementById('dispatchLoadedLitres');
+    if (loadedEl) {
+        loadedEl.value = val;
+    }
+    calcExpectedTransport();
 };
 
 window.goToWizardStep = function(targetStep) {
@@ -1618,7 +1711,11 @@ window.goToWizardStep = function(targetStep) {
     }
     currentWizardStep = targetStep;
     updateWizardUI();
-    if (currentWizardStep === 4) {
+    if (currentWizardStep === 2) {
+        calcExpectedTransport();
+    } else if (currentWizardStep === 3) {
+        calcWizardDiesel();
+    } else if (currentWizardStep === 4) {
         renderWizardReview();
     }
 };
@@ -1705,17 +1802,11 @@ function validateWizardStep(step) {
             dest?.focus();
             return false;
         }
-        const client = document.getElementById('dispatchClientName');
-        if (!client || !client.value.trim()) {
-            alert('Please enter the Client / Consignee name.');
-            client?.focus();
-            return false;
-        }
     } else if (step === 3) {
         const mileage = document.getElementById('dispMileage');
         if (!mileage || isNaN(parseFloat(mileage.value))) {
             alert('Please enter driver mileage & en-route allowance (0.00 if none).');
-            mileage?.focus();
+            document.getElementById('dispMileageKes')?.focus();
             return false;
         }
         const fuelEnabled = document.getElementById('wizardEnableDepartureDiesel')?.checked;
@@ -1741,6 +1832,38 @@ function validateWizardStep(step) {
         }
     }
     return true;
+}
+
+window.onMileageKesInput = function(kesVal) {
+    const kes = parseFloat(kesVal) || 0;
+    const usd = SYS_EX_RATE > 0 ? (kes / SYS_EX_RATE) : 0;
+    const usdEl = document.getElementById('dispMileageUsd');
+    if (usdEl) usdEl.value = usd > 0 ? usd.toFixed(2) : '';
+
+    syncMileageFields(kes, usd);
+};
+
+window.onMileageUsdInput = function(usdVal) {
+    const usd = parseFloat(usdVal) || 0;
+    const kes = usd * SYS_EX_RATE;
+    const kesEl = document.getElementById('dispMileageKes');
+    if (kesEl) kesEl.value = kes > 0 ? Math.round(kes) : '';
+
+    syncMileageFields(kes, usd);
+};
+
+function syncMileageFields(kes, usd) {
+    const dispMil = document.getElementById('dispMileage');
+    if (dispMil) {
+        dispMil.value = IS_KES ? kes.toFixed(2) : usd.toFixed(2);
+    }
+
+    const badgeKes = document.getElementById('mileageBadgeKes');
+    const badgeUsd = document.getElementById('mileageBadgeUsd');
+    if (badgeKes) badgeKes.textContent = 'KES ' + kes.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (badgeUsd) badgeUsd.textContent = '$ ' + usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    calcBalance();
 }
 
 window.toggleWizardDepartureDiesel = function(enabled) {
@@ -1836,7 +1959,7 @@ function renderWizardReview() {
 
     const fromLoc = document.getElementById('wizardFromLocation')?.value || 'Eldoret';
     const dest = document.getElementById('wizardDestination')?.value || '—';
-    const client = document.getElementById('dispatchClientName')?.value || '—';
+    const client = document.getElementById('dispatchClientName')?.value?.trim() || 'Spot Consignee';
 
     const product = document.getElementById('dispatchProductSelect')?.value || '—';
     const loaded = Number(document.getElementById('dispatchLoadedLitres')?.value || 0);
@@ -1866,7 +1989,11 @@ function renderWizardReview() {
     const revRevenue = document.getElementById('wzRevRevenue');
     if (revRevenue) revRevenue.textContent = formatSystemMoney(transportAmt);
     const revMileage = document.getElementById('wzRevMileage');
-    if (revMileage) revMileage.textContent = '- ' + formatSystemMoney(mileageAmt);
+    if (revMileage) {
+        const milKes = parseFloat(document.getElementById('dispMileageKes')?.value) || 0;
+        const milUsd = parseFloat(document.getElementById('dispMileageUsd')?.value) || 0;
+        revMileage.innerHTML = `- ${formatSystemMoney(mileageAmt)} <small style="color:var(--text-3);font-size:11.5px;">(KES ${milKes.toLocaleString()} / $${milUsd.toFixed(2)})</small>`;
+    }
     const revDiesel = document.getElementById('wzRevDiesel');
     if (revDiesel) revDiesel.textContent = '- ' + formatSystemMoney(dieselAmt);
 
@@ -1906,10 +2033,20 @@ window.openDieselLogModal = function(dispatchId = null) {
     const sel = document.getElementById('dlmDispatchSelect');
     if (!sel) return;
 
+    cancelDieselLogEdit(false);
+
     const dDate = document.getElementById('dlmFuelDate');
     if (dDate) dDate.value = '<?= date('Y-m-d') ?>';
 
     if (dispatchId) {
+        let opt = sel.querySelector('option[value="' + dispatchId + '"]');
+        if (!opt && window.FLEET_ROWS_MAP && window.FLEET_ROWS_MAP[dispatchId]) {
+            const rowData = window.FLEET_ROWS_MAP[dispatchId];
+            opt = document.createElement('option');
+            opt.value = dispatchId;
+            opt.textContent = `${rowData.trip_number || 'Trip'} • ${rowData.truck || ''} (${rowData.destination || ''}) — ${rowData.driver || ''}`;
+            sel.appendChild(opt);
+        }
         sel.value = dispatchId;
         onDlmDispatchChanged(dispatchId);
     } else if (sel.value) {
@@ -1980,6 +2117,92 @@ window.calcDlmDiesel = function() {
     if (sysEl) sysEl.textContent = formatSystemMoney(sysCost);
 };
 
+window.editDieselLogAjax = function(s) {
+    const editIdInput = document.getElementById('dlmEditLogId');
+    if (editIdInput) editIdInput.value = s.id;
+
+    const banner = document.getElementById('dlmEditModeBanner');
+    const title = document.getElementById('dlmEditModeTitle');
+    if (banner) banner.style.display = 'block';
+    if (title) title.textContent = `✏️ Editing Fuel Stop #${s.id}: ${s.station_location || 'Stop'} (${s.country})`;
+
+    const dDate = document.getElementById('dlmFuelDate');
+    if (dDate) dDate.value = s.fuel_date;
+
+    const cSel = document.getElementById('dlmCountrySelect');
+    if (cSel) {
+        cSel.value = s.currency_code;
+    }
+    const cName = document.getElementById('dlmCountryName');
+    if (cName) cName.value = s.country;
+
+    const stEl = document.getElementById('dlmStationLocation');
+    if (stEl) stEl.value = s.station_location || '';
+
+    const litEl = document.getElementById('dlmLitres');
+    if (litEl) litEl.value = s.litres;
+
+    const prEl = document.getElementById('dlmLocalPrice');
+    if (prEl) prEl.value = s.local_unit_price;
+
+    const exEl = document.getElementById('dlmExchangeRate');
+    if (exEl) exEl.value = s.exchange_rate;
+
+    const rStat = document.getElementById('dlmReceiptStatus');
+    if (rStat) rStat.value = s.receipt_status || 'Received';
+
+    const rNum = document.getElementById('dlmReceiptNumber');
+    if (rNum) rNum.value = s.receipt_number || '';
+
+    const noteEl = document.getElementById('dlmNotes');
+    if (noteEl) noteEl.value = s.notes || '';
+
+    const subBtn = document.getElementById('dlmSubmitBtn');
+    if (subBtn) {
+        subBtn.textContent = '✓ Save Changes to Fuel Stop';
+        subBtn.style.background = 'var(--brand)';
+    }
+
+    calcDlmDiesel();
+
+    const modal = document.querySelector('#dieselLogModal .modal-card');
+    if (modal) modal.scrollTop = 0;
+};
+
+window.cancelDieselLogEdit = function(closeModalIfNormal = false) {
+    const editIdInput = document.getElementById('dlmEditLogId');
+    const wasEditing = editIdInput && editIdInput.value !== '';
+
+    if (editIdInput) editIdInput.value = '';
+
+    const banner = document.getElementById('dlmEditModeBanner');
+    if (banner) banner.style.display = 'none';
+
+    const subBtn = document.getElementById('dlmSubmitBtn');
+    if (subBtn) {
+        subBtn.textContent = '⛽ Record Fuel Stop';
+        subBtn.style.background = 'var(--amber)';
+    }
+
+    // Reset fields
+    const litEl = document.getElementById('dlmLitres');
+    if (litEl) litEl.value = '';
+    const prEl = document.getElementById('dlmLocalPrice');
+    if (prEl) prEl.value = '';
+    const stEl = document.getElementById('dlmStationLocation');
+    if (stEl) stEl.value = '';
+    const recEl = document.getElementById('dlmReceiptNumber');
+    if (recEl) recEl.value = '';
+    const noteEl = document.getElementById('dlmNotes');
+    if (noteEl) noteEl.value = '';
+
+    calcDlmDiesel();
+
+    if (closeModalIfNormal && !wasEditing) {
+        document.getElementById('dieselLogModal').classList.remove('active');
+    }
+};
+
 window.handleDieselLogSubmit = async function(e) {
     if (e) e.preventDefault();
     const form = document.getElementById('dieselLogForm');
@@ -1999,15 +2222,19 @@ window.handleDieselLogSubmit = async function(e) {
         return false;
     }
 
+    const editId = document.getElementById('dlmEditLogId')?.value;
+    const isEdit = Boolean(editId);
+    const targetUrl = isEdit ? ('<?= url("fleet/diesel/update") ?>/' + editId) : '<?= url("fleet/diesel/store") ?>';
+
     const btn = document.getElementById('dlmSubmitBtn');
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Saving Fuel Stop...';
+        btn.textContent = isEdit ? 'Updating Fuel Stop...' : 'Saving Fuel Stop...';
     }
 
     try {
         const formData = new FormData(form);
-        const res = await fetch('<?= url("fleet/diesel/store") ?>', {
+        const res = await fetch(targetUrl, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -2016,23 +2243,20 @@ window.handleDieselLogSubmit = async function(e) {
         });
         const json = await res.json();
         if (json.success) {
-            // Reset input values for next stop
-            const litEl = document.getElementById('dlmLitres');
-            if (litEl) litEl.value = '';
-            const prEl = document.getElementById('dlmLocalPrice');
-            if (prEl) prEl.value = '';
-            const stEl = document.getElementById('dlmStationLocation');
-            if (stEl) stEl.value = '';
-            const recEl = document.getElementById('dlmReceiptNumber');
-            if (recEl) recEl.value = '';
-            const noteEl = document.getElementById('dlmNotes');
-            if (noteEl) noteEl.value = '';
-
-            calcDlmDiesel();
+            cancelDieselLogEdit(false);
             loadDispatchFuelHistory(dispatchId);
 
             if (json.data && json.data.totals) {
                 updateFleetRowTotals(dispatchId, json.data.totals);
+            } else if (json.totals) {
+                updateFleetRowTotals(dispatchId, json.totals);
+            }
+
+            const fb = document.getElementById('dlmFeedbackBanner');
+            if (fb) {
+                fb.style.display = 'block';
+                fb.textContent = isEdit ? '✓ Fuel stop updated successfully!' : '✓ Fuel stop recorded successfully!';
+                setTimeout(() => { if (fb) fb.style.display = 'none'; }, 4000);
             }
         } else {
             alert('Could not save fuel record: ' + (json.error || 'Server error'));
@@ -2043,7 +2267,7 @@ window.handleDieselLogSubmit = async function(e) {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = '⛽ Record Fuel Stop';
+            btn.textContent = isEdit ? '✓ Save Changes to Fuel Stop' : '⛽ Record Fuel Stop';
         }
     }
     return false;
@@ -2059,13 +2283,14 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
     try {
         const res = await fetch('<?= url("fleet/diesel/list") ?>/' + dispatchId);
         const json = await res.json();
-        if (json.success && json.data) {
-            if (json.data.length === 0) {
+        const logsList = json.logs || json.data || [];
+        if (json.success && (json.logs || json.data)) {
+            if (logsList.length === 0) {
                 body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text-3);">No fuel stops recorded yet for this dispatch trip.</td></tr>';
                 if (summ) summ.textContent = '0 stops • Total: $0.00';
             } else {
                 let html = '';
-                json.data.forEach(s => {
+                logsList.forEach(s => {
                     const localTot = parseFloat(s.local_total_cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     const localUnit = parseFloat(s.local_unit_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     const usdTot = parseFloat(s.base_usd_cost || 0).toFixed(2);
@@ -2075,7 +2300,7 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
                         <td style="padding:8px 10px;white-space:nowrap;">${s.fuel_date}</td>
                         <td style="padding:8px 10px;">
                             <b>${s.country}</b><br>
-                            <small style="color:var(--text-3);">${s.station_location || 'Depot Pump'}</small>
+                            <small style="color:var(--text-3);">${s.station_location || 'En-route Station'}</small>
                         </td>
                         <td style="padding:8px 10px;font-weight:700;">${Number(s.litres).toLocaleString()} L</td>
                         <td style="padding:8px 10px;">
@@ -2087,17 +2312,17 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
                             <small style="color:var(--amber);font-weight:700;">${sysTot}</small>
                         </td>
                         <td style="padding:8px 10px;text-align:center;">
-                            <button type="button" class="btn btn-ghost btn-xs" style="color:var(--red);padding:2px 6px;" onclick="deleteDieselLogAjax(${s.id}, ${dispatchId})" title="Delete this fueling stop">✕</button>
+                            <div style="display:inline-flex;gap:4px;">
+                                <button type="button" class="btn btn-ghost btn-xs" style="color:var(--brand);padding:2px 7px;font-weight:700;border:1px solid var(--border);" onclick='editDieselLogAjax(${JSON.stringify(s)})' title="Edit this fuel stop">✏️ Edit</button>
+                                <button type="button" class="btn btn-ghost btn-xs" style="color:var(--red);padding:2px 6px;" onclick="deleteDieselLogAjax(${s.id}, ${dispatchId})" title="Delete this fueling stop">✕</button>
+                            </div>
                         </td>
                     </tr>`;
                 });
                 body.innerHTML = html;
 
-                if (summ && json.totals) {
-                    const totUsd = Number(json.totals.total_usd || 0).toFixed(2);
-                    const totSys = formatSystemMoney(toSystemCurrency(json.totals.total_usd));
-                    const totLit = Number(json.totals.total_litres || 0).toLocaleString();
-                    summ.textContent = `${json.data.length} stops • ${totLit} L • Total: $${totUsd} (${totSys})`;
+                if (summ && json.dispatch) {
+                    summ.textContent = `${logsList.length} stops • ${json.dispatch.total_diesel_litres.toLocaleString()} L • Total: ${json.dispatch.total_diesel_formatted}`;
                 }
             }
         }
@@ -2125,6 +2350,8 @@ window.deleteDieselLogAjax = async function(logId, dispatchId) {
             loadDispatchFuelHistory(dispatchId);
             if (json.data && json.data.totals) {
                 updateFleetRowTotals(dispatchId, json.data.totals);
+            } else if (json.totals) {
+                updateFleetRowTotals(dispatchId, json.totals);
             }
         } else {
             alert('Could not delete fuel stop: ' + (json.error || 'Server error'));
@@ -2138,20 +2365,20 @@ window.deleteDieselLogAjax = async function(logId, dispatchId) {
 window.updateFleetRowTotals = function(dispatchId, totals) {
     if (window.FLEET_ROWS_MAP && window.FLEET_ROWS_MAP[dispatchId]) {
         const d = window.FLEET_ROWS_MAP[dispatchId];
-        d.diesel = totals.diesel;
+        d.diesel = (totals.diesel !== undefined) ? totals.diesel : (totals.diesel_raw ?? 0);
         d.diesel_litres = totals.diesel_litres;
         d.diesel_unit_price = totals.diesel_unit_price;
-        d.diesel_formatted = formatSystemMoney(totals.diesel);
-        d.balance = totals.balance;
-        d.balance_formatted = formatSystemMoney(totals.balance);
+        d.diesel_formatted = totals.diesel_formatted || formatSystemMoney(d.diesel);
+        d.balance = (totals.balance !== undefined) ? totals.balance : (totals.balance_raw ?? 0);
+        d.balance_formatted = totals.balance_formatted || formatSystemMoney(d.balance);
     }
 
     const row = document.getElementById('fleet-row-' + dispatchId);
     if (row) {
-        row.dataset.diesel = totals.diesel;
+        row.dataset.diesel = (totals.diesel !== undefined) ? totals.diesel : (totals.diesel_raw ?? 0);
         const cellDiesel = row.querySelector('.cell-diesel');
         if (cellDiesel) {
-            const dVal = parseFloat(totals.diesel || 0);
+            const dVal = parseFloat(totals.diesel ?? totals.diesel_raw ?? 0);
             const dLit = parseFloat(totals.diesel_litres || 0);
             const dUp = parseFloat(totals.diesel_unit_price || 0);
 
@@ -2164,7 +2391,7 @@ window.updateFleetRowTotals = function(dispatchId, totals) {
 
         const cellBalance = row.querySelector('.cell-balance');
         if (cellBalance) {
-            const balVal = parseFloat(totals.balance || 0);
+            const balVal = parseFloat(totals.balance ?? totals.balance_raw ?? 0);
             cellBalance.innerHTML = `<span class="view-val" style="color:${balVal >= 0 ? 'var(--green)' : 'var(--red)'};">${formatSystemMoney(balVal)}</span>`;
         }
 
@@ -2185,13 +2412,14 @@ window.loadVdmFuelStops = async function(dispatchId) {
     try {
         const res = await fetch('<?= url("fleet/diesel/list") ?>/' + dispatchId);
         const json = await res.json();
-        if (json.success && json.data && json.data.length > 0) {
+        const logsList = json.logs || json.data || [];
+        if (json.success && logsList.length > 0) {
             box.style.display = 'block';
-            if (countEl) countEl.textContent = json.data.length + (json.data.length === 1 ? ' stop' : ' stops');
-            list.innerHTML = json.data.map(s => `
+            if (countEl) countEl.textContent = logsList.length + (logsList.length === 1 ? ' stop' : ' stops');
+            list.innerHTML = logsList.map(s => `
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px dashed var(--border);">
                     <div>
-                        <b>${s.country}</b> • <span style="color:var(--text-2);">${s.station_location || 'Depot Pump'}</span> (${Number(s.litres).toLocaleString()} L)
+                        <b>${s.country}</b> • <span style="color:var(--text-2);">${s.station_location || 'En-route Station'}</span> (${Number(s.litres).toLocaleString()} L)
                     </div>
                     <div style="font-weight:700;color:var(--amber);">
                         ${s.currency_code} ${parseFloat(s.local_total_cost || 0).toLocaleString(undefined, {minimumFractionDigits:2})} 
@@ -2487,33 +2715,41 @@ window.saveTripExpenses = async function(e) {
 
 function onTruckSelected() {
     const sel = document.getElementById('dispatchTruckSelect');
+    if (!sel || sel.selectedIndex < 0) return;
     const opt = sel.options[sel.selectedIndex];
     const notice = document.getElementById('truckOwnershipNotice');
     const commGroup = document.getElementById('commissionGroup');
     const commInput = document.getElementById('dispCommission');
+    const balLabel = document.getElementById('balanceLabel');
 
     if (opt && opt.dataset.capacity) {
-        document.getElementById('dispatchTruckCapacity').value = opt.dataset.capacity;
-        document.getElementById('dispatchLoadedLitres').value = opt.dataset.capacity;
+        const capInput = document.getElementById('dispatchTruckCapacity');
+        if (capInput) capInput.value = opt.dataset.capacity;
+        const loadedInput = document.getElementById('dispatchLoadedLitres');
+        if (loadedInput) loadedInput.value = opt.dataset.capacity;
         isSubcontractedTruck = (opt.dataset.subcontracted === '1');
 
         if (isSubcontractedTruck) {
-            notice.style.display = 'block';
-            commGroup.style.display = 'block';
-            commInput.value = opt.dataset.commission || '0';
-            document.getElementById('subcontractedDetailsText').textContent = 
-                'Owner: ' + (opt.dataset.owner || 'Contract Haulier') + ' • Only agreed company commission acts as profit.';
-            document.getElementById('balanceLabel').textContent = 'Agreed Company Commission';
+            if (notice) notice.style.display = 'block';
+            if (commGroup) commGroup.style.display = 'block';
+            if (commInput) commInput.value = opt.dataset.commission || '0';
+            const subText = document.getElementById('subcontractedDetailsText');
+            if (subText) {
+                subText.textContent = 'Owner: ' + (opt.dataset.owner || 'Contract Haulier') + ' • Only agreed company commission acts as profit.';
+            }
+            if (balLabel) balLabel.textContent = 'Agreed Company Commission';
         } else {
-            notice.style.display = 'none';
-            commGroup.style.display = 'none';
-            document.getElementById('balanceLabel').textContent = 'Estimated Net Profit (Balance)';
+            if (notice) notice.style.display = 'none';
+            if (commGroup) commGroup.style.display = 'none';
+            if (balLabel) balLabel.textContent = 'Estimated Net Profit (Balance)';
         }
         calcExpectedTransport();
     }
 }
+window.onTruckSelected = onTruckSelected;
 
 function onProductSelected(sel) {
+    if (!sel || sel.selectedIndex < 0) return;
     const opt = sel.options[sel.selectedIndex];
     if (opt && opt.dataset.price) {
         const upInput = document.getElementById('dispatchUnitPrice');
@@ -2523,6 +2759,7 @@ function onProductSelected(sel) {
         }
     }
 }
+window.onProductSelected = onProductSelected;
 
 function calcExpectedTransport() {
     const loaded = parseFloat(document.getElementById('dispatchLoadedLitres')?.value) || 0;
@@ -2542,8 +2779,33 @@ function calcExpectedTransport() {
         dispFinal.value = finalPayout > 0 ? finalPayout.toFixed(2) : '0.00';
     }
 
+    // Dynamic Live Expected Transport Display Banner in Step 2:
+    const bigDisp = document.getElementById('dispTransportBigDisplay');
+    if (bigDisp) {
+        bigDisp.textContent = CURRENCY_SYM + ' ' + (transport > 0 ? transport.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00');
+    }
+    const formulaDisp = document.getElementById('dispTransportFormulaText');
+    if (formulaDisp) {
+        formulaDisp.textContent = `${loaded.toLocaleString()} Litres × ${CURRENCY_SYM} ${unitPrice.toFixed(2)}/L`;
+    }
+    const altDisp = document.getElementById('dispTransportAltDisplay');
+    if (altDisp) {
+        const isKes = ('<?= current_currency() ?>' === 'KES');
+        const exRate = <?= exchange_rate() ?>;
+        if (isKes && exRate > 0) {
+            const usdVal = transport / exRate;
+            altDisp.textContent = `≈ $${usdVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
+        } else if (!isKes && exRate > 0) {
+            const kesVal = transport * exRate;
+            altDisp.textContent = `≈ KSh ${kesVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        } else {
+            altDisp.textContent = '';
+        }
+    }
+
     calcBalance();
 }
+window.calcExpectedTransport = calcExpectedTransport;
 
 function calcDieselExpense() {
     const litres = parseFloat(document.getElementById('dispDieselLitres')?.value) || 0;
