@@ -1,5 +1,5 @@
 <?php
-    $content = function () use ($title, $dispatches, $aggregates, $trucks, $drivers, $products, $search, $statusFilter) {
+    $content = function () use ($title, $dispatches, $aggregates, $trucks, $drivers, $products, $search, $statusFilter, $availableYears, $customers) {
         $canViewFin = can_view_financials();
 ?>
 <section class="view active" id="view-fleet">
@@ -16,7 +16,7 @@
             </button>
             <button class="btn btn-ghost" onclick="document.getElementById('importModal').classList.add('active')">📥 Import Spreadsheet</button>
             <div style="display:inline-flex;border-radius:10px;overflow:hidden;border:1.5px solid var(--border-2);box-shadow:var(--shadow-sm);">
-                <button type="button" class="btn btn-ghost" onclick="document.getElementById('fleetExportModal').classList.add('active')" style="border-radius:0;border:0;background:var(--card);font-weight:700;padding:8px 12px;" title="Export reports per car, month, or year">
+                <button type="button" class="btn btn-ghost" onclick="openFleetExportModal()" style="border-radius:0;border:0;background:var(--card);font-weight:700;padding:8px 12px;" title="Export reports per car, month, or year">
                     📊 Export Reports ▾
                 </button>
                 <a href="<?= url('fleet/export?format=xlsx') ?>" download="fleet_dispatches_<?= date('Y-m-d') ?>.xlsx" class="btn btn-ghost" style="border-radius:0;border:0;border-left:1px solid var(--border);padding:8px 10px;font-size:12.5px;" title="Quick export all to Excel">
@@ -77,6 +77,14 @@
             <option value="delivered">Delivered / Complete</option>
             <option value="loading">Loading</option>
             <option value="planned">Planned</option>
+        </select>
+
+        <!-- Truck Filter -->
+        <select id="fleetTruckFilter" onchange="applyFleetFilters()" style="padding:8px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);font-size:13.5px;font-weight:700;color:var(--text);box-shadow:var(--shadow);outline:0;">
+            <option value="all">🚛 All Trucks</option>
+            <?php foreach ($trucks as $trk): ?>
+                <option value="<?= htmlspecialchars($trk['plate_number']) ?>"><?= htmlspecialchars($trk['plate_number']) ?></option>
+            <?php endforeach; ?>
         </select>
 
         <!-- Time Horizon Filter Buttons: All, This Week, This Month, This Year -->
@@ -229,7 +237,7 @@
                                 elseif (str_contains($s, 'deliver') || str_contains($s, 'complete')) $sClass = 's-done';
                                 elseif (str_contains($s, 'hold') || str_contains($s, 'cancel') || str_contains($s, 'dispute')) $sClass = 's-hold';
                             ?>
-                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)convert_currency($d['mileage_cost']) ?>" data-extra-expenses="<?= (float)convert_currency($d['extra_expenses']) ?>" data-diesel="<?= (float)convert_currency($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)convert_currency($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
+                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-truck="<?= htmlspecialchars(strtolower($d['truck'])) ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)convert_currency($d['mileage_cost']) ?>" data-extra-expenses="<?= (float)convert_currency($d['extra_expenses']) ?>" data-diesel="<?= (float)convert_currency($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)convert_currency($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
                                 <!-- DOL (Date of Loading formatted DD/MM/YY) -->
                                 <td class="cell-dol" style="font-weight:700;white-space:nowrap;">
                                     <span class="view-val"><?= format_date_dol($d['dispatch_date']) ?></span>
@@ -1331,42 +1339,80 @@
 
 <!-- Fleet Export Filter Modal -->
 <div class="modal-backdrop" id="fleetExportModal">
-    <div class="modal-card" style="max-width:500px;">
+    <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
-            <h2>📊 Export Fleet Ledger</h2>
+            <div>
+                <h2 style="margin:0;font-size:20px;">📊 Export Fleet Dispatches Ledger</h2>
+                <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">Filter dispatches per individual tanker truck, month, and year</div>
+            </div>
             <button class="close-modal" onclick="document.getElementById('fleetExportModal').classList.remove('active')">✕</button>
         </div>
         <form method="GET" action="<?= url('fleet/export') ?>" target="_blank">
             <div class="form-grid single" style="gap:14px;">
+                <!-- Live Target Preview Banner -->
+                <div id="exportScopeBanner" style="background:var(--card-2);border:1.5px solid var(--brand);border-radius:10px;padding:12px 14px;font-size:13px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:20px;">📋</span>
+                    <div>
+                        <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Extraction Target:</div>
+                        <div id="exportScopeText" style="color:var(--brand);font-weight:800;font-size:14px;margin-top:2px;">All Vehicles / Tankers • All Time</div>
+                    </div>
+                </div>
+
                 <div class="form-group">
-                    <label>Vehicle / Tanker</label>
-                    <select name="truck" id="fleetExportTruckSelect">
-                        <option value="">All Vehicles / Tankers</option>
+                    <label>Vehicle / Tanker Truck</label>
+                    <select name="truck" id="fleetExportTruckSelect" onchange="updateExportSummaryNote()" style="font-weight:700;">
+                        <option value="">All Vehicles / Tankers (Entire Fleet)</option>
                         <?php foreach ($trucks as $trk): ?>
-                            <option value="<?= htmlspecialchars($trk['plate_number']) ?>"><?= htmlspecialchars($trk['plate_number']) ?></option>
+                            <?php $isContractTruck = in_array(strtolower($trk['ownership_type'] ?? ''), ['contract', 'subcontracted', 'sub']); ?>
+                            <option value="<?= htmlspecialchars($trk['plate_number']) ?>">
+                                <?= htmlspecialchars($trk['plate_number']) ?> (<?= number_format($trk['capacity_litres']) ?>L) <?= $isContractTruck ? '— [Contract Tanker]' : '— [Company Fleet]' ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="form-group">
-                        <label>Month (Optional)</label>
-                        <select name="month">
-                            <option value="">All Months</option>
-                            <?php for ($m = 1; $m <= 12; $m++): ?>
-                                <option value="<?= $m ?>"><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option>
-                            <?php endfor; ?>
-                        </select>
+
+                <div>
+                    <!-- Quick Time Horizon Presets -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                        <label style="margin:0;font-size:13px;font-weight:700;color:var(--text-2);">Time Horizon Filter:</label>
+                        <div style="display:inline-flex;gap:4px;">
+                            <button type="button" class="btn btn-sm btn-ghost" onclick="setExportPreset('this_month')" style="padding:2px 9px;font-size:11.5px;font-weight:700;">This Month</button>
+                            <button type="button" class="btn btn-sm btn-ghost" onclick="setExportPreset('this_year')" style="padding:2px 9px;font-size:11.5px;font-weight:700;">This Year</button>
+                            <button type="button" class="btn btn-sm btn-ghost" onclick="setExportPreset('all_time')" style="padding:2px 9px;font-size:11.5px;font-weight:700;">All Time</button>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Year (Optional)</label>
-                        <select name="year">
-                            <option value="">All Years</option>
-                            <?php $curY = (int)date('Y'); for ($y = $curY; $y >= $curY - 4; $y--): ?>
-                                <option value="<?= $y ?>"><?= $y ?></option>
-                            <?php endfor; ?>
-                        </select>
+
+                    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="form-group">
+                            <label>Calendar Month</label>
+                            <select name="month" id="fleetExportMonthSelect" onchange="updateExportSummaryNote()">
+                                <option value="">All Months (Full Year)</option>
+                                <?php for ($m = 1; $m <= 12; $m++): ?>
+                                    <option value="<?= $m ?>"><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Calendar Year</label>
+                            <select name="year" id="fleetExportYearSelect" onchange="updateExportSummaryNote()">
+                                <option value="">All Years</option>
+                                <?php 
+                                    $yearsToDisplay = $availableYears ?? [];
+                                    $curY = (int)date('Y');
+                                    if (empty($yearsToDisplay)) {
+                                        for ($y = $curY; $y >= $curY - 5; $y--) {
+                                            $yearsToDisplay[] = (string)$y;
+                                        }
+                                    }
+                                    foreach ($yearsToDisplay as $y): 
+                                ?>
+                                    <option value="<?= htmlspecialchars($y) ?>"><?= htmlspecialchars($y) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
                 </div>
+
                 <div class="form-group">
                     <label>Export Format</label>
                     <div style="display:flex;gap:15px;margin-top:6px;">
@@ -1384,7 +1430,7 @@
             </div>
             <div style="margin-top:22px;display:flex;justify-content:flex-end;gap:10px;">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('fleetExportModal').classList.remove('active')">Cancel</button>
-                <button type="submit" class="btn btn-brand" onclick="setTimeout(() => document.getElementById('fleetExportModal').classList.remove('active'), 300)">Export Spreadsheet</button>
+                <button type="submit" class="btn btn-brand" onclick="setTimeout(() => document.getElementById('fleetExportModal').classList.remove('active'), 300)">📊 Export Spreadsheet</button>
             </div>
         </form>
     </div>
@@ -2945,19 +2991,22 @@ function matchesPeriod(dateStr) {
 function applyFleetFilters() {
     const searchVal = (document.getElementById('fleetTableSearch')?.value || '').toLowerCase().trim();
     const statusVal = (document.getElementById('fleetStatusFilter')?.value || 'all').toLowerCase();
+    const truckVal = (document.getElementById('fleetTruckFilter')?.value || 'all').toLowerCase().trim();
     const rows = document.querySelectorAll('#fleetTable tbody tr[id^="fleet-row-"]');
 
     let visibleCount = 0;
     rows.forEach(r => {
         const text = r.textContent.toLowerCase();
         const rowStatus = (r.querySelector('.cell-status')?.textContent || '').toLowerCase();
+        const rowTruck = (r.dataset.truck || '').toLowerCase();
         const rowDate = r.dataset.dispatchDate || '';
 
         const matchesSearch = !searchVal || text.includes(searchVal);
         const matchesStatus = (statusVal === 'all') || rowStatus.includes(statusVal);
+        const matchesTruck = (truckVal === 'all') || rowTruck.includes(truckVal);
         const matchesDate = matchesPeriod(rowDate);
 
-        if (matchesSearch && matchesStatus && matchesDate) {
+        if (matchesSearch && matchesStatus && matchesTruck && matchesDate) {
             r.dataset.matchedFilter = 'true';
             visibleCount++;
         } else {
@@ -2974,6 +3023,72 @@ function applyFleetFilters() {
 }
 
 document.getElementById('fleetTableSearch')?.addEventListener('input', applyFleetFilters);
+document.getElementById('fleetTruckFilter')?.addEventListener('change', applyFleetFilters);
+
+/* Fleet Export Modal Helpers */
+function openFleetExportModal() {
+    const activeTruck = document.getElementById('fleetTruckFilter')?.value || 'all';
+    const exportTruckSelect = document.getElementById('fleetExportTruckSelect');
+    if (exportTruckSelect) {
+        if (activeTruck !== 'all') {
+            exportTruckSelect.value = activeTruck;
+        } else {
+            exportTruckSelect.value = '';
+        }
+    }
+    updateExportSummaryNote();
+    document.getElementById('fleetExportModal')?.classList.add('active');
+}
+
+function setExportPreset(type) {
+    const now = new Date();
+    const monthSelect = document.getElementById('fleetExportMonthSelect');
+    const yearSelect = document.getElementById('fleetExportYearSelect');
+    if (!monthSelect || !yearSelect) return;
+
+    if (type === 'this_month') {
+        monthSelect.value = (now.getMonth() + 1).toString();
+        yearSelect.value = now.getFullYear().toString();
+    } else if (type === 'this_year') {
+        monthSelect.value = '';
+        yearSelect.value = now.getFullYear().toString();
+    } else if (type === 'all_time') {
+        monthSelect.value = '';
+        yearSelect.value = '';
+    }
+    updateExportSummaryNote();
+}
+
+function updateExportSummaryNote() {
+    const truckSelect = document.getElementById('fleetExportTruckSelect');
+    const monthSelect = document.getElementById('fleetExportMonthSelect');
+    const yearSelect = document.getElementById('fleetExportYearSelect');
+    const bannerText = document.getElementById('exportScopeText');
+    if (!bannerText) return;
+
+    const truckText = (truckSelect && truckSelect.value) ? truckSelect.options[truckSelect.selectedIndex].text.split('(')[0].trim() : 'All Vehicles / Tankers';
+    
+    let periodText = 'All Time';
+    const monthVal = monthSelect?.value;
+    const yearVal = yearSelect?.value;
+    const monthName = (monthSelect && monthVal && monthSelect.selectedIndex >= 0) ? monthSelect.options[monthSelect.selectedIndex].text : '';
+
+    if (monthVal && yearVal) {
+        periodText = `${monthName} ${yearVal}`;
+    } else if (yearVal) {
+        periodText = `Full Year ${yearVal}`;
+    } else if (monthVal) {
+        periodText = `Every ${monthName} (All Years)`;
+    }
+
+    bannerText.textContent = `${truckText} • ${periodText}`;
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateExportSummaryNote);
+} else {
+    updateExportSummaryNote();
+}
 
 // Initialize Fleet Table Pagination
 const fleetPagination = initTablePagination({

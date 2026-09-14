@@ -60,6 +60,13 @@ class FleetController
         }
         $customers = $pdo->query('SELECT DISTINCT name FROM customers ORDER BY name ASC')->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
+        $yearsStmt = $pdo->query('SELECT DISTINCT substr(dispatch_date, 1, 4) as yr FROM fleet_dispatches WHERE dispatch_date IS NOT NULL AND dispatch_date != "" ORDER BY yr DESC');
+        $availableYears = $yearsStmt ? $yearsStmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        $curY = (string)date('Y');
+        if (!in_array($curY, $availableYears)) {
+            array_unshift($availableYears, $curY);
+        }
+
         return view('fleet.index', [
             'title' => 'Fleet Management — Sarura Fuel',
             'dispatches' => $dispatches,
@@ -70,6 +77,7 @@ class FleetController
             'customers' => $customers,
             'search' => $search,
             'statusFilter' => $statusFilter,
+            'availableYears' => $availableYears,
         ]);
     }
 
@@ -702,20 +710,44 @@ class FleetController
         $month = trim($_GET['month'] ?? '');
         $year = trim($_GET['year'] ?? '');
 
+        // Support month passed as "YYYY-MM" (e.g. 2026-05)
+        if (strpos($month, '-') !== false) {
+            $parts = explode('-', $month);
+            if (empty($year) || strtolower($year) === 'all') {
+                $year = $parts[0];
+            }
+            $month = $parts[1];
+        }
+
         $sql = 'SELECT * FROM fleet_dispatches WHERE 1=1';
         $params = [];
 
+        // 1. Filter by specific Truck
         if ($truck !== '' && strtolower($truck) !== 'all') {
             $sql .= ' AND truck = ?';
             $params[] = $truck;
         }
 
-        if ($month !== '' && strtolower($month) !== 'all') {
-            $sql .= ' AND substr(dispatch_date, 1, 7) = ?';
-            $params[] = $month;
-        } elseif ($year !== '' && strtolower($year) !== 'all') {
-            $sql .= ' AND substr(dispatch_date, 1, 4) = ?';
-            $params[] = $year;
+        // 2. Filter by Year and/or Month
+        $hasYear = ($year !== '' && strtolower($year) !== 'all');
+        $hasMonth = ($month !== '' && strtolower($month) !== 'all');
+
+        if ($hasYear && $hasMonth) {
+            $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $mInt = (int)$month;
+            $sql .= ' AND (dispatch_date LIKE ? OR dispatch_date LIKE ?)';
+            $params[] = "$year-$mFormatted-%";
+            $params[] = "$year-$mInt-%";
+        } elseif ($hasYear) {
+            $sql .= ' AND dispatch_date LIKE ?';
+            $params[] = "$year-%";
+        } elseif ($hasMonth) {
+            $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $mInt = (int)$month;
+            $sql .= ' AND (substr(dispatch_date, 6, 2) = ? OR dispatch_date LIKE ? OR dispatch_date LIKE ?)';
+            $params[] = $mFormatted;
+            $params[] = "%-$mFormatted-%";
+            $params[] = "%-$mInt-%";
         }
 
         $sql .= ' ORDER BY dispatch_date DESC, id DESC';
@@ -830,16 +862,95 @@ class FleetController
             $rows[] = $row;
         }
 
-        $truckPart = ($truck && strtolower($truck) !== 'all') ? preg_replace('/[^a-zA-Z0-9_-]/', '', $truck) . '_' : 'all_cars_';
-        $periodPart = $month ? str_replace('-', '_', $month) : ($year ? $year : date('Y_m_d'));
+        // Summary / Totals Row at the bottom of the export
+        if (!empty($dispatches)) {
+            $totalLoaded = (int)array_sum(array_column($dispatches, 'loaded_litres'));
+            $totalShortage = (int)array_sum(array_column($dispatches, 'shortage_litres'));
+            $totalDelivered = 0;
+            foreach ($dispatches as $d) {
+                $rawDeliv = $d['delivered_litres'];
+                $totalDelivered += ($rawDeliv !== null && $rawDeliv !== '') ? (int)$rawDeliv : max(0, (int)$d['loaded_litres'] - (int)($d['shortage_litres'] ?? 0));
+            }
+            $totalDieselLitres = (float)array_sum(array_column($dispatches, 'diesel_litres'));
+            $totalDieselCost = (float)array_sum(array_column($dispatches, 'diesel'));
+            $totalTransport = (float)array_sum(array_column($dispatches, 'transport_amount'));
+            $totalPayout = 0;
+            foreach ($dispatches as $d) {
+                $totalPayout += ($d['final_payout'] !== null && $d['final_payout'] !== '') ? (float)$d['final_payout'] : (float)$d['transport_amount'];
+            }
+            $totalLoss = 0;
+            foreach ($dispatches as $d) {
+                $pDiff = $d['payout_difference'] ?? ((float)$d['transport_amount'] - (($d['final_payout'] !== null && $d['final_payout'] !== '') ? (float)$d['final_payout'] : (float)$d['transport_amount']));
+                $totalLoss += (float)$pDiff;
+            }
+            $totalMileage = (float)array_sum(array_column($dispatches, 'mileage_cost'));
+            $totalExtra = (float)array_sum(array_column($dispatches, 'extra_expenses'));
+            $totalBalance = (float)array_sum(array_column($dispatches, 'balance'));
+
+            $summaryRow = [
+                'TOTALS (' . count($dispatches) . ' TRIPS)',
+                '',
+                ($truck && strtolower($truck) !== 'all') ? $truck : 'ALL TRUCKS',
+                '',
+                '',
+                $totalLoaded,
+                $totalShortage,
+                $totalDelivered,
+                '',
+                round($totalDieselLitres, 2),
+                '',
+                $canViewFin ? round($isKes ? $totalDieselCost * $rate : $totalDieselCost, 2) : '[Restricted]',
+                '',
+                '',
+                '',
+                '',
+                '',
+                $canViewFin ? round($isKes ? $totalTransport * $rate : $totalTransport, 2) : '[Restricted]',
+                $canViewFin ? round($isKes ? $totalPayout * $rate : $totalPayout, 2) : '[Restricted]',
+                $canViewFin ? round($isKes ? $totalLoss * $rate : $totalLoss, 2) : '[Restricted]',
+                $canViewFin ? round($isKes ? $totalMileage * $rate : $totalMileage, 2) : '[Restricted]',
+                $canViewFin ? round($isKes ? $totalExtra * $rate : $totalExtra, 2) : '[Restricted]',
+                '',
+                '',
+                $canViewFin ? round($isKes ? $totalBalance * $rate : $totalBalance, 2) : '[Restricted]',
+                'SUMMARY',
+                '',
+                '',
+            ];
+            foreach ($customCols as $cc) {
+                $summaryRow[] = '';
+            }
+            $rows[] = $summaryRow;
+        } else {
+            $noDataRow = [
+                'No dispatches found for selected filter criteria (' . (($truck && strtolower($truck) !== 'all') ? $truck : 'All Trucks') . ', ' . ($hasMonth ? date('F', mktime(0,0,0,(int)$month,10)) : 'All Months') . ' ' . ($hasYear ? $year : 'All Years') . ')'
+            ];
+            for ($i = 1; $i < count($headers); $i++) {
+                $noDataRow[] = '';
+            }
+            $rows[] = $noDataRow;
+        }
+
+        $truckPart = ($truck && strtolower($truck) !== 'all') ? preg_replace('/[^a-zA-Z0-9_-]/', '', $truck) . '_' : 'all_trucks_';
+        $periodParts = [];
+        if ($hasYear) {
+            $periodParts[] = $year;
+        }
+        if ($hasMonth) {
+            $mNum = (int)$month;
+            $mName = ($mNum >= 1 && $mNum <= 12) ? date('M', mktime(0, 0, 0, $mNum, 10)) : str_pad($month, 2, '0', STR_PAD_LEFT);
+            $periodParts[] = $mName;
+        }
+        $periodPart = !empty($periodParts) ? implode('_', $periodParts) : date('Y_m_d');
         $filenameBase = 'fleet_dispatches_' . $truckPart . $periodPart;
+        $sheetTitle = ($truck && strtolower($truck) !== 'all') ? substr($truck, 0, 31) : 'Fleet Dispatches';
 
         if ($format === 'xls') {
-            ExcelService::exportXls($filenameBase . '.xls', $headers, $rows, 'Fleet Dispatches');
+            ExcelService::exportXls($filenameBase . '.xls', $headers, $rows, $sheetTitle);
         } elseif ($format === 'csv') {
             ExcelService::exportCsv($filenameBase . '.csv', $headers, $rows);
         } else {
-            ExcelService::exportXlsx($filenameBase . '.xlsx', $headers, $rows, 'Fleet Dispatches');
+            ExcelService::exportXlsx($filenameBase . '.xlsx', $headers, $rows, $sheetTitle);
         }
     }
 
