@@ -192,7 +192,6 @@
                         <th>Description / Item Bought</th>
                         <th>Vehicle / Target</th>
                         <th>Vendor / Shop / Paid To</th>
-                        <th>Receipt Status</th>
                         <th>Amount</th>
                         <th style="text-align:center;min-width:130px;">Action</th>
                     </tr>
@@ -200,7 +199,7 @@
                 <tbody>
                     <?php if (empty($expenses)): ?>
                         <tr>
-                            <td colspan="7" style="text-align:center;padding:32px;color:var(--text-3);">No expenses recorded yet. Click "Record Expense".</td>
+                            <td colspan="6" style="text-align:center;padding:32px;color:var(--text-3);">No expenses recorded yet. Click "Record Expense".</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($expenses as $e): ?>
@@ -227,18 +226,6 @@
                                 </td>
                                 <td class="cell-vendor" style="font-weight:600;color:var(--text-2);">
                                     <span class="view-val"><?= htmlspecialchars($e['garage_vendor'] ?: 'General Vendor') ?></span>
-                                </td>
-                                <td class="cell-receipt" style="white-space:nowrap;">
-                                    <?php $isRec = ($e['receipt_status'] ?? 'Received') === 'Received'; ?>
-                                    <?php if ($isRec): ?>
-                                        <span class="view-val-status" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:800;color:var(--green);background:var(--green-soft);border:1px solid var(--green);">
-                                            🧾 Received
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="view-val-status" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:800;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber);">
-                                            ⏳ Pending
-                                        </span>
-                                    <?php endif; ?>
                                 </td>
                                 <td class="cell-amount" style="white-space:nowrap;font-weight:800;color:var(--red);">
                                     <span class="view-val"><?= format_money($e['amount']) ?></span>
@@ -306,13 +293,6 @@
                 <div class="form-group">
                     <label>Total Amount [<?= app_currency_symbol() ?>] *</label>
                     <input type="number" step="0.01" name="amount" placeholder="0.00" required>
-                </div>
-                <div class="form-group">
-                    <label>Receipt Verification Status *</label>
-                    <select name="receipt_status" required>
-                        <option value="Received" selected>🧾 Received (Physical or digital receipt in hand)</option>
-                        <option value="Pending">⏳ Pending / Not Received (Awaiting receipt from driver/vendor)</option>
-                    </select>
                 </div>
                 <div class="form-group">
                     <label>Additional Notes</label>
@@ -660,7 +640,6 @@ function startExpInlineEdit(id) {
     const notes = row.querySelector('.cell-title .view-notes')?.textContent.trim() || '';
     const truck = row.querySelector('.cell-truck .view-val')?.textContent.trim() || '';
     const vendor = row.querySelector('.cell-vendor .view-val')?.textContent.trim() || '';
-    const isRec = row.querySelector('.cell-receipt')?.textContent.includes('Received');
     const amountRaw = parseFloat((row.querySelector('.cell-amount .view-val')?.textContent || '0').replace(/[^0-9.]/g, '')) || 0;
 
     row.querySelector('.cell-date').innerHTML = `<input type="date" class="table-inline-input inline-exp-date" value="${expDate}">`;
@@ -677,13 +656,6 @@ function startExpInlineEdit(id) {
     row.querySelector('.cell-truck').innerHTML = `<select class="table-inline-select inline-exp-truck" style="font-size:12px;">${truckOptionsHtml}</select>`;
 
     row.querySelector('.cell-vendor').innerHTML = `<input type="text" class="table-inline-input inline-exp-vendor" value="${vendor}">`;
-
-    row.querySelector('.cell-receipt').innerHTML = `
-        <select class="table-inline-select inline-exp-receipt-status" style="font-size:12px;">
-            <option value="Received" ${isRec ? 'selected' : ''}>🧾 Received</option>
-            <option value="Pending" ${!isRec ? 'selected' : ''}>⏳ Pending</option>
-        </select>
-    `;
 
     row.querySelector('.cell-amount').innerHTML = `<input type="number" step="0.01" class="table-inline-input inline-exp-amount" value="${amountRaw}">`;
 
@@ -708,7 +680,6 @@ async function saveExpInlineEdit(id) {
     const notesVal = row.querySelector('.inline-exp-notes')?.value;
     const truckVal = row.querySelector('.inline-exp-truck')?.value;
     const vendorVal = row.querySelector('.inline-exp-vendor')?.value;
-    const receiptStatusVal = row.querySelector('.inline-exp-receipt-status')?.value || 'Received';
     const amountVal = row.querySelector('.inline-exp-amount')?.value;
 
     const postData = {
@@ -719,7 +690,6 @@ async function saveExpInlineEdit(id) {
         notes: notesVal,
         truck: truckVal,
         garage_vendor: vendorVal,
-        receipt_status: receiptStatusVal,
         amount: amountVal
     };
 
@@ -731,11 +701,6 @@ async function saveExpInlineEdit(id) {
             row.querySelector('.cell-title').innerHTML = `<b class="view-val" style="color:var(--text);">${titleVal}</b>${notesVal ? `<div class="view-notes" style="font-size:12px;color:var(--text-3);">${notesVal}</div>` : ''}`;
             row.querySelector('.cell-truck').innerHTML = `<span class="view-val" style="font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;font-size:13px;">${truckVal || 'General'}</span>`;
             row.querySelector('.cell-vendor').innerHTML = `<span class="view-val">${vendorVal || 'General Vendor'}</span>`;
-
-            const isRecOff = (receiptStatusVal === 'Received');
-            row.querySelector('.cell-receipt').innerHTML = isRecOff
-                ? `<span class="view-val-status" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:800;color:var(--green);background:var(--green-soft);border:1px solid var(--green);">🧾 Received</span>`
-                : `<span class="view-val-status" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:800;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber);">⏳ Pending</span>`;
 
             row.querySelector('.cell-amount').innerHTML = `<span class="view-val"><?= app_currency_symbol() ?> ${parseFloat(amountVal).toFixed(2)}</span>`;
 
@@ -772,11 +737,6 @@ async function saveExpInlineEdit(id) {
                 </span>
             `;
             row.querySelector('.cell-vendor').innerHTML = `<span class="view-val">${d.garage_vendor}</span>`;
-
-            const isRecFin = (d.receipt_status === 'Received');
-            row.querySelector('.cell-receipt').innerHTML = isRecFin
-                ? `<span class="view-val-status" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:800;color:var(--green);background:var(--green-soft);border:1px solid var(--green);">🧾 Received</span>`
-                : `<span class="view-val-status" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:800;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber);">⏳ Pending</span>`;
 
             row.querySelector('.cell-amount').innerHTML = `<span class="view-val">${d.amount_formatted}</span>`;
 

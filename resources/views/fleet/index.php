@@ -1128,24 +1128,6 @@
                         </div>
                     </div>
                 </div>
-
-                <div class="form-group">
-                    <label>Receipt Status *</label>
-                    <select name="receipt_status" id="dlmReceiptStatus" required>
-                        <option value="Received" selected>🧾 Received (Receipt in hand / verified)</option>
-                        <option value="Pending">⏳ Pending (Awaiting receipt from driver)</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Receipt / Voucher Number</label>
-                    <input type="text" name="receipt_number" id="dlmReceiptNumber" placeholder="e.g. REC-98231">
-                </div>
-
-                <div class="form-group" style="grid-column:1/-1;">
-                    <label>Notes (Optional)</label>
-                    <input type="text" name="notes" id="dlmNotes" placeholder="e.g. Pre-customs tank fill before border crossing">
-                </div>
             </div>
 
             <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:12px;align-items:center;">
@@ -2211,15 +2193,6 @@ window.editDieselLogAjax = function(s) {
     const exEl = document.getElementById('dlmExchangeRate');
     if (exEl) exEl.value = s.exchange_rate;
 
-    const rStat = document.getElementById('dlmReceiptStatus');
-    if (rStat) rStat.value = s.receipt_status || 'Received';
-
-    const rNum = document.getElementById('dlmReceiptNumber');
-    if (rNum) rNum.value = s.receipt_number || '';
-
-    const noteEl = document.getElementById('dlmNotes');
-    if (noteEl) noteEl.value = s.notes || '';
-
     const subBtn = document.getElementById('dlmSubmitBtn');
     if (subBtn) {
         subBtn.textContent = '✓ Save Changes to Fuel Stop';
@@ -2254,10 +2227,6 @@ window.cancelDieselLogEdit = function(closeModalIfNormal = false) {
     if (prEl) prEl.value = '';
     const stEl = document.getElementById('dlmStationLocation');
     if (stEl) stEl.value = '';
-    const recEl = document.getElementById('dlmReceiptNumber');
-    if (recEl) recEl.value = '';
-    const noteEl = document.getElementById('dlmNotes');
-    if (noteEl) noteEl.value = '';
 
     calcDlmDiesel();
 

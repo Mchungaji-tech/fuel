@@ -42,8 +42,14 @@ class ProductController
         $unit = trim($_POST['unit'] ?? 'Litres');
         $isKes = current_currency() === 'KES';
         $rate = exchange_rate();
-        $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
-        $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
+        if (isset($_POST['unit_price_usd']) && $_POST['unit_price_usd'] !== '') {
+            $unitPrice = (float)$_POST['unit_price_usd'];
+        } elseif (isset($_POST['unit_price_kes']) && $_POST['unit_price_kes'] !== '') {
+            $unitPrice = (float)$_POST['unit_price_kes'] / ($rate > 0 ? $rate : 130.0);
+        } else {
+            $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
+            $unitPrice = $isKes ? ($rawUnitPrice / ($rate > 0 ? $rate : 130.0)) : $rawUnitPrice;
+        }
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($code !== '' && $name !== '') {
@@ -71,8 +77,14 @@ class ProductController
         $unit = trim($_POST['unit'] ?? 'Litres');
         $isKes = current_currency() === 'KES';
         $rate = exchange_rate();
-        $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
-        $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
+        if (isset($_POST['unit_price_usd']) && $_POST['unit_price_usd'] !== '') {
+            $unitPrice = (float)$_POST['unit_price_usd'];
+        } elseif (isset($_POST['unit_price_kes']) && $_POST['unit_price_kes'] !== '') {
+            $unitPrice = (float)$_POST['unit_price_kes'] / ($rate > 0 ? $rate : 130.0);
+        } else {
+            $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
+            $unitPrice = $isKes ? ($rawUnitPrice / ($rate > 0 ? $rate : 130.0)) : $rawUnitPrice;
+        }
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($id > 0 && $code !== '' && $name !== '') {
