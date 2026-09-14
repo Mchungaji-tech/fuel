@@ -69,6 +69,16 @@ class Router
         if (in_array($method, ['POST', 'PUT', 'DELETE'], true) && $uri !== '/logout') {
             if (!verify_csrf()) {
                 http_response_code(419);
+                $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+                    || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+                    || (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'));
+                if ($isAjax) {
+                    header('Content-Type: application/json');
+                    return json_encode([
+                        'success' => false,
+                        'message' => 'Your session token has expired. Please refresh the page and try again.',
+                    ]);
+                }
                 return view('errors.404', [
                     'title' => 'Page Expired (419)',
                     'message' => 'Your session token has expired. Please refresh the page and try again.',

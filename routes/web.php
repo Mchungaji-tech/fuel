@@ -81,12 +81,14 @@ return [
     ['POST', '/financial/inline-update', [FinancialController::class, 'inlineUpdate']],
     ['POST', '/financial/delete/{id}', [FinancialController::class, 'delete']],
     ['GET', '/financial/export', [FinancialController::class, 'export']],
+    ['GET', '/financial/day-summary', [FinancialController::class, 'daySummary']],
 
     ['GET', '/finances', [FinancialController::class, 'index']],
     ['POST', '/finances/store', [FinancialController::class, 'store']],
     ['POST', '/finances/inline-update', [FinancialController::class, 'inlineUpdate']],
     ['POST', '/finances/delete/{id}', [FinancialController::class, 'delete']],
     ['GET', '/finances/export', [FinancialController::class, 'export']],
+    ['GET', '/finances/day-summary', [FinancialController::class, 'daySummary']],
 
     // Drivers & Dynamic Assignment
     ['GET', '/drivers', [DriverController::class, 'index']],

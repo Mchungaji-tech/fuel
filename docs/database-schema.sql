@@ -354,7 +354,6 @@ CREATE TABLE IF NOT EXISTS `financial_records` (
     `balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `reason` TEXT NULL,
     `payment_method` VARCHAR(50) NOT NULL DEFAULT 'Cash',
-    `reference_no` VARCHAR(100) NULL,
     `recorded_by` VARCHAR(150) NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

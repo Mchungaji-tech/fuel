@@ -34,24 +34,6 @@ class FinancialController
                 created_at VARCHAR(50),
                 updated_at VARCHAR(50)
             )");
-
-            $countCheck = (int)$pdo->query("SELECT COUNT(*) FROM financial_records")->fetchColumn();
-            if ($countCheck === 0) {
-                $sampleFin = [
-                    [date('Y-m-d', strtotime('-4 days')), 'Client Inflow', 650000.00, 0.00, 650000.00, 'Freight haulage payment for Kampala convoy consignment', 'Bank Transfer', 'EFT-784912', 'Admin'],
-                    [date('Y-m-d', strtotime('-3 days')), 'Fuel & Fleet', 0.00, 185000.00, -185000.00, 'Bulk diesel purchase for Eldoret central tank refuels', 'M-Pesa', 'MP-QK8201', 'Admin'],
-                    [date('Y-m-d', strtotime('-2 days')), 'Driver Allowances', 0.00, 45000.00, -45000.00, 'Transit per diem & mileage advance for Malaba crossing', 'Cash', 'VCH-0021', 'Admin'],
-                    [date('Y-m-d', strtotime('-2 days')), 'Office Operations', 0.00, 15000.00, -15000.00, 'Depot high-speed fiber internet and office stationery', 'M-Pesa', 'MP-AB3312', 'Admin'],
-                    [date('Y-m-d', strtotime('-1 days')), 'Personal Drawing', 0.00, 50000.00, -50000.00, 'Managing Director personal withdrawal / drawing', 'Bank Transfer', 'DRAW-04', 'Admin'],
-                    [date('Y-m-d'), 'Client Inflow', 420000.00, 0.00, 420000.00, 'Advance delivery payment for Juba cross-border corridor', 'Bank Transfer', 'EFT-883011', 'Admin'],
-                    [date('Y-m-d'), 'Maintenance & Repairs', 0.00, 28000.00, -28000.00, 'Tanker brake valve replacement & air pressure service', 'Cash', 'RCP-9912', 'Admin'],
-                ];
-
-                $insFin = $pdo->prepare('INSERT INTO financial_records (entry_date, category, amount_in, amount_out, balance, reason, payment_method, reference_no, recorded_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                foreach ($sampleFin as $f) {
-                    $insFin->execute([$f[0], $f[1], $f[2], $f[3], $f[4], $f[5], $f[6], $f[7], $f[8], date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
-                }
-            }
         } catch (\Throwable $e) {}
 
         $search = trim($_GET['search'] ?? '');
@@ -61,6 +43,11 @@ class FinancialController
         $endDate = trim($_GET['end_date'] ?? '');
         $month = trim($_GET['month'] ?? '');
         $year = trim($_GET['year'] ?? '');
+
+        // Pagination settings
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $perPageRaw = $_GET['per_page'] ?? 20;
+        $perPage = ($perPageRaw === 'all' || (int)$perPageRaw === -1) ? 10000 : max(5, (int)$perPageRaw);
 
         // Base query conditions
         $where = ['1=1'];
@@ -106,7 +93,7 @@ class FinancialController
 
         $whereClause = implode(' AND ', $where);
 
-        // Fetch all chronological records to accurately calculate running balance
+        // Fetch all chronological records to accurately calculate running balance across all records
         $chronStmt = $pdo->prepare("SELECT id, entry_date, amount_in, amount_out FROM financial_records ORDER BY entry_date ASC, id ASC");
         $chronStmt->execute();
         $allChron = $chronStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -120,8 +107,19 @@ class FinancialController
             $runningBalances[$item['id']] = $cumBalance;
         }
 
-        // Fetch filtered records for display (latest first)
-        $sql = "SELECT * FROM financial_records WHERE {$whereClause} ORDER BY entry_date DESC, id DESC";
+        // Count total matching records for pagination
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM financial_records WHERE {$whereClause}");
+        $countStmt->execute($params);
+        $totalRecords = (int)$countStmt->fetchColumn();
+
+        $totalPages = max(1, (int)ceil($totalRecords / $perPage));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $perPage;
+
+        // Fetch paginated filtered records for display (latest first)
+        $sql = "SELECT * FROM financial_records WHERE {$whereClause} ORDER BY entry_date DESC, id DESC LIMIT {$perPage} OFFSET {$offset}";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -172,8 +170,58 @@ class FinancialController
                 'end_date' => $endDate,
                 'month' => $month,
                 'year' => $year,
+                'page' => $page,
+                'per_page' => $perPageRaw,
+            ],
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => $totalPages,
+                'total_records' => $totalRecords,
+                'start_record' => $totalRecords > 0 ? ($offset + 1) : 0,
+                'end_record' => min($offset + $perPage, $totalRecords)
             ]
         ]);
+    }
+
+    /**
+     * Get day summary of funds received, used, and remaining balance for a given date
+     */
+    public function daySummary(): void
+    {
+        header('Content-Type: application/json');
+        $pdo = Database::connection();
+        $date = trim($_GET['date'] ?? date('Y-m-d'));
+        if (!empty($date)) {
+            $date = ExcelService::normalizeDate($date);
+        } else {
+            $date = date('Y-m-d');
+        }
+
+        $stmt = $pdo->prepare("SELECT 
+            COALESCE(SUM(amount_in), 0) as day_in,
+            COALESCE(SUM(amount_out), 0) as day_out,
+            COALESCE(SUM(amount_in - amount_out), 0) as day_balance,
+            COUNT(*) as count
+            FROM financial_records WHERE entry_date = ?");
+        $stmt->execute([$date]);
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $dayIn = (float)($res['day_in'] ?? 0);
+        $dayOut = (float)($res['day_out'] ?? 0);
+        $dayBal = (float)($res['day_balance'] ?? ($dayIn - $dayOut));
+        $count = (int)($res['count'] ?? 0);
+
+        echo json_encode([
+            'success' => true,
+            'date' => $date,
+            'formatted_date' => date('l, M j, Y', strtotime($date)),
+            'day_in' => $dayIn,
+            'day_out' => $dayOut,
+            'day_balance' => $dayBal,
+            'count' => $count
+        ]);
+        exit;
     }
 
     /**
