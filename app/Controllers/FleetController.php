@@ -1583,15 +1583,13 @@ class FleetController
             $baseUsdCost = round($localTotal / $exchangeRate, 2);
         }
 
-        $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
-        $receiptNumber = trim($_POST['receipt_number'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
 
         $ins = $pdo->prepare('INSERT INTO fleet_diesel_logs (
             dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code,
             exchange_rate, litres, local_unit_price, local_total_cost, base_usd_cost,
-            receipt_status, receipt_number, notes, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            notes, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
         $ins->execute([
             $dispatchId,
@@ -1606,8 +1604,6 @@ class FleetController
             $localUnitPrice,
             $localTotal,
             $baseUsdCost,
-            $receiptStatus,
-            $receiptNumber,
             $notes,
             date('Y-m-d H:i:s')
         ]);
@@ -1682,8 +1678,8 @@ class FleetController
             $seedStmt = $pdo->prepare('INSERT INTO fleet_diesel_logs (
                 dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code,
                 exchange_rate, litres, local_unit_price, local_total_cost, base_usd_cost,
-                receipt_status, receipt_number, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, "Kenya", "KES", ?, ?, ?, ?, ?, "Received", "DEP-INIT", "Initial departure fuel from dispatch", ?)');
+                notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, "Kenya", "KES", ?, ?, ?, ?, ?, "Initial departure fuel from dispatch", ?)');
             $seedStmt->execute([
                 $id,
                 $dispatch['trip_number'],
@@ -1724,8 +1720,6 @@ class FleetController
                 'local_total_cost' => (float)$l['local_total_cost'],
                 'base_usd_cost' => $baseUsd,
                 'display_cost_formatted' => format_money($baseUsd),
-                'receipt_status' => $l['receipt_status'] ?? 'Received',
-                'receipt_number' => $l['receipt_number'] ?? '',
                 'notes' => $l['notes'] ?? '',
             ];
         }
@@ -1812,8 +1806,6 @@ class FleetController
             $baseUsdCost = round($localTotalCost / $exRate, 2);
         }
 
-        $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
-        $receiptNumber = trim($_POST['receipt_number'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
 
         $upd = $pdo->prepare('UPDATE fleet_diesel_logs SET
@@ -1826,8 +1818,6 @@ class FleetController
             local_unit_price = ?,
             local_total_cost = ?,
             base_usd_cost = ?,
-            receipt_status = ?,
-            receipt_number = ?,
             notes = ?
             WHERE id = ?');
         
@@ -1841,8 +1831,6 @@ class FleetController
             $localUnitPrice,
             $localTotalCost,
             $baseUsdCost,
-            $receiptStatus,
-            $receiptNumber,
             $notes,
             $logId
         ]);

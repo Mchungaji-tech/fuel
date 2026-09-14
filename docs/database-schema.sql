@@ -375,13 +375,11 @@ CREATE TABLE IF NOT EXISTS `fleet_diesel_logs` (
     `station_location` VARCHAR(255) NOT NULL,
     `country` VARCHAR(100) NOT NULL DEFAULT 'Kenya',
     `currency_code` VARCHAR(10) NOT NULL DEFAULT 'KES',
-    `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 130.0000,
+    `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000,
     `litres` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     `local_unit_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `local_total_cost` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
     `base_usd_cost` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    `receipt_status` VARCHAR(50) DEFAULT 'Received',
-    `receipt_number` VARCHAR(100) NULL,
     `notes` TEXT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_diesel_dispatch` (`dispatch_id`),
@@ -415,5 +413,53 @@ CREATE TABLE IF NOT EXISTS `sync_deletions` (
     UNIQUE KEY `uniq_del` (`table_name`, `record_key`),
     INDEX `idx_del_table` (`table_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================================
+-- ONLINE / PRODUCTION SERVER DATABASE MIGRATIONS (ALTER TABLE SCRIPTS)
+-- Run these SQL queries on your live server / phpMyAdmin / cPanel to update
+-- existing databases to the latest schema without losing existing data:
+-- ============================================================================
+
+-- 1. Financial Records Table: Add Dynamic Transaction Exchange Rate
+ALTER TABLE `financial_records` 
+    ADD COLUMN IF NOT EXISTS `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000 AFTER `payment_method`;
+
+-- 2. Business Expenses Table: Add Dynamic Transaction Exchange Rate
+ALTER TABLE `expenses` 
+    ADD COLUMN IF NOT EXISTS `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000 AFTER `amount`;
+
+-- 3. Fleet Diesel Logs Table: Ensure Dynamic Transaction Exchange Rate & Notes Exist
+ALTER TABLE `fleet_diesel_logs` 
+    ADD COLUMN IF NOT EXISTS `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000 AFTER `currency_code`,
+    ADD COLUMN IF NOT EXISTS `notes` TEXT NULL AFTER `base_usd_cost`;
+
+-- 4. Fleet Dispatches Table: Ensure Subcontracting & Diesel Tracking Columns Exist
+ALTER TABLE `fleet_dispatches` 
+    ADD COLUMN IF NOT EXISTS `diesel_litres` DECIMAL(10,2) DEFAULT 0.00 AFTER `diesel`,
+    ADD COLUMN IF NOT EXISTS `diesel_unit_price` DECIMAL(10,4) DEFAULT 0.0000 AFTER `diesel_litres`,
+    ADD COLUMN IF NOT EXISTS `is_subcontracted` TINYINT(1) DEFAULT 0 AFTER `status`,
+    ADD COLUMN IF NOT EXISTS `subcontractor_name` VARCHAR(150) NULL AFTER `is_subcontracted`,
+    ADD COLUMN IF NOT EXISTS `agreed_commission` DECIMAL(15,2) DEFAULT 0.00 AFTER `subcontractor_name`,
+    ADD COLUMN IF NOT EXISTS `final_payout` DECIMAL(15,2) DEFAULT 0.00 AFTER `agreed_commission`;
+
+-- 5. Trucks Table: Ensure Fleet Ownership & Driver Assignment Columns Exist
+ALTER TABLE `trucks`
+    ADD COLUMN IF NOT EXISTS `ownership_type` VARCHAR(50) DEFAULT 'Owner' AFTER `status`,
+    ADD COLUMN IF NOT EXISTS `current_driver` VARCHAR(100) NULL AFTER `ownership_type`;
+
+-- 6. Route Mileage Rates Table (If not already created)
+CREATE TABLE IF NOT EXISTS `route_mileage_rates` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `origin` VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
+    `destination` VARCHAR(150) NOT NULL,
+    `distance_km` INT DEFAULT 0,
+    `standard_allowance_kes` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `standard_allowance_usd` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_route` (`origin`, `destination`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 
