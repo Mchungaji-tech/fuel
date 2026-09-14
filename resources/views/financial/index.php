@@ -18,7 +18,7 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:20px;">
         <div class="hello">
             <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
-                <span>Financial Management & Cash Flow</span>
+                <span>Finances & Cash Flow</span>
                 <span style="font-size:24px;">💵</span>
             </h1>
             <p style="margin-top:4px;color:var(--text-2);font-size:14px;">

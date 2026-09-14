@@ -75,12 +75,18 @@ return [
     ['POST', '/expenses/inline-update', [ExpenseController::class, 'inlineUpdate']],
     ['POST', '/expenses/delete/{id}', [ExpenseController::class, 'delete']],
 
-    // Financial Cash Flow & Daily Management
+    // Financial Cash Flow & Daily Management (accessible via /finances and /financial)
     ['GET', '/financial', [FinancialController::class, 'index']],
     ['POST', '/financial/store', [FinancialController::class, 'store']],
     ['POST', '/financial/inline-update', [FinancialController::class, 'inlineUpdate']],
     ['POST', '/financial/delete/{id}', [FinancialController::class, 'delete']],
     ['GET', '/financial/export', [FinancialController::class, 'export']],
+
+    ['GET', '/finances', [FinancialController::class, 'index']],
+    ['POST', '/finances/store', [FinancialController::class, 'store']],
+    ['POST', '/finances/inline-update', [FinancialController::class, 'inlineUpdate']],
+    ['POST', '/finances/delete/{id}', [FinancialController::class, 'delete']],
+    ['GET', '/finances/export', [FinancialController::class, 'export']],
 
     // Drivers & Dynamic Assignment
     ['GET', '/drivers', [DriverController::class, 'index']],

@@ -557,7 +557,7 @@ class FleetController
         }
 
         $loadedLitres = isset($_POST['loaded_litres']) ? (int)$_POST['loaded_litres'] : (int)$current['loaded_litres'];
-        $unitPrice = $loadedLitres > 0 ? round($transportAmount / $loadedLitres, 4) : (float)($current['unit_price'] ?? 0);
+        $unitPrice = 0.00;
 
         // Shortage & Delivered Litres
         if (isset($_POST['shortage_litres'])) {

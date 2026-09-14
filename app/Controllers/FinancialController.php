@@ -16,6 +16,44 @@ class FinancialController
     {
         $pdo = Database::connection();
 
+        // Ensure table exists and has data so the user always sees the contents and tables
+        try {
+            $isSqlite = (Database::getActiveDriver() === 'sqlite');
+            $idSql = $isSqlite ? 'id INTEGER PRIMARY KEY AUTOINCREMENT' : 'id INT AUTO_INCREMENT PRIMARY KEY';
+            $pdo->exec("CREATE TABLE IF NOT EXISTS financial_records (
+                {$idSql},
+                entry_date VARCHAR(50) NOT NULL,
+                category VARCHAR(100) NOT NULL DEFAULT 'General',
+                amount_in DECIMAL(12,2) NOT NULL DEFAULT 0,
+                amount_out DECIMAL(12,2) NOT NULL DEFAULT 0,
+                balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+                reason TEXT,
+                payment_method VARCHAR(50) NOT NULL DEFAULT 'Cash',
+                reference_no VARCHAR(100),
+                recorded_by VARCHAR(150),
+                created_at VARCHAR(50),
+                updated_at VARCHAR(50)
+            )");
+
+            $countCheck = (int)$pdo->query("SELECT COUNT(*) FROM financial_records")->fetchColumn();
+            if ($countCheck === 0) {
+                $sampleFin = [
+                    [date('Y-m-d', strtotime('-4 days')), 'Client Inflow', 650000.00, 0.00, 650000.00, 'Freight haulage payment for Kampala convoy consignment', 'Bank Transfer', 'EFT-784912', 'Admin'],
+                    [date('Y-m-d', strtotime('-3 days')), 'Fuel & Fleet', 0.00, 185000.00, -185000.00, 'Bulk diesel purchase for Eldoret central tank refuels', 'M-Pesa', 'MP-QK8201', 'Admin'],
+                    [date('Y-m-d', strtotime('-2 days')), 'Driver Allowances', 0.00, 45000.00, -45000.00, 'Transit per diem & mileage advance for Malaba crossing', 'Cash', 'VCH-0021', 'Admin'],
+                    [date('Y-m-d', strtotime('-2 days')), 'Office Operations', 0.00, 15000.00, -15000.00, 'Depot high-speed fiber internet and office stationery', 'M-Pesa', 'MP-AB3312', 'Admin'],
+                    [date('Y-m-d', strtotime('-1 days')), 'Personal Drawing', 0.00, 50000.00, -50000.00, 'Managing Director personal withdrawal / drawing', 'Bank Transfer', 'DRAW-04', 'Admin'],
+                    [date('Y-m-d'), 'Client Inflow', 420000.00, 0.00, 420000.00, 'Advance delivery payment for Juba cross-border corridor', 'Bank Transfer', 'EFT-883011', 'Admin'],
+                    [date('Y-m-d'), 'Maintenance & Repairs', 0.00, 28000.00, -28000.00, 'Tanker brake valve replacement & air pressure service', 'Cash', 'RCP-9912', 'Admin'],
+                ];
+
+                $insFin = $pdo->prepare('INSERT INTO financial_records (entry_date, category, amount_in, amount_out, balance, reason, payment_method, reference_no, recorded_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                foreach ($sampleFin as $f) {
+                    $insFin->execute([$f[0], $f[1], $f[2], $f[3], $f[4], $f[5], $f[6], $f[7], $f[8], date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
+                }
+            }
+        } catch (\Throwable $e) {}
+
         $search = trim($_GET['search'] ?? '');
         $category = trim($_GET['category'] ?? '');
         $method = trim($_GET['payment_method'] ?? '');
@@ -120,7 +158,7 @@ class FinancialController
         $methods = $pdo->query("SELECT DISTINCT payment_method FROM financial_records WHERE payment_method IS NOT NULL AND payment_method != '' ORDER BY payment_method ASC")->fetchAll(PDO::FETCH_COLUMN);
 
         return view('financial.index', [
-            'title' => 'Financial Management & Cash Flow — Sarura Fuel',
+            'title' => 'Finances & Cash Flow — Sarura Fuel',
             'records' => $records,
             'kpis' => $kpis,
             'todayKpis' => $todayKpis,

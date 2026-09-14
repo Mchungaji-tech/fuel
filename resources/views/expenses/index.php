@@ -228,7 +228,19 @@
                                     <span class="view-val"><?= htmlspecialchars($e['garage_vendor'] ?: 'General Vendor') ?></span>
                                 </td>
                                 <td class="cell-amount" style="white-space:nowrap;font-weight:800;color:var(--red);">
-                                    <span class="view-val"><?= format_money($e['amount']) ?></span>
+                                    <?php
+                                        $amtUsd = (float)$e['amount'];
+                                        $exR = (float)exchange_rate();
+                                        if ($exR <= 0) $exR = 130.0;
+                                        $amtKes = round($amtUsd * $exR, 2);
+                                        $isKesActive = (current_currency() === 'KES');
+                                    ?>
+                                    <div class="view-val" style="font-size:13.5px;font-weight:800;">
+                                        <?= format_money($amtUsd) ?>
+                                    </div>
+                                    <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px;">
+                                        <?= $isKesActive ? ('$ ' . number_format($amtUsd, 2) . ' USD') : ('KES ' . number_format($amtKes)) ?>
+                                    </div>
                                 </td>
                                 <td class="cell-actions" style="text-align:center;white-space:nowrap;">
                                     <div class="row-normal-actions" style="display:inline-flex;gap:5px;align-items:center;">
@@ -290,9 +302,55 @@
                     <label>Vendor / Shop / Paid To (Free Text Input)</label>
                     <input type="text" name="garage_vendor" placeholder="e.g. Hardware shop, Simba Commercial Garage, Nairobi Supplies">
                 </div>
-                <div class="form-group">
-                    <label>Total Amount [<?= app_currency_symbol() ?>] *</label>
-                    <input type="number" step="0.01" name="amount" placeholder="0.00" required>
+                <!-- Dual Currency Evaluation (Kenya Shillings & US Dollars) -->
+                <div style="background:var(--card-2);border:1.5px solid var(--border-2);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <div style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;">
+                            <span>Expense Evaluation (Dual Currency)</span>
+                            <span style="font-size:14px;">🇰🇪 ⇄ 🇺🇸</span>
+                        </div>
+                        <div style="font-size:11.5px;font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;">
+                            Exchange Rate: 1 USD = <span id="expExRateDisplay"><?= exchange_rate() ?></span> KES
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <!-- Kenya Shillings (KES) -->
+                        <div class="form-group" style="margin:0;">
+                            <label style="color:var(--amber);font-weight:800;display:flex;align-items:center;gap:5px;">
+                                <span>Kenya Shillings (KES / KSh)</span>
+                                <span style="font-size:11px;">🇰🇪</span>
+                            </label>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:12px;">KES</span>
+                                <input type="number" step="1" min="0" id="expAmountKes" name="amount_kes" placeholder="0" oninput="onExpenseKesInput(this.value)" style="width:100%;padding:9px 10px 9px 44px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:15px;color:var(--amber);background:var(--card);">
+                            </div>
+                            <small style="color:var(--text-3);font-size:11px;">Local Kenyan currency evaluation</small>
+                        </div>
+
+                        <!-- US Dollars (USD) -->
+                        <div class="form-group" style="margin:0;">
+                            <label style="color:var(--brand);font-weight:800;display:flex;align-items:center;gap:5px;">
+                                <span>US Dollars (USD / $)</span>
+                                <span style="font-size:11px;">🇺🇸</span>
+                            </label>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--brand);font-size:14px;">$</span>
+                                <input type="number" step="0.01" min="0" id="expAmountUsd" name="amount_usd" placeholder="0.00" oninput="onExpenseUsdInput(this.value)" style="width:100%;padding:9px 10px 9px 28px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;font-size:15px;color:var(--brand);background:var(--card);">
+                            </div>
+                            <small style="color:var(--text-3);font-size:11px;">Base USD financial evaluation</small>
+                        </div>
+                    </div>
+
+                    <!-- Live Evaluation Conversion Banner -->
+                    <div id="expEvaluationCard" style="background:var(--card);border:1px dashed var(--border-2);border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;">
+                        <span style="color:var(--text-3);">Live Dual Evaluation:</span>
+                        <span id="expEvaluationText" style="font-weight:800;color:var(--text);"><b style="color:var(--amber);">KES 0</b> ≈ <b style="color:var(--brand);">$ 0.00 USD</b></span>
+                    </div>
+
+                    <!-- Hidden system field for backward compatibility -->
+                    <input type="hidden" name="amount" id="expFinalAmount" value="0.00">
+                    <input type="hidden" name="currency_mode" id="expCurrencyMode" value="KES">
                 </div>
                 <div class="form-group">
                     <label>Additional Notes</label>
@@ -738,7 +796,10 @@ async function saveExpInlineEdit(id) {
             `;
             row.querySelector('.cell-vendor').innerHTML = `<span class="view-val">${d.garage_vendor}</span>`;
 
-            row.querySelector('.cell-amount').innerHTML = `<span class="view-val">${d.amount_formatted}</span>`;
+            row.querySelector('.cell-amount').innerHTML = `
+                <div class="view-val" style="font-size:13.5px;font-weight:800;">${d.amount_formatted}</div>
+                <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px;">${d.amount_evaluated || ''}</div>
+            `;
 
             row.querySelector('.row-normal-actions').style.display = 'inline-flex';
             row.querySelector('.row-editing-actions').style.display = 'none';
@@ -765,6 +826,43 @@ function formatDateClient(dStr) {
         return `${parts[2]}/${parts[1]}/${yr}`;
     }
     return dStr;
+}
+
+const EXP_EX_RATE = <?= (float)exchange_rate() > 0 ? (float)exchange_rate() : 130.0 ?>;
+
+function onExpenseKesInput(val) {
+    const kes = parseFloat(val) || 0;
+    const usd = (kes > 0 && EXP_EX_RATE > 0) ? (kes / EXP_EX_RATE) : 0;
+    const usdField = document.getElementById('expAmountUsd');
+    if (usdField && document.activeElement === document.getElementById('expAmountKes')) {
+        usdField.value = usd > 0 ? usd.toFixed(2) : '';
+    }
+    updateExpenseEvaluationBanner(kes, usd);
+    const modeEl = document.getElementById('expCurrencyMode');
+    if (modeEl) modeEl.value = 'KES';
+    const finalEl = document.getElementById('expFinalAmount');
+    if (finalEl) finalEl.value = usd.toFixed(2);
+}
+
+function onExpenseUsdInput(val) {
+    const usd = parseFloat(val) || 0;
+    const kes = (usd > 0 && EXP_EX_RATE > 0) ? Math.round(usd * EXP_EX_RATE) : 0;
+    const kesField = document.getElementById('expAmountKes');
+    if (kesField && document.activeElement === document.getElementById('expAmountUsd')) {
+        kesField.value = kes > 0 ? kes : '';
+    }
+    updateExpenseEvaluationBanner(kes, usd);
+    const modeEl = document.getElementById('expCurrencyMode');
+    if (modeEl) modeEl.value = 'USD';
+    const finalEl = document.getElementById('expFinalAmount');
+    if (finalEl) finalEl.value = usd.toFixed(2);
+}
+
+function updateExpenseEvaluationBanner(kes, usd) {
+    const el = document.getElementById('expEvaluationText');
+    if (el) {
+        el.innerHTML = `<b style="color:var(--amber);">KES ${kes.toLocaleString('en-US')}</b> ≈ <b style="color:var(--brand);">$ ${usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD</b>`;
+    }
 }
 </script>
 <?php };

@@ -182,10 +182,26 @@ class ExpenseController
         $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
         $notes = trim($_POST['notes'] ?? '');
 
-        $isKes = current_currency() === 'KES';
-        $rate = exchange_rate();
-        $rawAmount = (float) ($_POST['amount'] ?? 0);
-        $amount = $isKes ? ($rawAmount / $rate) : $rawAmount;
+        $rate = (float)exchange_rate();
+        if ($rate <= 0) $rate = 130.0;
+
+        $currencyMode = trim($_POST['currency_mode'] ?? '');
+        $amountKes = isset($_POST['amount_kes']) && $_POST['amount_kes'] !== '' ? (float)$_POST['amount_kes'] : null;
+        $amountUsd = isset($_POST['amount_usd']) && $_POST['amount_usd'] !== '' ? (float)$_POST['amount_usd'] : null;
+
+        if ($currencyMode === 'KES' && $amountKes !== null && $amountKes > 0) {
+            $amount = $amountKes / $rate;
+        } elseif ($currencyMode === 'USD' && $amountUsd !== null && $amountUsd > 0) {
+            $amount = $amountUsd;
+        } elseif ($amountUsd !== null && $amountUsd > 0) {
+            $amount = $amountUsd;
+        } elseif ($amountKes !== null && $amountKes > 0) {
+            $amount = $amountKes / $rate;
+        } else {
+            $rawAmount = (float) ($_POST['amount'] ?? 0);
+            $isKes = current_currency() === 'KES';
+            $amount = $isKes ? ($rawAmount / $rate) : $rawAmount;
+        }
 
         if ($expenseTitle !== '' && $amount > 0) {
             $stmt = $pdo->prepare('INSERT INTO expenses (
@@ -281,6 +297,7 @@ class ExpenseController
                 'truck' => $truck ?: 'General Business',
                 'amount' => $amount,
                 'amount_formatted' => format_money($amount),
+                'amount_evaluated' => ($isKes ? ('$ ' . number_format($amount, 2) . ' USD') : ('KES ' . number_format($amount * $rate))),
                 'garage_vendor' => $garageVendor ?: 'General Vendor',
                 'receipt_status' => $receiptStatus,
                 'notes' => $notes

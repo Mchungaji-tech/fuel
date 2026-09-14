@@ -6,7 +6,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
         <div class="hello">
             <h1>Fuel Products Directory ⛽</h1>
-            <p>Kenyan bulk petroleum specifications, transport unit pricing, and energy grades.</p>
+            <p>Kenyan bulk petroleum specifications, cargo grades, and freight haulage standards (transport only — not selling per litre).</p>
         </div>
         <button class="btn btn-brand" onclick="document.getElementById('productModal').classList.add('active')">＋ Add Product</button>
     </div>

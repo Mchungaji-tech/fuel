@@ -329,19 +329,11 @@
                                     </div>
                                 </td>
 
-                                <!-- Product & Unit Price Rate -->
+                                <!-- Transported Fuel Product (Freight Only) -->
                                 <td class="cell-product" style="white-space:nowrap;">
                                     <span style="background:var(--brand-soft);color:var(--brand);padding:3px 7px;border-radius:6px;font-weight:800;font-size:12px;">
                                         <?= htmlspecialchars($d['product']) ?>
                                     </span>
-                                    <?php 
-                                        $uPrice = (float)($d['unit_price'] ?? 0);
-                                    ?>
-                                    <?php if ($uPrice > 0): ?>
-                                        <div style="font-size:11px;color:var(--text-3);margin-top:2px;font-weight:600;">
-                                            @ <?= format_money($uPrice) ?>/L
-                                        </div>
-                                    <?php endif; ?>
                                 </td>
 
                                 <!-- Diesel Fuel Cost (Owner Expense: Dual USD & KSh + Refuel Country) -->

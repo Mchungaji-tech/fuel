@@ -244,14 +244,15 @@ function is_developer(): bool
 
 /**
  * Checks if active user can view sensitive company financials (revenue, profit, driver salaries, expenses).
- * Super Admin and regular Admins can; Developer is strictly shielded from financial data.
+ * Accessible to admins, owners, management, accountants, and developers.
  */
 function can_view_financials(): bool
 {
-    if (is_developer()) {
+    $role = strtolower($_SESSION['user']['role'] ?? '');
+    if ($role === 'driver' || $role === 'viewer') {
         return false;
     }
-    return is_admin() || is_super_admin();
+    return true;
 }
 
 /**
