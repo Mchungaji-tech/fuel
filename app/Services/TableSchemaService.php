@@ -110,13 +110,12 @@ class TableSchemaService
             case 'financial_records':
                 return [
                     ['entry_date', 'Date', 'date', 1],
+                    ['amount_in', 'Amount In (Received)', 'currency', 1],
+                    ['amount_out', 'Amount Out (Used)', 'currency', 1],
+                    ['balance', 'Remaining Balance', 'currency', 1],
+                    ['reason', 'How Used / Expenditure Reason', 'text', 1],
                     ['category', 'Category', 'status', 1],
-                    ['amount_in', 'Amount In', 'currency', 1],
-                    ['amount_out', 'Amount Out', 'currency', 1],
-                    ['balance', 'Net Balance', 'currency', 1],
-                    ['reason', 'Expenditure Note / Reason', 'text', 1],
                     ['payment_method', 'Payment Method', 'status', 1],
-                    ['reference_no', 'Reference #', 'text', 1],
                 ];
 
             default:

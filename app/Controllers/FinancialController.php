@@ -67,9 +67,9 @@ class FinancialController
         $params = [];
 
         if ($search !== '') {
-            $where[] = '(reason LIKE ? OR category LIKE ? OR reference_no LIKE ? OR payment_method LIKE ? OR recorded_by LIKE ?)';
+            $where[] = '(reason LIKE ? OR category LIKE ? OR payment_method LIKE ? OR recorded_by LIKE ?)';
             $term = "%{$search}%";
-            $params = array_merge($params, [$term, $term, $term, $term, $term]);
+            $params = array_merge($params, [$term, $term, $term, $term]);
         }
 
         if ($category !== '') {
@@ -196,7 +196,7 @@ class FinancialController
         $balance = $amountIn - $amountOut;
         $reason = trim($_POST['reason'] ?? $_POST['notes'] ?? '');
         $method = trim($_POST['payment_method'] ?? 'Cash');
-        $refNo = trim($_POST['reference_no'] ?? '');
+        $refNo = '';
         $user = $_SESSION['user_name'] ?? 'Admin';
 
         if ($reason === '' && $amountIn <= 0 && $amountOut <= 0) {
@@ -289,7 +289,7 @@ class FinancialController
             $field = trim($input['field']);
             $val = trim($input['value']);
 
-            $allowed = ['entry_date', 'category', 'amount_in', 'amount_out', 'reason', 'payment_method', 'reference_no'];
+            $allowed = ['entry_date', 'category', 'amount_in', 'amount_out', 'reason', 'payment_method'];
             if (!in_array($field, $allowed, true)) {
                 echo json_encode(['success' => false, 'message' => "Field '{$field}' cannot be edited directly."]);
                 exit;
@@ -304,7 +304,6 @@ class FinancialController
             if (isset($input['amount_out'])) $row['amount_out'] = (float)$input['amount_out'];
             if (isset($input['reason'])) $row['reason'] = trim($input['reason']);
             if (isset($input['payment_method'])) $row['payment_method'] = trim($input['payment_method']);
-            if (isset($input['reference_no'])) $row['reference_no'] = trim($input['reference_no']);
         }
 
         // Recalculate net day balance: Amount In - Amount Out
@@ -420,9 +419,9 @@ class FinancialController
         $params = [];
 
         if ($search !== '') {
-            $where[] = '(reason LIKE ? OR category LIKE ? OR reference_no LIKE ? OR payment_method LIKE ? OR recorded_by LIKE ?)';
+            $where[] = '(reason LIKE ? OR category LIKE ? OR payment_method LIKE ? OR recorded_by LIKE ?)';
             $term = "%{$search}%";
-            $params = array_merge($params, [$term, $term, $term, $term, $term]);
+            $params = array_merge($params, [$term, $term, $term, $term]);
         }
 
         if ($category !== '') {
@@ -465,20 +464,17 @@ class FinancialController
         $stmt->execute($params);
         $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Headers for Export (Clean, comprehensive, 10 columns)
+        // Headers for Export: Date -> Amount In -> Amount Out -> Running Balance -> How Used -> Category -> Method
         $headers = [
             '#',
             'Transaction Date',
-            'Category',
-            'Expenditure Note / Reason',
-            'Payment Method',
-            'Reference / Receipt #',
-            'Amount In (KSh / Inflow)',
-            'Amount Out (KSh / Spent)',
-            'Net Day Balance',
+            'Amount In (Received)',
+            'Amount Out (Used)',
             'Running Balance',
-            'Recorded By',
-            'Recorded At'
+            'Expenditure Details / How Used',
+            'Category',
+            'Payment Method',
+            'Recorded By'
         ];
 
         $exportRows = [];
@@ -499,16 +495,13 @@ class FinancialController
             $exportRows[] = [
                 $idx++,
                 $r['entry_date'] ?? '',
-                $r['category'] ?? 'General',
-                $r['reason'] ?? '—',
-                $r['payment_method'] ?? 'Cash',
-                $r['reference_no'] ?? '—',
                 $amtIn > 0 ? $amtIn : 0.00,
                 $amtOut > 0 ? $amtOut : 0.00,
-                $net,
                 $cumBalance,
+                $r['reason'] ?? '—',
+                $r['category'] ?? 'General',
+                $r['payment_method'] ?? 'Cash',
                 $r['recorded_by'] ?? 'Staff',
-                $r['created_at'] ?? ''
             ];
         }
 
