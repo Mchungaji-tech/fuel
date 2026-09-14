@@ -53,15 +53,10 @@
             <div class="val" id="statTotalMileage" style="color:var(--amber);"><?= $canViewFin ? format_money($aggregates['total_mileage'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Driver allowances & road tolls</div>
         </div>
-        <div class="kpi">
-            <div class="lbl">Breakdown / Road Fixes</div>
-            <div class="val" id="statTotalExtra" style="color:var(--red);"><?= $canViewFin ? format_money($aggregates['total_extra'] ?? 0) : '[Restricted]' ?></div>
-            <div style="font-size:13px;color:var(--text-3);margin-top:4px;">En-route repairs & punctures</div>
-        </div>
         <div class="kpi" style="border:2px solid var(--green);background:linear-gradient(135deg,var(--card),var(--green-soft));">
             <div class="lbl" style="color:var(--green);font-weight:800;">Net Balance (Profit / Commission)</div>
             <div class="val" id="statTotalBalance" style="color:var(--green);font-size:28px;"><?= $canViewFin ? format_money($aggregates['total_balance'] ?? 0) : '[Restricted]' ?></div>
-            <div style="font-size:12.5px;color:var(--green);font-weight:700;margin-top:4px;">Revenue - (Diesel + Mileage + Repairs)</div>
+            <div style="font-size:12.5px;color:var(--green);font-weight:700;margin-top:4px;">Revenue - (Diesel + Mileage)</div>
         </div>
     </div>
 
@@ -349,18 +344,38 @@
                                     <?php endif; ?>
                                 </td>
 
-                                <!-- Diesel Fuel Cost (Owner Expense) -->
+                                <!-- Diesel Fuel Cost (Owner Expense: Dual USD & KSh + Refuel Country) -->
                                 <td class="cell-diesel" style="white-space:nowrap;font-weight:700;cursor:pointer;" onclick="openDieselLogModal(<?= $d['id'] ?>)" title="Click to view & log cross-border diesel fuel stops for <?= htmlspecialchars($d['trip_number']) ?>">
                                     <?php 
                                         $dVal = (float)($d['diesel'] ?? 0); 
                                         $dLitres = (float)($d['diesel_litres'] ?? 0);
                                         $dUnitPrice = (float)($d['diesel_unit_price'] ?? 0);
+                                        $exRate = (float)exchange_rate();
+                                        $usdVal = $dVal;
+                                        $kesVal = round($dVal * $exRate, 2);
+                                        $refuelCountryStr = trim($d['refuel_countries'] ?? '');
                                     ?>
-                                    <span class="view-val"><?= $canViewFin ? ($dVal > 0 ? format_money($dVal) : '—') : '[Restricted]' ?></span>
-                                    <?php if ($canViewFin && $dLitres > 0): ?>
-                                        <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px;">
-                                            ⛽ <?= number_format($dLitres, 1) ?>L<?= $dUnitPrice > 0 ? ' @ ' . format_money($dUnitPrice) : '' ?>
+                                    <?php if (!$canViewFin): ?>
+                                        <span class="view-val">[Restricted]</span>
+                                    <?php elseif ($dVal <= 0): ?>
+                                        <span class="view-val" style="color:var(--text-3);">—</span>
+                                    <?php else: ?>
+                                        <div class="val-diesel-usd" style="font-weight:900;color:var(--amber);font-size:13.5px;">
+                                            $<?= number_format($usdVal, 2) ?>
                                         </div>
+                                        <div class="val-diesel-kes" style="font-size:11.5px;color:var(--text-2);font-weight:700;margin-top:1px;">
+                                            KSh <?= number_format($kesVal, 2) ?>
+                                        </div>
+                                        <?php if ($dLitres > 0): ?>
+                                            <div style="font-size:10.5px;color:var(--text-3);font-weight:600;margin-top:2px;">
+                                                ⛽ <?= number_format($dLitres, 1) ?> L
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($refuelCountryStr)): ?>
+                                            <div class="val-diesel-country" style="font-size:10px;color:var(--amber);font-weight:700;margin-top:2px;">
+                                                📍 <?= htmlspecialchars($refuelCountryStr) ?>
+                                            </div>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
 
@@ -406,7 +421,7 @@
                                     <?php endif; ?>
                                 </td>
 
-                                <!-- Trip Costs (Mileage + Extra) -->
+                                <!-- Trip Costs (Mileage) -->
                                 <td class="cell-costs" style="white-space:nowrap;">
                                     <?php if (!$canViewFin): ?>
                                         <span>[Restricted]</span>
@@ -414,11 +429,6 @@
                                         <div class="val-mileage" style="color:var(--amber);font-weight:700;font-size:13.5px;">
                                             <?= format_money($d['mileage_cost']) ?>
                                         </div>
-                                        <?php if ((float)$d['extra_expenses'] > 0): ?>
-                                            <div class="val-extra" style="color:var(--red);font-size:12px;font-weight:600;margin-top:1px;">
-                                                + <?= format_money($d['extra_expenses']) ?> fix
-                                            </div>
-                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
 
@@ -665,20 +675,26 @@
                     </div>
 
                     <div class="form-group" style="grid-column:1/-1;">
-                        <label>Assigned Driver *</label>
-                        <select name="driver" id="dispatchDriverSelect" required onchange="onDriverSelected(this.value)">
-                            <option value="">-- Assign Driver to this Trip --</option>
-                            <?php foreach ($drivers as $drv): ?>
-                                <option value="<?= htmlspecialchars($drv['name']) ?>"><?= htmlspecialchars($drv['name']) ?> (<?= htmlspecialchars($drv['status']) ?>)</option>
-                            <?php endforeach; ?>
-                            <option value="__other__">➕ Other Driver (Enter Name)...</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" id="otherDriverGroup" style="display:none;grid-column:1/-1;background:var(--card-2);padding:12px 16px;border-radius:10px;border:1.5px dashed var(--brand);">
-                        <label style="color:var(--brand);font-weight:700;">➕ Enter Temporary Driver Name *</label>
-                        <input type="text" name="other_driver_name" id="otherDriverInput" placeholder="e.g. Samuel Kiprono (New/Relief Driver)">
-                        <small style="color:var(--text-3);display:block;margin-top:3px;">You will be prompted to save this driver permanently to your roster after dispatch.</small>
+                        <label style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-weight:700;">Assigned Driver *</span>
+                            <span style="font-size:12px;font-weight:400;color:var(--text-3);">Pick from roster or type any driver's name</span>
+                        </label>
+                        <div style="position:relative;">
+                            <input type="text" name="driver" id="dispatchDriverInput" list="driversList" required 
+                                placeholder="Type or select driver name..." 
+                                autocomplete="off"
+                                oninput="if(document.getElementById('otherDriverInput')) document.getElementById('otherDriverInput').value = this.value;"
+                                style="width:100%;padding:10px 14px;font-size:14px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-weight:700;">
+                            <datalist id="driversList">
+                                <?php foreach ($drivers as $drv): ?>
+                                    <option value="<?= htmlspecialchars($drv['name']) ?>"><?= htmlspecialchars($drv['name']) ?> (<?= htmlspecialchars($drv['status']) ?>)</option>
+                                <?php endforeach; ?>
+                            </datalist>
+                        </div>
+                        <input type="hidden" name="other_driver_name" id="otherDriverInput" value="">
+                        <small style="color:var(--text-3);display:block;margin-top:4px;">
+                            💡 You can select an existing driver from the dropdown or directly key in any new/relief driver name.
+                        </small>
                     </div>
                 </div>
 
@@ -859,13 +875,14 @@
                         <div id="wizardDepartureFuelInputs">
                             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:12px;">
                                 <div>
-                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Refueling Country & Currency</label>
-                                    <select id="wzDieselCountry" onchange="onWizardDieselCountryChange()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;">
-                                        <option value="KES" data-rate="<?= exchange_rate() ?>" data-country="Kenya" selected>🇰🇪 Kenya (KES)</option>
-                                        <option value="UGX" data-rate="3750" data-country="Uganda">🇺🇬 Uganda (UGX)</option>
-                                        <option value="USD" data-rate="1.0" data-country="DR Congo">🇨🇩 DR Congo (USD)</option>
-                                        <option value="CDF" data-rate="2850" data-country="DR Congo">🇨🇩 DR Congo (CDF)</option>
-                                        <option value="SSP" data-rate="1300" data-country="South Sudan">🇸🇸 South Sudan (SSP)</option>
+                                    <label style="font-size:11.5px;font-weight:800;color:var(--text);display:block;margin-bottom:4px;">📍 Refueling Country *</label>
+                                    <select id="wzDieselCountry" onchange="onWizardDieselCountryChange()" style="width:100%;padding:8px;border:1.5px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;">
+                                        <option value="Kenya" data-currency="KES" data-rate="<?= exchange_rate() ?>" data-flag="🇰🇪" selected>🇰🇪 Kenya</option>
+                                        <option value="Uganda" data-currency="UGX" data-rate="3750" data-flag="🇺🇬">🇺🇬 Uganda</option>
+                                        <option value="DR Congo" data-currency="USD" data-rate="1.0" data-flag="🇨🇩">🇨🇩 DR Congo</option>
+                                        <option value="South Sudan" data-currency="SSP" data-rate="1300" data-flag="🇸🇸">🇸🇸 South Sudan</option>
+                                        <option value="Rwanda" data-currency="RWF" data-rate="1350" data-flag="🇷🇼">🇷🇼 Rwanda</option>
+                                        <option value="Tanzania" data-currency="TZS" data-rate="2600" data-flag="🇹🇿">🇹🇿 Tanzania</option>
                                     </select>
                                 </div>
                                 <div>
@@ -877,21 +894,33 @@
                                     <input type="number" step="0.01" id="wzDieselLitres" placeholder="e.g. 400" value="400" oninput="calcWizardDiesel()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
                                 </div>
                                 <div>
-                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Local Price / Litre *</label>
-                                    <input type="number" step="0.01" id="wzDieselLocalPrice" placeholder="e.g. 180.00" value="180.00" oninput="calcWizardDiesel()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                                    <label style="font-size:11.5px;font-weight:800;color:var(--amber);display:block;margin-bottom:4px;">🇰🇪 Price in KSh (KES) *</label>
+                                    <div style="position:relative;">
+                                        <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:11px;">KES</span>
+                                        <input type="number" step="0.01" id="wzDieselKesPrice" placeholder="180.00" value="180.00" oninput="onWizardDieselKesInput(this.value)" style="width:100%;padding:8px 8px 8px 36px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;color:var(--amber);background:var(--card);">
+                                    </div>
                                 </div>
                                 <div>
-                                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Exchange Rate (per $1 USD)</label>
-                                    <input type="number" step="0.0001" id="wzDieselExRate" value="<?= exchange_rate() ?>" oninput="calcWizardDiesel()" style="width:100%;padding:8px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                                    <label style="font-size:11.5px;font-weight:800;color:var(--brand);display:block;margin-bottom:4px;">💵 Price in USD ($) *</label>
+                                    <div style="position:relative;">
+                                        <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--brand);font-size:12px;">$</span>
+                                        <input type="number" step="0.0001" id="wzDieselUsdPrice" placeholder="1.38" value="" oninput="onWizardDieselUsdInput(this.value)" style="width:100%;padding:8px 8px 8px 24px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;color:var(--brand);background:var(--card);">
+                                    </div>
                                 </div>
                             </div>
+
+                            <input type="hidden" id="wzDieselExRate" value="<?= exchange_rate() ?>">
+                            <input type="hidden" id="wzDieselLocalPrice" value="180.00">
 
                             <!-- Live Multi-Currency Conversion Card -->
                             <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
                                 <div>
-                                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Calculated Diesel Cost:</div>
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <span style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Departure Refueling Cost:</span>
+                                        <span id="wzDieselCountryBadge" style="font-size:11px;font-weight:800;color:var(--amber);background:rgba(245,158,11,0.1);padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);">📍 🇰🇪 Kenya</span>
+                                    </div>
                                     <div style="font-size:13px;color:var(--text-2);margin-top:2px;">
-                                        Local: <b id="wzDieselLocalTotalDisplay" style="color:var(--text);">KES 72,000.00</b> • Base USD: <b id="wzDieselUsdDisplay" style="color:var(--brand);">$ 553.85</b>
+                                        Payment in KSh: <b id="wzDieselKesTotalDisplay" style="color:var(--amber);">KES 72,000.00</b> • Base USD: <b id="wzDieselUsdDisplay" style="color:var(--brand);">$ 553.85</b>
                                     </div>
                                 </div>
                                 <div>
@@ -1064,33 +1093,30 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Refuel Country & Currency *</label>
-                    <select name="currency_code" id="dlmCountrySelect" required onchange="onDlmCountryChange()">
-                        <option value="UGX" data-rate="3750" data-country="Uganda">🇺🇬 Uganda (UGX Shillings)</option>
-                        <option value="KES" data-rate="<?= exchange_rate() ?>" data-country="Kenya" <?= current_currency() === 'KES' ? 'selected' : '' ?>>🇰🇪 Kenya (KES Shillings)</option>
-                        <option value="USD" data-rate="1.0" data-country="DR Congo">🇨🇩 DR Congo (USD Dollars)</option>
-                        <option value="CDF" data-rate="2850" data-country="DR Congo">🇨🇩 DR Congo (CDF Francs)</option>
-                        <option value="SSP" data-rate="1300" data-country="South Sudan">🇸🇸 South Sudan (SSP Pounds)</option>
-                        <option value="TZS" data-rate="2600" data-country="Tanzania">🇹🇿 Tanzania (TZS Shillings)</option>
+                    <label style="font-weight:800;color:var(--text);">📍 Refueling Country *</label>
+                    <select name="country" id="dlmCountrySelect" required onchange="onDlmCountryChange()" style="font-weight:700;">
+                        <option value="Uganda" data-currency="UGX" data-rate="3750" data-flag="🇺🇬">🇺🇬 Uganda (UGX)</option>
+                        <option value="Kenya" data-currency="KES" data-rate="<?= exchange_rate() ?>" data-flag="🇰🇪" selected>🇰🇪 Kenya (KES)</option>
+                        <option value="DR Congo" data-currency="USD" data-rate="1.0" data-local-cur="CDF" data-local-rate="2850" data-flag="🇨🇩">🇨🇩 DR Congo (USD / CDF)</option>
+                        <option value="South Sudan" data-currency="SSP" data-rate="1300" data-flag="🇸🇸">🇸🇸 South Sudan (SSP)</option>
+                        <option value="Rwanda" data-currency="RWF" data-rate="1350" data-flag="🇷🇼">🇷🇼 Rwanda (RWF)</option>
+                        <option value="Tanzania" data-currency="TZS" data-rate="2600" data-flag="🇹🇿">🇹🇿 Tanzania (TZS)</option>
                     </select>
-                    <input type="hidden" name="country" id="dlmCountryName" value="Uganda">
+                    <input type="hidden" name="currency_code" id="dlmCurrencyCode" value="KES">
+                    <input type="hidden" name="exchange_rate" id="dlmExchangeRate" value="<?= exchange_rate() ?>">
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
                     <div style="background:var(--card-2);padding:10px 14px;border-radius:10px;border:1.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                        <span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">💰 Fuel Entry Currency:</span>
-                        <div style="display:flex;gap:14px;align-items:center;">
-                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--amber);">
-                                <input type="radio" name="dlm_input_currency" value="KES" checked onchange="onDlmInputCurrencyChange('KES')">
+                        <span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">💰 Payment Currency:</span>
+                        <div style="display:flex;gap:16px;align-items:center;">
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;cursor:pointer;color:var(--amber);">
+                                <input type="radio" name="dlm_pay_mode" id="dlmPayModeKes" value="KES" checked onchange="setDlmPayMode('KES')">
                                 <span>🇰🇪 Pay in KSh (KES)</span>
                             </label>
-                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--text-2);">
-                                <input type="radio" name="dlm_input_currency" value="LOCAL" onchange="onDlmInputCurrencyChange('LOCAL')">
-                                <span id="dlmLocalCurOptionLabel">🇺🇬 Local UGX</span>
-                            </label>
-                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--brand);">
-                                <input type="radio" name="dlm_input_currency" value="USD" onchange="onDlmInputCurrencyChange('USD')">
-                                <span>💵 Direct USD ($)</span>
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;cursor:pointer;color:var(--brand);">
+                                <input type="radio" name="dlm_pay_mode" id="dlmPayModeUsd" value="USD" onchange="setDlmPayMode('USD')">
+                                <span>💵 Pay in USD ($)</span>
                             </label>
                         </div>
                     </div>
@@ -1102,54 +1128,63 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Litres Pumped *</label>
-                    <input type="number" step="0.01" name="litres" id="dlmLitres" placeholder="e.g. 350" required oninput="calcDlmDiesel()">
-                </div>
-
-                <!-- Dual Price Inputs: KES vs Local Price -->
-                <div class="form-group" id="dlmKesPriceGroup">
-                    <label id="dlmKesPriceLabel" style="color:var(--amber);font-weight:800;">🇰🇪 Price / Litre in KSh (KES) *</label>
+                    <label style="font-weight:800;">Litres Pumped *</label>
                     <div style="position:relative;">
-                        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:11.5px;">KES</span>
-                        <input type="number" step="0.01" id="dlmKesPrice" placeholder="e.g. 185.00" oninput="onDlmKesPriceInput(this.value)" style="width:100%;padding:9px 10px 9px 42px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:14px;color:var(--amber);background:var(--card);">
+                        <input type="number" step="0.01" name="litres" id="dlmLitres" placeholder="e.g. 350" required oninput="calcDlmDiesel()" style="font-weight:800;font-size:14px;padding-right:32px;">
+                        <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text-3);">L</span>
                     </div>
-                    <span style="font-size:11px;color:var(--text-3);display:block;margin-top:2px;">Amount paid per litre in Kenya Shillings</span>
                 </div>
 
-                <div class="form-group" id="dlmLocalPriceGroup" style="display:none;">
-                    <label id="dlmLocalPriceLabel">Local Pump Price / Litre *</label>
-                    <input type="number" step="0.01" name="local_unit_price" id="dlmLocalPrice" placeholder="Local price per litre" required oninput="calcDlmDiesel()">
-                    <span style="font-size:11px;color:var(--text-3);display:block;margin-top:2px;" id="dlmLocalPriceHint">Price in local currency</span>
-                </div>
-
-                <div class="form-group" style="grid-column:1/-1;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <label>Exchange Rate (Local units per $1 USD) *</label>
-                        <button type="button" onclick="resetDlmRate()" style="background:transparent;border:0;color:var(--brand);font-size:11.5px;font-weight:700;cursor:pointer;">Reset Default Rate</button>
+                <!-- Price inputs: KES and USD -->
+                <div class="form-group">
+                    <label id="dlmPriceHeaderLabel" style="font-weight:800;color:var(--amber);display:flex;justify-content:space-between;">
+                        <span>Price per Litre (KSh or USD) *</span>
+                        <span style="font-size:11px;color:var(--text-3);font-weight:normal;">1 USD = <?= exchange_rate() ?> KES</span>
+                    </label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:11px;">KES</span>
+                                <input type="number" step="0.01" id="dlmKesPrice" name="kes_unit_price" placeholder="185.00" oninput="onDlmKesInput(this.value)" style="width:100%;padding:9px 8px 9px 38px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:13.5px;color:var(--amber);background:var(--card);">
+                            </div>
+                            <span style="font-size:10.5px;color:var(--text-3);margin-top:2px;display:block;">Price in Kenya Shillings</span>
+                        </div>
+                        <div>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--brand);font-size:12px;">$</span>
+                                <input type="number" step="0.0001" id="dlmUsdPrice" name="usd_unit_price" placeholder="1.40" oninput="onDlmUsdInput(this.value)" style="width:100%;padding:9px 8px 9px 26px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;font-size:13.5px;color:var(--brand);background:var(--card);">
+                            </div>
+                            <span style="font-size:10.5px;color:var(--text-3);margin-top:2px;display:block;">Price in US Dollars</span>
+                        </div>
                     </div>
-                    <input type="number" step="0.0001" name="exchange_rate" id="dlmExchangeRate" value="3750" required oninput="calcDlmDiesel()">
-                    <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Freely editable to match the exact bureau exchange rate or bank card conversion.</span>
+                    <input type="hidden" name="entry_currency" id="dlmEntryCurrency" value="KES">
+                    <input type="hidden" name="local_unit_price" id="dlmLocalPrice" value="0">
                 </div>
 
-                <!-- Live Auto-Calculation Box -->
+                <!-- Live Auto-Calculation Box reflecting Country of Refueling -->
                 <div style="grid-column:1/-1;background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:14px;">
-                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Multi-Currency Breakdown</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
+                        <span style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Fueling Breakdown</span>
+                        <span id="dlmCountryReflectBadge" style="font-size:12px;font-weight:800;color:var(--amber);background:rgba(245,158,11,0.1);padding:3px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);">
+                            📍 Refueling in 🇰🇪 Kenya
+                        </span>
+                    </div>
                     
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:12px;margin-top:8px;">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;">
                         <div>
-                            <span style="font-size:12px;color:var(--amber);font-weight:700;">🇰🇪 Kenya (KES):</span>
-                            <div id="dlmKesTotalDisplay" style="font-size:16px;font-weight:800;color:var(--amber);margin-top:2px;">KES 0.00</div>
+                            <span style="font-size:12px;color:var(--amber);font-weight:700;">🇰🇪 Total in KSh (KES):</span>
+                            <div id="dlmKesTotalDisplay" style="font-size:16px;font-weight:900;color:var(--amber);margin-top:2px;">KES 0.00</div>
                         </div>
                         <div>
-                            <span style="font-size:12px;color:var(--text-2);font-weight:700;" id="dlmLocalTotalLabel">🇺🇬 Local Pump Total:</span>
-                            <div id="dlmLocalTotalDisplay" style="font-size:16px;font-weight:800;color:var(--text);margin-top:2px;">UGX 0.00</div>
+                            <span style="font-size:12px;color:var(--brand);font-weight:700;">💵 Base USD ($):</span>
+                            <div id="dlmUsdDisplay" style="font-size:16px;font-weight:900;color:var(--brand);margin-top:2px;">$ 0.00</div>
                         </div>
                         <div>
-                            <span style="font-size:12px;color:var(--brand);font-weight:700;">💵 USD Accounting:</span>
-                            <div id="dlmUsdDisplay" style="font-size:16px;font-weight:800;color:var(--brand);margin-top:2px;">$ 0.00</div>
+                            <span style="font-size:12px;color:var(--text-2);font-weight:700;" id="dlmLocalTotalLabel">Local Pump Total:</span>
+                            <div id="dlmLocalTotalDisplay" style="font-size:15px;font-weight:800;color:var(--text);margin-top:2px;">—</div>
                         </div>
                         <div>
-                            <span style="font-size:12px;color:var(--green);font-weight:700;">Active Display (<?= current_currency() ?>):</span>
+                            <span style="font-size:12px;color:var(--green);font-weight:700;">Trip Deduction:</span>
                             <div id="dlmSysDisplay" style="font-size:16px;font-weight:900;color:var(--green);margin-top:2px;"><?= app_currency_symbol() ?> 0.00</div>
                         </div>
                     </div>
@@ -1176,16 +1211,17 @@
                     <thead>
                         <tr>
                             <th style="padding:8px 10px;">Date</th>
-                            <th style="padding:8px 10px;">Country & Station</th>
+                            <th style="padding:8px 10px;">Refuel Country & Station</th>
                             <th style="padding:8px 10px;">Litres</th>
-                            <th style="padding:8px 10px;">Local Cost</th>
-                            <th style="padding:8px 10px;">USD Base</th>
+                            <th style="padding:8px 10px;">Payment in KSh</th>
+                            <th style="padding:8px 10px;">Base USD ($)</th>
+                            <th style="padding:8px 10px;">Local Equivalent</th>
                             <th style="padding:8px 10px;text-align:center;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="dlmHistoryTableBody">
                         <tr>
-                            <td colspan="6" style="text-align:center;padding:20px;color:var(--text-3);">
+                            <td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">
                                 Select a dispatch trip above to view its recorded fuel stops.
                             </td>
                         </tr>
@@ -1739,10 +1775,6 @@
                             <span style="color:var(--text-2);">Mileage / Allowances:</span>
                             <b id="vdmMileage" style="color:var(--text);">—</b>
                         </div>
-                        <div style="display:flex;justify-content:space-between;font-size:13.5px;">
-                            <span style="color:var(--text-2);">Breakdown & Road Repairs:</span>
-                            <b id="vdmExtra" style="color:var(--red);">—</b>
-                        </div>
                     </div>
                 </div>
 
@@ -1753,7 +1785,7 @@
                             Net Trip Balance (Yield / Profit)
                         </div>
                         <div style="font-size:12px;color:var(--text-2);margin-top:2px;">
-                            = Final Payout - (Diesel Fuel + Mileage + Repairs)
+                            = Final Payout - (Diesel Fuel + Mileage)
                         </div>
                     </div>
                     <div id="vdmBalance" style="font-size:28px;font-weight:900;color:var(--green);">
@@ -1765,9 +1797,9 @@
             <!-- Notes, Seals, and Custom Columns -->
             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;">
                 <div style="background:var(--card-2);border:1px solid var(--border);border-radius:12px;padding:16px;">
-                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;margin-bottom:6px;">🛠️ Remarks & Roadside Notes</div>
-                    <div style="font-size:13px;">
-                        <span style="color:var(--text-3);font-weight:700;">Breakdown Remarks:</span> <span id="vdmBreakdownNotes">—</span>
+                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;margin-bottom:6px;">🛠️ Remarks & Transit Notes</div>
+                    <div style="font-size:13px;color:var(--text-2);">
+                        <span style="color:var(--text-3);font-weight:700;">Notes:</span> <span id="vdmBreakdownNotes">—</span>
                     </div>
                 </div>
 
@@ -1845,8 +1877,12 @@ window.openProceduralDispatchModal = function() {
     if (stEl) stEl.value = 'Eldoret KPC Depot Shell';
     const litEl = document.getElementById('wzDieselLitres');
     if (litEl) litEl.value = '400';
-    const prEl = document.getElementById('wzDieselLocalPrice');
-    if (prEl) prEl.value = '180.00';
+    const cEl = document.getElementById('wzDieselCountry');
+    if (cEl) cEl.value = 'Kenya';
+    const kesEl = document.getElementById('wzDieselKesPrice');
+    if (kesEl) kesEl.value = '180.00';
+    const usdEl = document.getElementById('wzDieselUsdPrice');
+    if (usdEl && SYS_EX_RATE > 0) usdEl.value = (180.00 / SYS_EX_RATE).toFixed(4);
     const exEl = document.getElementById('wzDieselExRate');
     if (exEl) exEl.value = '<?= exchange_rate() ?>';
 
@@ -1933,19 +1969,14 @@ function validateWizardStep(step) {
             origin?.focus();
             return false;
         }
-        const driver = document.getElementById('dispatchDriverSelect');
-        if (!driver || !driver.value) {
-            alert('Please assign a Driver to this trip.');
-            driver?.focus();
+        const driverInput = document.getElementById('dispatchDriverInput') || document.getElementById('dispatchDriverSelect');
+        const driverVal = driverInput?.value?.trim();
+        const otherDrv = document.getElementById('otherDriverInput')?.value?.trim();
+        const effectiveDriver = (driverVal === '__other__' || !driverVal) ? otherDrv : driverVal;
+        if (!effectiveDriver) {
+            alert('Please provide the Driver\'s name.');
+            driverInput?.focus();
             return false;
-        }
-        if (driver.value === '__other__') {
-            const otherDrv = document.getElementById('otherDriverInput');
-            if (!otherDrv || !otherDrv.value.trim()) {
-                alert('Please enter the temporary driver name.');
-                otherDrv?.focus();
-                return false;
-            }
         }
     } else if (step === 2) {
         const pr = document.getElementById('dispatchProductSelect');
@@ -2068,11 +2099,15 @@ window.onWizardDieselCountryChange = function() {
     if (!sel) return;
     const opt = sel.options[sel.selectedIndex];
     const rate = opt.dataset.rate || '1.0';
-    const country = opt.dataset.country || 'Kenya';
-    const currency = opt.value;
+    const country = opt.value || 'Kenya';
+    const currency = opt.dataset.currency || 'KES';
+    const flag = opt.dataset.flag || '📍';
 
     const exInput = document.getElementById('wzDieselExRate');
     if (exInput) exInput.value = rate;
+
+    const badge = document.getElementById('wzDieselCountryBadge');
+    if (badge) badge.textContent = `📍 ${flag} ${country}`;
 
     const cHidden = document.getElementById('wzDieselCountryHidden');
     if (cHidden) cHidden.value = country;
@@ -2084,26 +2119,49 @@ window.onWizardDieselCountryChange = function() {
     calcWizardDiesel();
 };
 
+window.onWizardDieselKesInput = function(val) {
+    const kesVal = parseFloat(val) || 0;
+    const usdEl = document.getElementById('wzDieselUsdPrice');
+    if (usdEl && SYS_EX_RATE > 0) {
+        usdEl.value = kesVal > 0 ? (kesVal / SYS_EX_RATE).toFixed(4) : '';
+    }
+    calcWizardDiesel();
+};
+
+window.onWizardDieselUsdInput = function(val) {
+    const usdVal = parseFloat(val) || 0;
+    const kesEl = document.getElementById('wzDieselKesPrice');
+    if (kesEl && SYS_EX_RATE > 0) {
+        kesEl.value = usdVal > 0 ? (usdVal * SYS_EX_RATE).toFixed(2) : '';
+    }
+    calcWizardDiesel();
+};
+
 window.calcWizardDiesel = function() {
     const fuelEnabled = document.getElementById('wizardEnableDepartureDiesel')?.checked;
     if (!fuelEnabled) return;
 
     const litres = parseFloat(document.getElementById('wzDieselLitres')?.value) || 0;
-    const localPrice = parseFloat(document.getElementById('wzDieselLocalPrice')?.value) || 0;
+    const kesPrice = parseFloat(document.getElementById('wzDieselKesPrice')?.value) || 0;
+    const usdPrice = parseFloat(document.getElementById('wzDieselUsdPrice')?.value) || (SYS_EX_RATE > 0 ? (kesPrice / SYS_EX_RATE) : 0);
     const exRate = parseFloat(document.getElementById('wzDieselExRate')?.value) || 1;
-    const currCode = document.getElementById('wzDieselCountry')?.value || 'KES';
 
-    const localTotal = litres * localPrice;
-    const usdCost = exRate > 0 ? (localTotal / exRate) : 0;
-    const sysCost = toSystemCurrency(usdCost);
-    const unitPriceSys = litres > 0 ? (sysCost / litres) : 0;
+    const sel = document.getElementById('wzDieselCountry');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const country = opt?.value || 'Kenya';
+    const currCode = opt?.dataset.currency || 'KES';
 
-    const locEl = document.getElementById('wzDieselLocalTotalDisplay');
+    const kesTotal = litres * kesPrice;
+    const usdCost = litres * usdPrice;
+    const localUnitPrice = (country === 'Kenya') ? kesPrice : (usdPrice * exRate);
+
+    const kesDisp = document.getElementById('wzDieselKesTotalDisplay');
     const usdEl = document.getElementById('wzDieselUsdDisplay');
     const sysEl = document.getElementById('wzDieselSysDisplay');
-    if (locEl) locEl.textContent = currCode + ' ' + localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    if (kesDisp) kesDisp.textContent = 'KES ' + kesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (usdEl) usdEl.textContent = '$ ' + usdCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    if (sysEl) sysEl.textContent = formatSystemMoney(sysCost);
+    if (sysEl) sysEl.textContent = formatSystemMoney(toSystemCurrency(usdCost));
 
     const dispLit = document.getElementById('dispDieselLitres');
     const dispUp = document.getElementById('dispDieselUnitPrice');
@@ -2112,10 +2170,10 @@ window.calcWizardDiesel = function() {
     const lpHidden = document.getElementById('wzDieselLocalPriceHidden');
 
     if (dispLit) dispLit.value = litres;
-    if (dispUp) dispUp.value = unitPriceSys.toFixed(2);
-    if (dispD) dispD.value = sysCost.toFixed(2);
+    if (dispUp) dispUp.value = usdPrice.toFixed(4);
+    if (dispD) dispD.value = usdCost.toFixed(2);
     if (rHidden) rHidden.value = exRate;
-    if (lpHidden) lpHidden.value = localPrice;
+    if (lpHidden) lpHidden.value = localUnitPrice.toFixed(2);
 
     calcBalance();
 };
@@ -2123,9 +2181,10 @@ window.calcWizardDiesel = function() {
 function renderWizardReview() {
     const tripNum = document.getElementById('wizardTripNumber')?.value || 'Auto Ref';
     const truck = document.getElementById('dispatchTruckSelect')?.value || '—';
-    const driverVal = document.getElementById('dispatchDriverSelect')?.value || '—';
-    const otherDrv = document.getElementById('otherDriverInput')?.value;
-    const finalDriver = driverVal === '__other__' ? (otherDrv || 'Temporary Driver') : driverVal;
+    const driverInput = document.getElementById('dispatchDriverInput') || document.getElementById('dispatchDriverSelect');
+    const driverVal = driverInput?.value?.trim() || '—';
+    const otherDrv = document.getElementById('otherDriverInput')?.value?.trim();
+    const finalDriver = (driverVal === '__other__' || !driverVal || driverVal === '—') ? (otherDrv || 'Unassigned') : driverVal;
 
     const fromLoc = document.getElementById('wizardFromLocation')?.value || 'Eldoret';
     const dest = document.getElementById('wizardDestination')?.value || '—';
@@ -2596,7 +2655,6 @@ window.refreshFleetStatCards = function(aggs) {
     const elTrans = document.getElementById('statTotalTransport');
     const elDiesel = document.getElementById('statTotalDiesel');
     const elMileage = document.getElementById('statTotalMileage');
-    const elExtra = document.getElementById('statTotalExtra');
     const elBal = document.getElementById('statTotalBalance');
 
     if (elTrans && aggs.total_transport !== undefined) {
@@ -2607,9 +2665,6 @@ window.refreshFleetStatCards = function(aggs) {
     }
     if (elMileage && aggs.total_mileage !== undefined) {
         elMileage.textContent = formatSystemMoney(toSystemCurrency(aggs.total_mileage));
-    }
-    if (elExtra && aggs.total_extra !== undefined) {
-        elExtra.textContent = formatSystemMoney(toSystemCurrency(aggs.total_extra));
     }
     if (elBal && aggs.total_balance !== undefined) {
         elBal.textContent = formatSystemMoney(toSystemCurrency(aggs.total_balance));
@@ -2639,11 +2694,20 @@ window.updateFleetRowTotals = function(dispatchId, totals, globalAggregates = nu
             const dLit = parseFloat(totals.diesel_litres || 0);
             const dUp = parseFloat(totals.diesel_unit_price || 0);
 
-            let dHtml = `<span class="view-val">${dVal > 0 ? formatSystemMoney(dVal) : '—'}</span>`;
-            if (dLit > 0) {
-                dHtml += `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px;">⛽ ${dLit.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})}L @ ${formatSystemMoney(dUp)}</div>`;
+            if (dVal > 0) {
+                const usdStr = '$' + dVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                const kesStr = 'KSh ' + (dVal * SYS_EX_RATE).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                let dHtml = `
+                    <div class="val-diesel-usd" style="font-weight:900;color:var(--amber);font-size:13.5px;">${usdStr}</div>
+                    <div class="val-diesel-kes" style="font-size:11.5px;color:var(--text-2);font-weight:700;margin-top:1px;">${kesStr}</div>
+                `;
+                if (dLit > 0) {
+                    dHtml += `<div style="font-size:10.5px;color:var(--text-3);font-weight:600;margin-top:2px;">⛽ ${dLit.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})} L</div>`;
+                }
+                cellDiesel.innerHTML = dHtml;
+            } else {
+                cellDiesel.innerHTML = '<span class="view-val" style="color:var(--text-3);">—</span>';
             }
-            cellDiesel.innerHTML = dHtml;
         }
 
         const cellBalance = row.querySelector('.cell-balance');
@@ -2751,15 +2815,19 @@ window.openViewDispatchModal = function(param) {
     document.getElementById('vdmFinalPayout').textContent = d.final_payout_formatted || d.transport_formatted || '—';
     document.getElementById('vdmPayoutDiff').textContent = d.payout_diff_formatted || '—';
 
-    document.getElementById('vdmDiesel').textContent = d.diesel_formatted || '—';
-    document.getElementById('vdmMileage').textContent = d.mileage_formatted || '—';
-    document.getElementById('vdmExtra').textContent = d.extra_formatted || '—';
+    if (document.getElementById('vdmDiesel')) document.getElementById('vdmDiesel').textContent = d.diesel_formatted || '—';
+    if (document.getElementById('vdmMileage')) document.getElementById('vdmMileage').textContent = d.mileage_formatted || '—';
+    if (document.getElementById('vdmExtra')) document.getElementById('vdmExtra').textContent = d.extra_formatted || '—';
     
     const balEl = document.getElementById('vdmBalance');
-    balEl.textContent = d.balance_formatted || '—';
-    balEl.style.color = (Number(d.balance || 0) >= 0) ? 'var(--green)' : 'var(--red)';
+    if (balEl) {
+        balEl.textContent = d.balance_formatted || '—';
+        balEl.style.color = (Number(d.balance || 0) >= 0) ? 'var(--green)' : 'var(--red)';
+    }
 
-    document.getElementById('vdmBreakdownNotes').textContent = d.breakdown_notes || 'No roadside breakdowns or repairs recorded.';
+    if (document.getElementById('vdmBreakdownNotes')) {
+        document.getElementById('vdmBreakdownNotes').textContent = d.breakdown_notes || 'No transit notes recorded.';
+    }
 
     // Custom fields
     const cfBox = document.getElementById('vdmCustomFieldsBox');
@@ -3577,9 +3645,7 @@ function startFleetInlineEdit(id) {
 
     row.querySelector('.cell-costs').innerHTML = `
         <div style="font-size:10px;color:var(--text-3);font-weight:700;">Mileage:</div>
-        <input type="number" step="0.01" class="table-inline-input inline-mileage" value="${mileageRaw}" style="margin-bottom:2px;width:80px;">
-        <div style="font-size:10px;color:var(--text-3);font-weight:700;">Extra:</div>
-        <input type="number" step="0.01" class="table-inline-input inline-extra" value="${extraRaw}" style="width:80px;">
+        <input type="number" step="0.01" class="table-inline-input inline-mileage" value="${mileageRaw}" style="width:85px;">
     `;
 
     // Toggle actions buttons
@@ -3611,7 +3677,7 @@ async function saveFleetInlineEdit(id) {
     const transport = row.querySelector('.inline-transport')?.value;
     const finalPayout = row.querySelector('.inline-final-payout')?.value;
     const mileageCost = row.querySelector('.inline-mileage')?.value;
-    const extraExpenses = row.querySelector('.inline-extra')?.value;
+    const extraExpenses = 0;
 
     const postData = {
         _csrf_token: CSRF_TOKEN,
@@ -3767,9 +3833,6 @@ async function saveFleetInlineEdit(id) {
                 : `<span style="color:var(--green);font-weight:700;font-size:12px;background:var(--green-soft);padding:2px 7px;border-radius:6px;">✓ Full (0 Diff)</span>`;
 
             let costsHtml = `<div class="val-mileage" style="color:var(--amber);font-weight:700;font-size:13.5px;">${d.mileage_formatted}</div>`;
-            if (parseFloat(d.extra_expenses) > 0) {
-                costsHtml += `<div class="val-extra" style="color:var(--red);font-size:12px;font-weight:600;margin-top:1px;">+ ${d.extra_formatted} fix</div>`;
-            }
             row.querySelector('.cell-costs').innerHTML = costsHtml;
 
             row.querySelector('.cell-balance').innerHTML = `

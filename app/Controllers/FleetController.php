@@ -42,7 +42,7 @@ class FleetController
                 diesel = (SELECT COALESCE(SUM(base_usd_cost), 0) FROM fleet_diesel_logs WHERE fleet_diesel_logs.dispatch_id = fleet_dispatches.id),
                 diesel_litres = (SELECT COALESCE(SUM(litres), 0) FROM fleet_diesel_logs WHERE fleet_diesel_logs.dispatch_id = fleet_dispatches.id)
                 WHERE id IN (SELECT DISTINCT dispatch_id FROM fleet_diesel_logs)");
-            $pdo->exec("UPDATE fleet_dispatches SET balance = (CASE WHEN is_subcontracted = 1 THEN agreed_commission ELSE COALESCE(final_payout, transport_amount) - (COALESCE(mileage_cost, 0) + COALESCE(diesel, 0) + COALESCE(extra_expenses, 0)) END)");
+            $pdo->exec("UPDATE fleet_dispatches SET balance = (CASE WHEN is_subcontracted = 1 THEN agreed_commission ELSE COALESCE(final_payout, transport_amount) - (COALESCE(mileage_cost, 0) + COALESCE(diesel, 0)) END)");
         } catch (\Throwable $e) {}
 
         // Calculate aggregates across all dispatches
@@ -428,9 +428,8 @@ class FleetController
             $balance = (float) ($dispatch['agreed_commission'] ?? 0);
         } else {
             $mileage = (float) ($dispatch['mileage_cost'] ?? 0);
-            $extra = (float) ($dispatch['extra_expenses'] ?? 0);
             $diesel = (float) ($dispatch['diesel'] ?? 0);
-            $balance = $finalPayout - ($mileage + $extra + $diesel);
+            $balance = $finalPayout - ($mileage + $diesel);
         }
 
         $upd = $pdo->prepare("UPDATE fleet_dispatches SET 
@@ -621,7 +620,7 @@ class FleetController
             $balance = (float)$current['agreed_commission'];
         } else {
             $effectiveRevenue = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transportAmount;
-            $balance = $effectiveRevenue - ($mileageCost + $extraExpenses + $diesel);
+            $balance = $effectiveRevenue - ($mileageCost + $diesel);
         }
 
         $shortageNotes = trim($_POST['shortage_notes'] ?? ($current['shortage_notes'] ?? ''));
@@ -769,6 +768,26 @@ class FleetController
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $dispatches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Enrich dispatches with all distinct countries of refueling
+        if (!empty($dispatches)) {
+            $dispIds = array_column($dispatches, 'id');
+            $placeholders = implode(',', array_fill(0, count($dispIds), '?'));
+            $logStmt = $pdo->prepare("SELECT dispatch_id, country FROM fleet_diesel_logs WHERE dispatch_id IN ($placeholders) AND country IS NOT NULL AND country != '' ORDER BY fuel_date ASC, id ASC");
+            $logStmt->execute($dispIds);
+            $allLogs = $logStmt->fetchAll(PDO::FETCH_ASSOC);
+            $countryMap = [];
+            foreach ($allLogs as $l) {
+                $c = trim($l['country'] ?? '');
+                if ($c !== '') {
+                    $countryMap[$l['dispatch_id']][$c] = true;
+                }
+            }
+            foreach ($dispatches as &$disp) {
+                $disp['refuel_countries'] = isset($countryMap[$disp['id']]) ? implode(', ', array_keys($countryMap[$disp['id']])) : '';
+            }
+            unset($disp);
+        }
 
         $canViewFin = can_view_financials();
         $currencySymbol = app_currency_symbol();
@@ -1270,7 +1289,7 @@ class FleetController
                 $balance = $agreedCommission;
             } else {
                 $effectiveRevenue = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transport;
-                $balance = $effectiveRevenue - ($mileage + $extra + $diesel);
+                $balance = $effectiveRevenue - ($mileage + $diesel);
             }
 
             // Notes & References
@@ -1439,12 +1458,17 @@ class FleetController
         } else {
             $effectiveRev = ($d['final_payout'] !== null && (float)$d['final_payout'] > 0) ? (float)$d['final_payout'] : (float)$d['transport_amount'];
             $mileage = (float)($d['mileage_cost'] ?? 0);
-            $extra = (float)($d['extra_expenses'] ?? 0);
-            $balance = round($effectiveRev - ($mileage + $totalDiesel + $extra), 2);
+            $balance = round($effectiveRev - ($mileage + $totalDiesel), 2);
         }
 
         $upStmt = $pdo->prepare('UPDATE fleet_dispatches SET diesel = ?, diesel_litres = ?, diesel_unit_price = ?, balance = ? WHERE id = ?');
         $upStmt->execute([$totalDiesel, $totalLitres, $unitPrice, $balance, $dispatchId]);
+
+        // Fetch distinct refueling countries for this dispatch
+        $cStmt = $pdo->prepare("SELECT DISTINCT country FROM fleet_diesel_logs WHERE dispatch_id = ? AND country IS NOT NULL AND country != '' ORDER BY fuel_date ASC, id ASC");
+        $cStmt->execute([$dispatchId]);
+        $cList = $cStmt->fetchAll(PDO::FETCH_COLUMN);
+        $refuelCountries = implode(', ', array_filter($cList));
 
         // Calculate up-to-date global fleet aggregates across all trips
         $aggStmt = $pdo->query('SELECT 
@@ -1462,6 +1486,7 @@ class FleetController
             'diesel_litres' => $totalLitres,
             'diesel_unit_price' => $unitPrice,
             'balance' => $balance,
+            'refuel_countries' => $refuelCountries,
             'global_aggregates' => [
                 'total_transport' => (float)($globalAgg['total_transport'] ?? 0),
                 'total_transport_formatted' => format_money($globalAgg['total_transport'] ?? 0),
@@ -1597,6 +1622,7 @@ class FleetController
                 'diesel_litres' => $updatedTotals['diesel_litres'],
                 'balance_raw' => $updatedTotals['balance'],
                 'balance_formatted' => format_money($updatedTotals['balance']),
+                'refuel_countries' => $updatedTotals['refuel_countries'] ?? '',
             ];
             echo json_encode([
                 'success' => true,
@@ -1847,6 +1873,7 @@ class FleetController
                     'diesel_unit_price' => $updatedTotals['diesel_unit_price'],
                     'balance_raw' => $updatedTotals['balance'],
                     'balance_formatted' => format_money($updatedTotals['balance']),
+                    'refuel_countries' => $updatedTotals['refuel_countries'] ?? '',
                 ],
                 'global_aggregates' => $updatedTotals['global_aggregates'] ?? null,
             ]);
@@ -1897,6 +1924,7 @@ class FleetController
                     'diesel_litres' => $updatedTotals['diesel_litres'],
                     'balance_raw' => $updatedTotals['balance'],
                     'balance_formatted' => format_money($updatedTotals['balance']),
+                    'refuel_countries' => $updatedTotals['refuel_countries'] ?? '',
                 ],
                 'global_aggregates' => $updatedTotals['global_aggregates'] ?? null,
             ]);

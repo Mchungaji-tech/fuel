@@ -129,7 +129,7 @@ class DriverController
     public function store(): void
     {
         $pdo = Database::connection();
-        $name = trim($_POST['full_name'] ?? '');
+        $name = trim($_POST['full_name'] ?? $_POST['name'] ?? $_POST['driver_name'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
         $license = trim($_POST['license_number'] ?? '');
         $class = trim($_POST['license_class'] ?? 'B-Class');
@@ -144,7 +144,8 @@ class DriverController
             flash('driver_error', 'Driver name is required.');
         }
 
-        redirect('/drivers');
+        $redirectTo = $_POST['redirect_to'] ?? '/drivers';
+        redirect($redirectTo);
     }
 
     public function issueSalary(): void
