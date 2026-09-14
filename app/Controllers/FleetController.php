@@ -1554,37 +1554,29 @@ class FleetController
         $currencyCode = strtoupper(trim($_POST['currency_code'] ?? 'KES'));
         $litres = max(0, (float)($_POST['litres'] ?? 0));
         $localUnitPrice = max(0, (float)($_POST['local_unit_price'] ?? 0));
-        $exchangeRate = (float)($_POST['exchange_rate'] ?? 1);
-
-        // Fallback default rates if missing/invalid
+        
+        $exchangeRate = (float)($_POST['exchange_rate'] ?? 0);
         if ($exchangeRate <= 0) {
             if ($currencyCode === 'KES') $exchangeRate = (float)exchange_rate();
             elseif ($currencyCode === 'UGX') $exchangeRate = 3750.0;
             elseif ($currencyCode === 'CDF') $exchangeRate = 2850.0;
             elseif ($currencyCode === 'SSP') $exchangeRate = 1300.0;
-            else $exchangeRate = 1.0;
+            else $exchangeRate = (float)exchange_rate() ?: 128.0;
         }
 
-        // Multi-currency calculation: Support entering in KSh (KES) even for Uganda/Congo stops
+        // Multi-currency calculation: Support entering in USD ($) or KSh (KES) with live conversion
         $entryCurrency = strtoupper(trim($_POST['entry_currency'] ?? ''));
-        $kesRate = (float)exchange_rate();
-        if ($kesRate <= 0) $kesRate = 130.0;
+        $usdUnitPrice = isset($_POST['usd_unit_price']) && $_POST['usd_unit_price'] !== '' ? (float)$_POST['usd_unit_price'] : 0;
+        $kesUnitPrice = isset($_POST['kes_unit_price']) && $_POST['kes_unit_price'] !== '' ? (float)$_POST['kes_unit_price'] : 0;
 
-        if ($entryCurrency === 'KES' && isset($_POST['kes_unit_price']) && (float)$_POST['kes_unit_price'] > 0) {
-            $kesUnitPrice = (float)$_POST['kes_unit_price'];
-            $baseUsdUnitPrice = $kesUnitPrice / $kesRate;
-            $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
-            if ($currencyCode === 'KES') {
-                $localUnitPrice = $kesUnitPrice;
-                $localTotal = round($litres * $localUnitPrice, 2);
-            } else {
-                $localUnitPrice = round($baseUsdUnitPrice * $exchangeRate, 2);
-                $localTotal = round($litres * $localUnitPrice, 2);
-            }
-        } elseif ($entryCurrency === 'USD' && isset($_POST['usd_unit_price']) && (float)$_POST['usd_unit_price'] > 0) {
-            $usdUnitPrice = (float)$_POST['usd_unit_price'];
+        if ($usdUnitPrice > 0 && ($entryCurrency === 'USD' || $kesUnitPrice <= 0)) {
             $baseUsdCost = round($litres * $usdUnitPrice, 2);
             $localUnitPrice = round($usdUnitPrice * $exchangeRate, 2);
+            $localTotal = round($litres * $localUnitPrice, 2);
+        } elseif ($kesUnitPrice > 0) {
+            $baseUsdUnitPrice = $kesUnitPrice / $exchangeRate;
+            $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
+            $localUnitPrice = $kesUnitPrice;
             $localTotal = round($litres * $localUnitPrice, 2);
         } else {
             $localTotal = round($litres * $localUnitPrice, 2);
@@ -1801,26 +1793,19 @@ class FleetController
             return;
         }
 
-        // Multi-currency calculation: Support entering in KSh (KES) even for Uganda/Congo stops
+        // Multi-currency calculation: Support entering in USD ($) or KSh (KES) with live conversion
         $entryCurrency = strtoupper(trim($_POST['entry_currency'] ?? ''));
-        $kesRate = (float)exchange_rate();
-        if ($kesRate <= 0) $kesRate = 130.0;
+        $usdUnitPrice = isset($_POST['usd_unit_price']) && $_POST['usd_unit_price'] !== '' ? (float)$_POST['usd_unit_price'] : 0;
+        $kesUnitPrice = isset($_POST['kes_unit_price']) && $_POST['kes_unit_price'] !== '' ? (float)$_POST['kes_unit_price'] : 0;
 
-        if ($entryCurrency === 'KES' && isset($_POST['kes_unit_price']) && (float)$_POST['kes_unit_price'] > 0) {
-            $kesUnitPrice = (float)$_POST['kes_unit_price'];
-            $baseUsdUnitPrice = $kesUnitPrice / $kesRate;
-            $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
-            if ($currCode === 'KES') {
-                $localUnitPrice = $kesUnitPrice;
-                $localTotalCost = round($litres * $localUnitPrice, 2);
-            } else {
-                $localUnitPrice = round($baseUsdUnitPrice * $exRate, 2);
-                $localTotalCost = round($litres * $localUnitPrice, 2);
-            }
-        } elseif ($entryCurrency === 'USD' && isset($_POST['usd_unit_price']) && (float)$_POST['usd_unit_price'] > 0) {
-            $usdUnitPrice = (float)$_POST['usd_unit_price'];
+        if ($usdUnitPrice > 0 && ($entryCurrency === 'USD' || $kesUnitPrice <= 0)) {
             $baseUsdCost = round($litres * $usdUnitPrice, 2);
             $localUnitPrice = round($usdUnitPrice * $exRate, 2);
+            $localTotalCost = round($litres * $localUnitPrice, 2);
+        } elseif ($kesUnitPrice > 0) {
+            $baseUsdUnitPrice = $kesUnitPrice / $exRate;
+            $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
+            $localUnitPrice = $kesUnitPrice;
             $localTotalCost = round($litres * $localUnitPrice, 2);
         } else {
             $localTotalCost = round($litres * $localUnitPrice, 2);

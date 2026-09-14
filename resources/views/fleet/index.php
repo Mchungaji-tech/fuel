@@ -1095,7 +1095,18 @@
                         <option value="Tanzania" data-currency="TZS" data-rate="2600" data-flag="🇹🇿">🇹🇿 Tanzania (TZS)</option>
                     </select>
                     <input type="hidden" name="currency_code" id="dlmCurrencyCode" value="KES">
-                    <input type="hidden" name="exchange_rate" id="dlmExchangeRate" value="<?= exchange_rate() ?>">
+                </div>
+
+                <div class="form-group">
+                    <label style="font-weight:800;color:var(--text);display:flex;justify-content:space-between;align-items:center;">
+                        <span>Exchange Rate (1 USD = ? KES) *</span>
+                        <span style="font-size:11px;color:var(--brand);cursor:pointer;font-weight:700;" onclick="resetDlmRate()" title="Reset to current default">↺ Reset Rate</span>
+                    </label>
+                    <div style="position:relative;">
+                        <input type="number" step="0.0001" min="0.0001" name="exchange_rate" id="dlmExchangeRate" value="<?= exchange_rate() ?>" oninput="onDlmRateInput(this.value)" style="width:100%;padding:9px 50px 9px 12px;border:1.5px solid var(--border-2);border-radius:8px;font-weight:800;font-size:13.5px;color:var(--text);background:var(--card);" required>
+                        <span id="dlmRateCurrencyCode" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text-3);font-size:12px;">KES</span>
+                    </div>
+                    <small style="color:var(--text-3);font-size:11px;">Dynamic transaction rate saved per fuel stop</small>
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
@@ -1131,7 +1142,7 @@
                 <div class="form-group">
                     <label id="dlmPriceHeaderLabel" style="font-weight:800;color:var(--amber);display:flex;justify-content:space-between;">
                         <span>Price per Litre (KSh or USD) *</span>
-                        <span style="font-size:11px;color:var(--text-3);font-weight:normal;">1 USD = <?= exchange_rate() ?> KES</span>
+                        <span id="dlmRateStatusBadge" style="font-size:11px;color:var(--text-3);font-weight:bold;">1 USD = <?= exchange_rate() ?> KES</span>
                     </label>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                         <div>
@@ -2296,31 +2307,73 @@ window.onDlmDispatchChanged = function(dispatchId) {
 
 let dlmInputCurrency = 'KES';
 
-window.onDlmInputCurrencyChange = function(mode) {
+window.setDlmPayMode = function(mode) {
     dlmInputCurrency = mode;
-    const kesGroup = document.getElementById('dlmKesPriceGroup');
-    const localGroup = document.getElementById('dlmLocalPriceGroup');
-    const localPriceLabel = document.getElementById('dlmLocalPriceLabel');
-    const sel = document.getElementById('dlmCountrySelect');
-    const opt = sel ? sel.options[sel.selectedIndex] : null;
-    const curCode = opt ? opt.value : 'UGX';
+    const entryCur = document.getElementById('dlmEntryCurrency');
+    if (entryCur) entryCur.value = mode;
 
-    if (mode === 'KES') {
-        if (kesGroup) kesGroup.style.display = 'block';
-        if (localGroup) localGroup.style.display = 'none';
-    } else if (mode === 'LOCAL') {
-        if (kesGroup) kesGroup.style.display = 'none';
-        if (localGroup) localGroup.style.display = 'block';
-        if (localPriceLabel) localPriceLabel.textContent = `Local Price / Litre (${curCode}) *`;
-    } else if (mode === 'USD') {
-        if (kesGroup) kesGroup.style.display = 'none';
-        if (localGroup) localGroup.style.display = 'block';
-        if (localPriceLabel) localPriceLabel.textContent = `Price / Litre in USD ($) *`;
+    const rate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || SYS_EX_RATE;
+    const usdPriceInput = document.getElementById('dlmUsdPrice');
+    const kesPriceInput = document.getElementById('dlmKesPrice');
+
+    if (mode === 'USD') {
+        if (usdPriceInput) usdPriceInput.focus();
+    } else {
+        if (kesPriceInput) kesPriceInput.focus();
     }
     calcDlmDiesel();
 };
 
-window.onDlmKesPriceInput = function(kesPriceVal) {
+window.onDlmKesInput = function(val) {
+    const kes = parseFloat(val) || 0;
+    const rate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || SYS_EX_RATE;
+    const usd = (kes > 0 && rate > 0) ? (kes / rate) : 0;
+    
+    const usdInput = document.getElementById('dlmUsdPrice');
+    if (usdInput && document.activeElement === document.getElementById('dlmKesPrice')) {
+        usdInput.value = usd > 0 ? usd.toFixed(4) : '';
+    }
+    const entryCur = document.getElementById('dlmEntryCurrency');
+    if (entryCur) entryCur.value = 'KES';
+    calcDlmDiesel();
+};
+
+window.onDlmUsdInput = function(val) {
+    const usd = parseFloat(val) || 0;
+    const rate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || SYS_EX_RATE;
+    const kes = (usd > 0 && rate > 0) ? (usd * rate) : 0;
+    
+    const kesInput = document.getElementById('dlmKesPrice');
+    if (kesInput && document.activeElement === document.getElementById('dlmUsdPrice')) {
+        kesInput.value = kes > 0 ? kes.toFixed(2) : '';
+    }
+    const entryCur = document.getElementById('dlmEntryCurrency');
+    if (entryCur) entryCur.value = 'USD';
+    calcDlmDiesel();
+};
+
+window.onDlmRateInput = function(val) {
+    const rate = parseFloat(val) || 0;
+    const badge = document.getElementById('dlmRateStatusBadge');
+    if (badge) {
+        badge.textContent = rate > 0 ? `1 USD = ${rate.toFixed(2)} KES` : `Custom Rate`;
+    }
+
+    const entryMode = document.getElementById('dlmEntryCurrency')?.value || 'KES';
+    const usdInput = document.getElementById('dlmUsdPrice');
+    const kesInput = document.getElementById('dlmKesPrice');
+
+    if (entryMode === 'USD' && usdInput && usdInput.value) {
+        const usd = parseFloat(usdInput.value) || 0;
+        if (kesInput && usd > 0 && rate > 0) {
+            kesInput.value = (usd * rate).toFixed(2);
+        }
+    } else if (kesInput && kesInput.value) {
+        const kes = parseFloat(kesInput.value) || 0;
+        if (usdInput && kes > 0 && rate > 0) {
+            usdInput.value = (kes / rate).toFixed(4);
+        }
+    }
     calcDlmDiesel();
 };
 
@@ -2328,71 +2381,60 @@ window.onDlmCountryChange = function() {
     const sel = document.getElementById('dlmCountrySelect');
     if (!sel) return;
     const opt = sel.options[sel.selectedIndex];
-    const rate = opt.dataset.rate || '1.0';
-    const country = opt.dataset.country || 'Uganda';
-    const curCode = opt.value;
+    const rate = parseFloat(opt.dataset.rate) || SYS_EX_RATE;
+    const country = opt.value || 'Kenya';
+    const curCode = opt.dataset.currency || 'KES';
 
-    const cName = document.getElementById('dlmCountryName');
-    if (cName) cName.value = country;
-    const exRate = document.getElementById('dlmExchangeRate');
-    if (exRate) exRate.value = rate;
+    const cCode = document.getElementById('dlmCurrencyCode');
+    if (cCode) cCode.value = curCode;
 
-    const localOptLbl = document.getElementById('dlmLocalCurOptionLabel');
-    if (localOptLbl) localOptLbl.textContent = `In ${country} (${curCode})`;
+    const rateCode = document.getElementById('dlmRateCurrencyCode');
+    if (rateCode) rateCode.textContent = curCode;
 
-    const localPriceLabel = document.getElementById('dlmLocalPriceLabel');
-    if (localPriceLabel && dlmInputCurrency === 'LOCAL') {
-        localPriceLabel.textContent = `Local Price / Litre (${curCode}) *`;
+    const badge = document.getElementById('dlmCountryReflectBadge');
+    if (badge) {
+        badge.textContent = `📍 Refueling in ${opt.text}`;
     }
 
+    if (curCode === 'KES') {
+        const exRate = document.getElementById('dlmExchangeRate');
+        if (exRate) exRate.value = SYS_EX_RATE;
+    }
     calcDlmDiesel();
 };
 
 window.resetDlmRate = function() {
-    const sel = document.getElementById('dlmCountrySelect');
-    if (!sel) return;
-    const opt = sel.options[sel.selectedIndex];
-    const rate = opt.dataset.rate || '1.0';
     const exRate = document.getElementById('dlmExchangeRate');
-    if (exRate) exRate.value = rate;
-    calcDlmDiesel();
+    if (exRate) {
+        exRate.value = SYS_EX_RATE;
+        window.onDlmRateInput(SYS_EX_RATE);
+    }
 };
 
 window.calcDlmDiesel = function() {
     const litres = parseFloat(document.getElementById('dlmLitres')?.value) || 0;
-    const sel = document.getElementById('dlmCountrySelect');
-    const localExRate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || 1; // local units per 1 USD
-    const currCode = sel?.value || 'UGX';
+    const rate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || SYS_EX_RATE;
+    const usdPrice = parseFloat(document.getElementById('dlmUsdPrice')?.value) || 0;
+    const kesPrice = parseFloat(document.getElementById('dlmKesPrice')?.value) || 0;
+    const entryMode = document.getElementById('dlmEntryCurrency')?.value || 'KES';
 
-    let usdCost = 0;
-    let kesTotal = 0;
-    let localTotal = 0;
-    let localUnitPrice = 0;
+    let totalUsd = 0;
+    let totalKes = 0;
 
-    if (dlmInputCurrency === 'KES') {
-        const kesPrice = parseFloat(document.getElementById('dlmKesPrice')?.value) || 0;
-        kesTotal = litres * kesPrice;
-        usdCost = SYS_EX_RATE > 0 ? (kesTotal / SYS_EX_RATE) : 0;
-        localTotal = usdCost * localExRate;
-        localUnitPrice = litres > 0 ? (localTotal / litres) : 0;
-        const localPriceInput = document.getElementById('dlmLocalPrice');
-        if (localPriceInput) localPriceInput.value = localUnitPrice > 0 ? localUnitPrice.toFixed(2) : '';
-    } else if (dlmInputCurrency === 'USD') {
-        const usdPrice = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
-        usdCost = litres * usdPrice;
-        kesTotal = usdCost * SYS_EX_RATE;
-        localTotal = usdCost * localExRate;
-        localUnitPrice = litres > 0 ? (localTotal / litres) : 0;
-    } else { // LOCAL
-        localUnitPrice = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
-        localTotal = litres * localUnitPrice;
-        usdCost = localExRate > 0 ? (localTotal / localExRate) : 0;
-        kesTotal = usdCost * SYS_EX_RATE;
-        const kesPriceInput = document.getElementById('dlmKesPrice');
-        if (kesPriceInput && litres > 0) kesPriceInput.value = (kesTotal / litres).toFixed(2);
+    if (entryMode === 'USD' && usdPrice > 0) {
+        totalUsd = litres * usdPrice;
+        totalKes = totalUsd * rate;
+    } else {
+        totalKes = litres * kesPrice;
+        totalUsd = (rate > 0) ? (totalKes / rate) : 0;
     }
 
-    const sysCost = toSystemCurrency(usdCost);
+    const localPriceInput = document.getElementById('dlmLocalPrice');
+    if (localPriceInput) {
+        localPriceInput.value = (litres > 0 && totalKes > 0) ? (totalKes / litres).toFixed(2) : '0';
+    }
+
+    const sysCost = toSystemCurrency(totalUsd);
 
     const kesDisp = document.getElementById('dlmKesTotalDisplay');
     const locDisp = document.getElementById('dlmLocalTotalDisplay');
@@ -2400,10 +2442,10 @@ window.calcDlmDiesel = function() {
     const usdDisp = document.getElementById('dlmUsdDisplay');
     const sysDisp = document.getElementById('dlmSysDisplay');
 
-    if (kesDisp) kesDisp.textContent = 'KES ' + kesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    if (locLbl) locLbl.textContent = `${currCode} Pump Total:`;
-    if (locDisp) locDisp.textContent = `${currCode} ${localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-    if (usdDisp) usdDisp.textContent = '$ ' + usdCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (kesDisp) kesDisp.textContent = 'KES ' + totalKes.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (locLbl) locLbl.textContent = `Pump Subtotal:`;
+    if (locDisp) locDisp.textContent = 'KES ' + totalKes.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (usdDisp) usdDisp.textContent = '$ ' + totalUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (sysDisp) sysDisp.textContent = formatSystemMoney(sysCost);
 };
 
@@ -2421,10 +2463,13 @@ window.editDieselLogAjax = function(s) {
 
     const cSel = document.getElementById('dlmCountrySelect');
     if (cSel) {
-        cSel.value = s.currency_code;
+        for (let i = 0; i < cSel.options.length; i++) {
+            if (cSel.options[i].value.toLowerCase() === (s.country || '').toLowerCase()) {
+                cSel.selectedIndex = i;
+                break;
+            }
+        }
     }
-    const cName = document.getElementById('dlmCountryName');
-    if (cName) cName.value = s.country;
 
     const stEl = document.getElementById('dlmStationLocation');
     if (stEl) stEl.value = s.station_location || '';
@@ -2432,11 +2477,20 @@ window.editDieselLogAjax = function(s) {
     const litEl = document.getElementById('dlmLitres');
     if (litEl) litEl.value = s.litres;
 
-    const prEl = document.getElementById('dlmLocalPrice');
-    if (prEl) prEl.value = s.local_unit_price;
-
+    const exRate = parseFloat(s.exchange_rate) || SYS_EX_RATE;
     const exEl = document.getElementById('dlmExchangeRate');
-    if (exEl) exEl.value = s.exchange_rate;
+    if (exEl) exEl.value = exRate;
+
+    const baseUsd = parseFloat(s.base_usd_cost) || 0;
+    const litres = parseFloat(s.litres) || 0;
+    const usdUnitPrice = litres > 0 ? (baseUsd / litres) : 0;
+    const kesUnitPrice = usdUnitPrice * exRate;
+
+    const usdPriceEl = document.getElementById('dlmUsdPrice');
+    if (usdPriceEl) usdPriceEl.value = usdUnitPrice > 0 ? usdUnitPrice.toFixed(4) : '';
+
+    const kesPriceEl = document.getElementById('dlmKesPrice');
+    if (kesPriceEl) kesPriceEl.value = kesUnitPrice > 0 ? kesUnitPrice.toFixed(2) : '';
 
     const subBtn = document.getElementById('dlmSubmitBtn');
     if (subBtn) {
@@ -2468,10 +2522,15 @@ window.cancelDieselLogEdit = function(closeModalIfNormal = false) {
     // Reset fields
     const litEl = document.getElementById('dlmLitres');
     if (litEl) litEl.value = '';
-    const prEl = document.getElementById('dlmLocalPrice');
-    if (prEl) prEl.value = '';
+    const usdPriceEl = document.getElementById('dlmUsdPrice');
+    if (usdPriceEl) usdPriceEl.value = '';
+    const kesPriceEl = document.getElementById('dlmKesPrice');
+    if (kesPriceEl) kesPriceEl.value = '';
     const stEl = document.getElementById('dlmStationLocation');
     if (stEl) stEl.value = '';
+
+    const exEl = document.getElementById('dlmExchangeRate');
+    if (exEl) exEl.value = SYS_EX_RATE;
 
     calcDlmDiesel();
 
@@ -2493,9 +2552,10 @@ window.handleDieselLogSubmit = async function(e) {
         alert('Please enter a valid volume of litres pumped.');
         return false;
     }
-    const price = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
-    if (price <= 0) {
-        alert('Please enter the local price per litre.');
+    const usdPrice = parseFloat(document.getElementById('dlmUsdPrice')?.value) || 0;
+    const kesPrice = parseFloat(document.getElementById('dlmKesPrice')?.value) || 0;
+    if (usdPrice <= 0 && kesPrice <= 0) {
+        alert('Please enter the price per litre in USD or KSh.');
         return false;
     }
 
@@ -2555,7 +2615,7 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
     const summ = document.getElementById('dlmHistorySummary');
     if (!body) return;
 
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:15px;color:var(--text-3);">Loading fuel stops...</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:15px;color:var(--text-3);">Loading fuel stops...</td></tr>';
 
     try {
         const res = await fetch('<?= url("fleet/diesel/list") ?>/' + dispatchId);
@@ -2563,15 +2623,18 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
         const logsList = json.logs || json.data || [];
         if (json.success && (json.logs || json.data)) {
             if (logsList.length === 0) {
-                body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text-3);">No fuel stops recorded yet for this dispatch trip.</td></tr>';
+                body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-3);">No fuel stops recorded yet for this dispatch trip.</td></tr>';
                 if (summ) summ.textContent = '0 stops • Total: $0.00';
             } else {
                 let html = '';
                 logsList.forEach(s => {
                     const localTot = parseFloat(s.local_total_cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                    const localUnit = parseFloat(s.local_unit_price || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     const usdTot = parseFloat(s.base_usd_cost || 0).toFixed(2);
                     const sysTot = formatSystemMoney(toSystemCurrency(s.base_usd_cost));
+                    const litres = parseFloat(s.litres) || 0;
+                    const stopRate = parseFloat(s.exchange_rate) || SYS_EX_RATE;
+                    const stopUsdPrice = litres > 0 ? (parseFloat(s.base_usd_cost || 0) / litres) : 0;
+                    const stopKesPrice = stopUsdPrice * stopRate;
 
                     html += `<tr>
                         <td style="padding:8px 10px;white-space:nowrap;">${s.fuel_date}</td>
@@ -2579,14 +2642,20 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
                             <b>${s.country}</b><br>
                             <small style="color:var(--text-3);">${s.station_location || 'En-route Station'}</small>
                         </td>
-                        <td style="padding:8px 10px;font-weight:700;">${Number(s.litres).toLocaleString()} L</td>
-                        <td style="padding:8px 10px;">
-                            ${s.currency_code} ${localTot}<br>
-                            <small style="color:var(--text-3);">@ ${localUnit}</small>
+                        <td style="padding:8px 10px;font-weight:700;">
+                            ${Number(s.litres).toLocaleString()} L
+                            <div style="font-size:10.5px;color:var(--text-3);font-weight:normal;">$${stopUsdPrice.toFixed(3)}/L • KES ${stopKesPrice.toFixed(1)}/L</div>
+                        </td>
+                        <td style="padding:8px 10px;font-weight:800;color:var(--amber);">
+                            KES ${localTot}<br>
+                            <span style="font-size:10px;color:var(--text-3);background:var(--card-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border);">Rate: ${stopRate.toFixed(2)}</span>
                         </td>
                         <td style="padding:8px 10px;white-space:nowrap;">
                             <b style="color:var(--brand);">$${usdTot}</b><br>
-                            <small style="color:var(--amber);font-weight:700;">${sysTot}</small>
+                            <small style="color:var(--text-3);font-weight:600;">${sysTot}</small>
+                        </td>
+                        <td style="padding:8px 10px;font-size:11px;color:var(--text-3);">
+                            ${s.receipt_status || 'Received'}
                         </td>
                         <td style="padding:8px 10px;text-align:center;">
                             <div style="display:inline-flex;gap:4px;">

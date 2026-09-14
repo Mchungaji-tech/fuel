@@ -202,8 +202,14 @@
                             <td colspan="6" style="text-align:center;padding:32px;color:var(--text-3);">No expenses recorded yet. Click "Record Expense".</td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach ($expenses as $e): ?>
-                            <tr id="exp-row-<?= $e['id'] ?>" data-id="<?= $e['id'] ?>" data-expense-date="<?= htmlspecialchars($e['expense_date']) ?>">
+                        <?php foreach ($expenses as $e): 
+                            $amtUsd = (float)$e['amount'];
+                            $exR = !empty($e['exchange_rate']) ? (float)$e['exchange_rate'] : (float)exchange_rate();
+                            if ($exR <= 0) $exR = 128.0;
+                            $amtKes = round($amtUsd * $exR, 2);
+                            $isKesActive = (current_currency() === 'KES');
+                        ?>
+                            <tr id="exp-row-<?= $e['id'] ?>" data-id="<?= $e['id'] ?>" data-expense-date="<?= htmlspecialchars($e['expense_date']) ?>" data-exchange-rate="<?= $exR ?>">
                                 <td class="cell-date" style="font-weight:700;white-space:nowrap;">
                                     <span class="view-val"><?= format_date_dol($e['expense_date']) ?></span>
                                 </td>
@@ -228,18 +234,12 @@
                                     <span class="view-val"><?= htmlspecialchars($e['garage_vendor'] ?: 'General Vendor') ?></span>
                                 </td>
                                 <td class="cell-amount" style="white-space:nowrap;font-weight:800;color:var(--red);">
-                                    <?php
-                                        $amtUsd = (float)$e['amount'];
-                                        $exR = (float)exchange_rate();
-                                        if ($exR <= 0) $exR = 130.0;
-                                        $amtKes = round($amtUsd * $exR, 2);
-                                        $isKesActive = (current_currency() === 'KES');
-                                    ?>
                                     <div class="view-val" style="font-size:13.5px;font-weight:800;">
                                         <?= format_money($amtUsd) ?>
                                     </div>
-                                    <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px;">
-                                        <?= $isKesActive ? ('$ ' . number_format($amtUsd, 2) . ' USD') : ('KES ' . number_format($amtKes)) ?>
+                                    <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px;display:flex;align-items:center;gap:4px;">
+                                        <span><?= $isKesActive ? ('$ ' . number_format($amtUsd, 2) . ' USD') : ('KES ' . number_format($amtKes)) ?></span>
+                                        <span style="font-size:9.5px;color:var(--text-3);background:var(--card-2);padding:1px 4px;border-radius:4px;border:1px solid var(--border);">@ <?= number_format($exR, 2) ?></span>
                                     </div>
                                 </td>
                                 <td class="cell-actions" style="text-align:center;white-space:nowrap;">
@@ -309,8 +309,13 @@
                             <span>Expense Evaluation (Dual Currency)</span>
                             <span style="font-size:14px;">🇰🇪 ⇄ 🇺🇸</span>
                         </div>
-                        <div style="font-size:11.5px;font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;">
-                            Exchange Rate: 1 USD = <span id="expExRateDisplay"><?= exchange_rate() ?></span> KES
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <label for="expExRateInput" style="font-size:11.5px;font-weight:800;color:var(--brand);margin:0;">1 USD =</label>
+                            <div style="position:relative;width:105px;">
+                                <input type="number" step="0.0001" min="0.0001" name="exchange_rate" id="expExRateInput" value="<?= exchange_rate() ?>" oninput="onExpenseRateChange(this.value)" style="width:100%;padding:4px 28px 4px 8px;border:1.5px solid var(--brand);border-radius:6px;font-size:12px;font-weight:800;color:var(--brand);background:var(--card);">
+                                <span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:800;color:var(--brand);">KES</span>
+                            </div>
+                            <button type="button" class="btn btn-ghost btn-xs" onclick="resetExpRate()" style="padding:2px 5px;font-size:10.5px;color:var(--text-3);" title="Reset to system current default">↺</button>
                         </div>
                     </div>
 
@@ -715,7 +720,16 @@ function startExpInlineEdit(id) {
 
     row.querySelector('.cell-vendor').innerHTML = `<input type="text" class="table-inline-input inline-exp-vendor" value="${vendor}">`;
 
-    row.querySelector('.cell-amount').innerHTML = `<input type="number" step="0.01" class="table-inline-input inline-exp-amount" value="${amountRaw}">`;
+    const rowRate = parseFloat(row.dataset.exchangeRate) || EXP_EX_RATE;
+    row.querySelector('.cell-amount').innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:3px;">
+            <input type="number" step="0.01" class="table-inline-input inline-exp-amount" value="${amountRaw}" style="width:100px;font-weight:800;">
+            <div style="display:flex;align-items:center;gap:2px;">
+                <span style="font-size:10px;color:var(--text-3);">Ex:</span>
+                <input type="number" step="0.0001" min="0.0001" class="table-inline-input inline-exp-rate" value="${rowRate}" placeholder="Rate" style="width:70px;font-size:11px;font-weight:700;padding:2px 4px;">
+            </div>
+        </div>
+    `;
 
     row.querySelector('.row-normal-actions').style.display = 'none';
     row.querySelector('.row-editing-actions').style.display = 'inline-flex';
@@ -739,6 +753,7 @@ async function saveExpInlineEdit(id) {
     const truckVal = row.querySelector('.inline-exp-truck')?.value;
     const vendorVal = row.querySelector('.inline-exp-vendor')?.value;
     const amountVal = row.querySelector('.inline-exp-amount')?.value;
+    const rateVal = row.querySelector('.inline-exp-rate')?.value || EXP_EX_RATE;
 
     const postData = {
         _csrf_token: CSRF_TOKEN,
@@ -748,13 +763,15 @@ async function saveExpInlineEdit(id) {
         notes: notesVal,
         truck: truckVal,
         garage_vendor: vendorVal,
-        amount: amountVal
+        amount: amountVal,
+        exchange_rate: rateVal
     };
 
     const isOffline = !navigator.onLine || (typeof isSimulatedOffline !== 'undefined' && isSimulatedOffline);
     if (isOffline) {
         queueOfflineAction('<?= url("expenses/inline-update") ?>', postData, () => {
             row.dataset.expenseDate = dateVal;
+            row.dataset.exchangeRate = rateVal;
             row.querySelector('.cell-date').innerHTML = `<span class="view-val">${formatDateClient(dateVal)}</span><div class="offline-sync-badge">Pending Sync</div>`;
             row.querySelector('.cell-title').innerHTML = `<b class="view-val" style="color:var(--text);">${titleVal}</b>${notesVal ? `<div class="view-notes" style="font-size:12px;color:var(--text-3);">${notesVal}</div>` : ''}`;
             row.querySelector('.cell-truck').innerHTML = `<span class="view-val" style="font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;font-size:13px;">${truckVal || 'General'}</span>`;
@@ -784,6 +801,7 @@ async function saveExpInlineEdit(id) {
         if (json.success && json.data) {
             const d = json.data;
             row.dataset.expenseDate = d.expense_date;
+            row.dataset.exchangeRate = d.exchange_rate;
             row.querySelector('.cell-date').innerHTML = `<span class="view-val">${d.dol_formatted}</span>`;
             row.querySelector('.cell-title').innerHTML = `
                 <b class="view-val" style="color:var(--text);">${d.expense_title}</b>
@@ -798,7 +816,10 @@ async function saveExpInlineEdit(id) {
 
             row.querySelector('.cell-amount').innerHTML = `
                 <div class="view-val" style="font-size:13.5px;font-weight:800;">${d.amount_formatted}</div>
-                <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px;">${d.amount_evaluated || ''}</div>
+                <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px;display:flex;align-items:center;gap:4px;">
+                    <span>${d.amount_evaluated || ''}</span>
+                    <span style="font-size:9.5px;color:var(--text-3);background:var(--card-2);padding:1px 4px;border-radius:4px;border:1px solid var(--border);">@ ${parseFloat(d.exchange_rate).toFixed(2)}</span>
+                </div>
             `;
 
             row.querySelector('.row-normal-actions').style.display = 'inline-flex';
@@ -828,11 +849,45 @@ function formatDateClient(dStr) {
     return dStr;
 }
 
-const EXP_EX_RATE = <?= (float)exchange_rate() > 0 ? (float)exchange_rate() : 130.0 ?>;
+const EXP_EX_RATE = <?= (float)exchange_rate() > 0 ? (float)exchange_rate() : 128.0 ?>;
+let expCurrentRate = EXP_EX_RATE;
+
+function onExpenseRateChange(val) {
+    const rate = parseFloat(val) || 0;
+    if (rate > 0) {
+        expCurrentRate = rate;
+    }
+    const mode = document.getElementById('expCurrencyMode')?.value || 'KES';
+    if (mode === 'KES') {
+        const kes = parseFloat(document.getElementById('expAmountKes')?.value) || 0;
+        const usd = (kes > 0 && expCurrentRate > 0) ? (kes / expCurrentRate) : 0;
+        const usdField = document.getElementById('expAmountUsd');
+        if (usdField) usdField.value = usd > 0 ? usd.toFixed(2) : '';
+        updateExpenseEvaluationBanner(kes, usd);
+        const finalEl = document.getElementById('expFinalAmount');
+        if (finalEl) finalEl.value = usd.toFixed(2);
+    } else {
+        const usd = parseFloat(document.getElementById('expAmountUsd')?.value) || 0;
+        const kes = (usd > 0 && expCurrentRate > 0) ? Math.round(usd * expCurrentRate) : 0;
+        const kesField = document.getElementById('expAmountKes');
+        if (kesField) kesField.value = kes > 0 ? kes : '';
+        updateExpenseEvaluationBanner(kes, usd);
+        const finalEl = document.getElementById('expFinalAmount');
+        if (finalEl) finalEl.value = usd.toFixed(2);
+    }
+}
+
+function resetExpRate() {
+    const rateInput = document.getElementById('expExRateInput');
+    if (rateInput) {
+        rateInput.value = EXP_EX_RATE;
+        onExpenseRateChange(EXP_EX_RATE);
+    }
+}
 
 function onExpenseKesInput(val) {
     const kes = parseFloat(val) || 0;
-    const usd = (kes > 0 && EXP_EX_RATE > 0) ? (kes / EXP_EX_RATE) : 0;
+    const usd = (kes > 0 && expCurrentRate > 0) ? (kes / expCurrentRate) : 0;
     const usdField = document.getElementById('expAmountUsd');
     if (usdField && document.activeElement === document.getElementById('expAmountKes')) {
         usdField.value = usd > 0 ? usd.toFixed(2) : '';
@@ -846,7 +901,7 @@ function onExpenseKesInput(val) {
 
 function onExpenseUsdInput(val) {
     const usd = parseFloat(val) || 0;
-    const kes = (usd > 0 && EXP_EX_RATE > 0) ? Math.round(usd * EXP_EX_RATE) : 0;
+    const kes = (usd > 0 && expCurrentRate > 0) ? Math.round(usd * expCurrentRate) : 0;
     const kesField = document.getElementById('expAmountKes');
     if (kesField && document.activeElement === document.getElementById('expAmountUsd')) {
         kesField.value = kes > 0 ? kes : '';

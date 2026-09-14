@@ -352,6 +352,7 @@ CREATE TABLE IF NOT EXISTS `financial_records` (
     `amount_in` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `amount_out` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000,
     `reason` TEXT NULL,
     `payment_method` VARCHAR(50) NOT NULL DEFAULT 'Cash',
     `recorded_by` VARCHAR(150) NULL,

@@ -288,8 +288,10 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                                 $in = (float)$r['amount_in'];
                                 $out = (float)$r['amount_out'];
                                 $runBal = (float)$r['running_balance'];
+                                $rowRate = !empty($r['exchange_rate']) ? (float)$r['exchange_rate'] : (float)$exRate;
+                                if ($rowRate <= 0) $rowRate = 128.0;
                             ?>
-                                <tr id="finRow-<?= $id ?>" data-id="<?= $id ?>" class="fin-data-row">
+                                <tr id="finRow-<?= $id ?>" data-id="<?= $id ?>" data-exchange-rate="<?= $rowRate ?>" class="fin-data-row">
                                     <!-- 1. Date -->
                                     <td class="cell-date" data-field="entry_date" data-val="<?= htmlspecialchars($r['entry_date']) ?>">
                                         <span class="view-val" style="font-weight:700;color:var(--text);font-size:13px;"><?= htmlspecialchars($r['entry_date']) ?></span>
@@ -300,7 +302,7 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                                         <div class="view-val">
                                             <?php if ($in > 0): ?>
                                                 <div style="font-weight:800;color:var(--green);font-size:13.5px;">+$ <?= number_format($in, 2) ?></div>
-                                                <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES <?= number_format($in * $exRate) ?></div>
+                                                <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES <?= number_format($in * $rowRate) ?></div>
                                             <?php else: ?>
                                                 <span style="color:var(--text-3);font-weight:700;">—</span>
                                             <?php endif; ?>
@@ -312,7 +314,7 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                                         <div class="view-val">
                                             <?php if ($out > 0): ?>
                                                 <div style="font-weight:800;color:var(--red);font-size:13.5px;">-$ <?= number_format($out, 2) ?></div>
-                                                <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES <?= number_format($out * $exRate) ?></div>
+                                                <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES <?= number_format($out * $rowRate) ?></div>
                                             <?php else: ?>
                                                 <span style="color:var(--text-3);font-weight:700;">—</span>
                                             <?php endif; ?>
@@ -326,7 +328,7 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                                                 <?= ($runBal >= 0 ? '+$ ' : '-$ ') . number_format(abs($runBal), 2) ?>
                                             </div>
                                             <div style="font-size:11px;color:var(--text-3);font-weight:600;">
-                                                KES <?= number_format($runBal * $exRate) ?>
+                                                KES <?= number_format($runBal * $rowRate) ?>
                                             </div>
                                         </div>
                                     </td>
@@ -926,6 +928,7 @@ function calcRowLiveNet(id) {
     const row = document.getElementById('finRow-' + id);
     if (!row) return;
 
+    const rowRate = parseFloat(row.dataset.exchangeRate) || EX_RATE;
     const inVal = parseFloat(row.querySelector('.inline-in')?.value || 0);
     const outVal = parseFloat(row.querySelector('.inline-out')?.value || 0);
     const net = inVal - outVal;
@@ -933,7 +936,7 @@ function calcRowLiveNet(id) {
     const balCell = row.querySelector('.cell-runbal');
     if (balCell) {
         const netStr = (net >= 0 ? '+$ ' : '-$ ') + Math.abs(net).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        const netKesStr = 'KES ' + Math.round(net * EX_RATE).toLocaleString('en-US');
+        const netKesStr = 'KES ' + Math.round(net * rowRate).toLocaleString('en-US');
         balCell.innerHTML = `
             <div style="font-weight:900;color:${net >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13.5px;">${netStr}</div>
             <div style="font-size:11px;color:var(--text-3);font-weight:600;">${netKesStr}</div>
@@ -951,6 +954,7 @@ async function saveFinInlineEdit(id) {
     const reason = row.querySelector('.inline-reason')?.value || '';
     const cat = row.querySelector('.inline-category')?.value || 'General';
     const method = row.querySelector('.inline-method')?.value || 'Cash';
+    const rowRate = parseFloat(row.dataset.exchangeRate) || EX_RATE;
 
     const postData = {
         _csrf_token: CSRF_TOKEN,
@@ -960,7 +964,8 @@ async function saveFinInlineEdit(id) {
         amount_out: amtOut,
         reason: reason,
         category: cat,
-        payment_method: method
+        payment_method: method,
+        exchange_rate: rowRate
     };
 
     const saveBtn = row.querySelector('.row-save-btn');

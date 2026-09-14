@@ -27,6 +27,7 @@ class FinancialController
                 amount_in DECIMAL(12,2) NOT NULL DEFAULT 0,
                 amount_out DECIMAL(12,2) NOT NULL DEFAULT 0,
                 balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+                exchange_rate DECIMAL(12,4) NOT NULL DEFAULT 128.0000,
                 reason TEXT,
                 payment_method VARCHAR(50) NOT NULL DEFAULT 'Cash',
                 reference_no VARCHAR(100),
@@ -278,8 +279,8 @@ class FinancialController
         }
 
         $stmt = $pdo->prepare('INSERT INTO financial_records (
-            entry_date, category, amount_in, amount_out, balance, reason, payment_method, reference_no, recorded_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            entry_date, category, amount_in, amount_out, balance, exchange_rate, reason, payment_method, reference_no, recorded_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
         $now = date('Y-m-d H:i:s');
         $stmt->execute([
@@ -288,6 +289,7 @@ class FinancialController
             $amountIn,
             $amountOut,
             $balance,
+            $rate,
             $reason,
             $method,
             $refNo,
@@ -313,7 +315,8 @@ class FinancialController
                 'success' => true,
                 'message' => 'Transaction recorded successfully.',
                 'id' => $newId,
-                'balance' => $balance
+                'balance' => $balance,
+                'exchange_rate' => $rate
             ]);
             exit;
         }
@@ -357,7 +360,7 @@ class FinancialController
             $field = trim($input['field']);
             $val = trim($input['value']);
 
-            $allowed = ['entry_date', 'category', 'amount_in', 'amount_out', 'reason', 'payment_method'];
+            $allowed = ['entry_date', 'category', 'amount_in', 'amount_out', 'reason', 'payment_method', 'exchange_rate'];
             if (!in_array($field, $allowed, true)) {
                 echo json_encode(['success' => false, 'message' => "Field '{$field}' cannot be edited directly."]);
                 exit;
@@ -372,12 +375,15 @@ class FinancialController
             if (isset($input['amount_out'])) $row['amount_out'] = (float)$input['amount_out'];
             if (isset($input['reason'])) $row['reason'] = trim($input['reason']);
             if (isset($input['payment_method'])) $row['payment_method'] = trim($input['payment_method']);
+            if (isset($input['exchange_rate'])) $row['exchange_rate'] = (float)$input['exchange_rate'];
         }
 
         // Recalculate net day balance: Amount In - Amount Out
         $amtIn = max(0.0, (float)($row['amount_in'] ?? 0));
         $amtOut = max(0.0, (float)($row['amount_out'] ?? 0));
         $row['balance'] = $amtIn - $amtOut;
+        $rowRate = (float)($row['exchange_rate'] ?? 128.0);
+        if ($rowRate <= 0) $rowRate = 128.0;
         $entryDate = ExcelService::normalizeDate($row['entry_date'] ?? date('Y-m-d'));
 
         $upd = $pdo->prepare('UPDATE financial_records SET 
@@ -386,6 +392,7 @@ class FinancialController
             amount_in = ?,
             amount_out = ?,
             balance = ?,
+            exchange_rate = ?,
             reason = ?,
             payment_method = ?,
             reference_no = ?,
@@ -398,6 +405,7 @@ class FinancialController
             $amtIn,
             $amtOut,
             $row['balance'],
+            $rowRate,
             $row['reason'] ?? '',
             $row['payment_method'] ?? 'Cash',
             $row['reference_no'] ?? '',
@@ -422,6 +430,7 @@ class FinancialController
                 'amount_in' => $amtIn,
                 'amount_out' => $amtOut,
                 'balance' => $row['balance'],
+                'exchange_rate' => $rowRate,
                 'reason' => $row['reason'],
                 'payment_method' => $row['payment_method'],
                 'reference_no' => $row['reference_no'],

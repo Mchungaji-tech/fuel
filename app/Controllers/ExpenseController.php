@@ -182,7 +182,7 @@ class ExpenseController
         $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
         $notes = trim($_POST['notes'] ?? '');
 
-        $rate = (float)exchange_rate();
+        $rate = (float)($_POST['exchange_rate'] ?? exchange_rate());
         if ($rate <= 0) $rate = 130.0;
 
         $currencyMode = trim($_POST['currency_mode'] ?? '');
@@ -205,14 +205,15 @@ class ExpenseController
 
         if ($expenseTitle !== '' && $amount > 0) {
             $stmt = $pdo->prepare('INSERT INTO expenses (
-                expense_date, expense_title, truck, amount, garage_vendor, receipt_status, notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                expense_date, expense_title, truck, amount, exchange_rate, garage_vendor, receipt_status, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
             $stmt->execute([
                 $expenseDate,
                 $expenseTitle,
                 $truck,
                 $amount,
+                $rate,
                 $garageVendor,
                 $receiptStatus,
                 $notes,
@@ -265,7 +266,8 @@ class ExpenseController
         }
 
         $isKes = current_currency() === 'KES';
-        $rate = exchange_rate();
+        $rate = (float)($_POST['exchange_rate'] ?? exchange_rate());
+        if ($rate <= 0) $rate = 130.0;
 
         $expenseDate = trim($_POST['expense_date'] ?? date('Y-m-d'));
         $expenseTitle = trim($_POST['expense_title'] ?? '');
@@ -278,10 +280,10 @@ class ExpenseController
         $amount = $isKes ? ($rawAmount / $rate) : $rawAmount;
 
         $stmt = $pdo->prepare('UPDATE expenses SET 
-            expense_date = ?, expense_title = ?, truck = ?, amount = ?, 
+            expense_date = ?, expense_title = ?, truck = ?, amount = ?, exchange_rate = ?, 
             garage_vendor = ?, receipt_status = ?, notes = ?
             WHERE id = ?');
-        $stmt->execute([$expenseDate, $expenseTitle, $truck, $amount, $garageVendor, $receiptStatus, $notes, $id]);
+        $stmt->execute([$expenseDate, $expenseTitle, $truck, $amount, $rate, $garageVendor, $receiptStatus, $notes, $id]);
 
         log_audit('Expenses', 'UPDATE_EXPENSE', "Updated expense #{$id} ({$expenseTitle}) - " . format_money($amount));
 
@@ -296,6 +298,7 @@ class ExpenseController
                 'expense_title' => $expenseTitle,
                 'truck' => $truck ?: 'General Business',
                 'amount' => $amount,
+                'exchange_rate' => $rate,
                 'amount_formatted' => format_money($amount),
                 'amount_evaluated' => ($isKes ? ('$ ' . number_format($amount, 2) . ' USD') : ('KES ' . number_format($amount * $rate))),
                 'garage_vendor' => $garageVendor ?: 'General Vendor',
