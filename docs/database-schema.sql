@@ -340,3 +340,80 @@ CREATE TABLE audit_logs (
     ip_address VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================================
+-- FINANCIAL CASH FLOW & DAILY MONEY IN/OUT MANAGEMENT TABLE
+-- Run this on your online MySQL database to enable Financial Management:
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `financial_records` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `entry_date` DATE NOT NULL,
+    `category` VARCHAR(100) NOT NULL DEFAULT 'General',
+    `amount_in` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `amount_out` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `reason` TEXT NULL,
+    `payment_method` VARCHAR(50) NOT NULL DEFAULT 'Cash',
+    `reference_no` VARCHAR(100) NULL,
+    `recorded_by` VARCHAR(150) NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_financial_date` (`entry_date`),
+    INDEX `idx_financial_category` (`category`),
+    INDEX `idx_financial_method` (`payment_method`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- FLEET DIESEL REFUELING LOGS (Multi-stop & Refueling Country Tracking)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `fleet_diesel_logs` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `dispatch_id` BIGINT NOT NULL,
+    `trip_number` VARCHAR(100) NOT NULL,
+    `truck` VARCHAR(100) NOT NULL,
+    `fuel_date` DATE NOT NULL,
+    `station_location` VARCHAR(255) NOT NULL,
+    `country` VARCHAR(100) NOT NULL DEFAULT 'Kenya',
+    `currency_code` VARCHAR(10) NOT NULL DEFAULT 'KES',
+    `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 130.0000,
+    `litres` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `local_unit_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `local_total_cost` DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    `base_usd_cost` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `receipt_status` VARCHAR(50) DEFAULT 'Received',
+    `receipt_number` VARCHAR(100) NULL,
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_diesel_dispatch` (`dispatch_id`),
+    INDEX `idx_diesel_country` (`country`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- EAST AFRICA ROUTE MILEAGE RATES TABLE
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `route_mileage_rates` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `origin` VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
+    `destination` VARCHAR(150) NOT NULL,
+    `distance_km` INT DEFAULT 0,
+    `standard_allowance_kes` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `standard_allowance_usd` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    `notes` TEXT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_route` (`origin`, `destination`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- SYNC DELETIONS AUDIT / TOMBSTONE TABLE
+-- Ensures deleted records are permanently propagated and never revived during sync:
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS `sync_deletions` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `table_name` VARCHAR(100) NOT NULL,
+    `record_key` VARCHAR(255) NOT NULL,
+    `deleted_at` VARCHAR(50) NOT NULL,
+    UNIQUE KEY `uniq_del` (`table_name`, `record_key`),
+    INDEX `idx_del_table` (`table_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+

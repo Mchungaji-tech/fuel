@@ -203,6 +203,13 @@ class ExpenseController
                 date('Y-m-d H:i:s'),
             ]);
 
+            $composite = implode('::', [
+                $expenseDate,
+                $expenseTitle,
+                (string)(float)$amount
+            ]);
+            \App\Services\DatabaseSyncService::clearDeletion('expenses', $composite);
+
             // Fleet Linkage: if truck is currently on an active dispatch, link as extra_expense
             if ($truck !== '' && $truck !== 'General Business') {
                 $tripQ = $pdo->prepare('SELECT id, trip_number, extra_expenses, balance FROM fleet_dispatches WHERE truck = ? AND status IN ("Loading", "In Transit") ORDER BY id DESC LIMIT 1');
@@ -285,12 +292,21 @@ class ExpenseController
     public function delete(string $id): void
     {
         $pdo = Database::connection();
-        $q = $pdo->prepare('SELECT expense_title, truck, amount FROM expenses WHERE id = ? LIMIT 1');
+        $q = $pdo->prepare('SELECT expense_date, expense_title, truck, amount FROM expenses WHERE id = ? LIMIT 1');
         $q->execute([(int) $id]);
         $row = $q->fetch(PDO::FETCH_ASSOC);
 
         $stmt = $pdo->prepare('DELETE FROM expenses WHERE id = ?');
         $stmt->execute([$id]);
+
+        if ($row) {
+            $composite = implode('::', [
+                $row['expense_date'] ?? '',
+                $row['expense_title'] ?? '',
+                (string)(float)($row['amount'] ?? 0)
+            ]);
+            \App\Services\DatabaseSyncService::recordDeletion('expenses', $composite);
+        }
 
         $expTitle = $row ? ($row['expense_title'] . ' - ' . format_money((float)$row['amount'])) : "ID #{$id}";
         log_audit('Expenses', 'DELETE_EXPENSE', "Deleted expense {$expTitle}", 1);

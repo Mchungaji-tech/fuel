@@ -456,6 +456,27 @@ class Database
                 created_at VARCHAR(50),
                 UNIQUE(origin, destination)
             )",
+            "CREATE TABLE IF NOT EXISTS financial_records (
+                {$idColumnSql},
+                entry_date VARCHAR(50) NOT NULL,
+                category VARCHAR(100) NOT NULL DEFAULT 'General',
+                amount_in DECIMAL(12,2) NOT NULL DEFAULT 0,
+                amount_out DECIMAL(12,2) NOT NULL DEFAULT 0,
+                balance DECIMAL(12,2) NOT NULL DEFAULT 0,
+                reason TEXT,
+                payment_method VARCHAR(50) NOT NULL DEFAULT 'Cash',
+                reference_no VARCHAR(100),
+                recorded_by VARCHAR(150),
+                created_at VARCHAR(50),
+                updated_at VARCHAR(50)
+            )",
+            "CREATE TABLE IF NOT EXISTS sync_deletions (
+                {$idColumnSql},
+                table_name VARCHAR(100) NOT NULL,
+                record_key VARCHAR(255) NOT NULL,
+                deleted_at VARCHAR(50) NOT NULL,
+                UNIQUE(table_name, record_key)
+            )",
         ];
 
         foreach ($tables as $sql) {
@@ -622,6 +643,27 @@ class Database
                 $insRoute->execute([$r[0], $r[1], $r[2], $r[3], $r[4], $r[5], date('Y-m-d H:i:s')]);
             }
         }
+
+        // Initialize sample financial cash flow transactions if table is empty
+        try {
+            $finCheck = (int)$pdo->query("SELECT COUNT(*) FROM financial_records")->fetchColumn();
+            if ($finCheck === 0) {
+                $sampleFin = [
+                    [date('Y-m-d', strtotime('-3 days')), 'Client Inflow', 650000.00, 0.00, 650000.00, 'Freight haulage payment for Kampala convoy consignment', 'Bank Transfer', 'EFT-784912', 'Admin'],
+                    [date('Y-m-d', strtotime('-2 days')), 'Fuel & Fleet', 0.00, 185000.00, -185000.00, 'Bulk diesel purchase for Eldoret central tank refuels', 'M-Pesa', 'MP-QK8201', 'Admin'],
+                    [date('Y-m-d', strtotime('-2 days')), 'Driver Allowances', 0.00, 45000.00, -45000.00, 'Transit per diem & mileage advance for Malaba crossing', 'Cash', 'VCH-0021', 'Admin'],
+                    [date('Y-m-d', strtotime('-1 days')), 'Office Operations', 0.00, 15000.00, -15000.00, 'Depot high-speed fiber internet and office stationery', 'M-Pesa', 'MP-AB3312', 'Admin'],
+                    [date('Y-m-d', strtotime('-1 days')), 'Personal Drawing', 0.00, 50000.00, -50000.00, 'Managing Director personal withdrawal / drawing', 'Bank Transfer', 'DRAW-04', 'Admin'],
+                    [date('Y-m-d'), 'Client Inflow', 420000.00, 0.00, 420000.00, 'Advance delivery payment for Juba cross-border corridor', 'Bank Transfer', 'EFT-883011', 'Admin'],
+                    [date('Y-m-d'), 'Maintenance & Repairs', 0.00, 28000.00, -28000.00, 'Tanker brake valve replacement & air pressure service', 'Cash', 'RCP-9912', 'Admin'],
+                ];
+
+                $insFin = $pdo->prepare('INSERT INTO financial_records (entry_date, category, amount_in, amount_out, balance, reason, payment_method, reference_no, recorded_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                foreach ($sampleFin as $f) {
+                    $insFin->execute([$f[0], $f[1], $f[2], $f[3], $f[4], $f[5], $f[6], $f[7], $f[8], date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
+                }
+            }
+        } catch (\Throwable $e) {}
     }
 }
 

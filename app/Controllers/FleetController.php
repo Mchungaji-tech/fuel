@@ -267,6 +267,9 @@ class FleetController
                 date('Y-m-d H:i:s'),
             ]);
 
+            \App\Services\DatabaseSyncService::clearDeletion('fleet_dispatches', $tripNumber);
+            \App\Services\DatabaseSyncService::clearDeletion('trips', $tripNumber);
+
             $newDispatchId = (int)$pdo->lastInsertId();
             if ($newDispatchId > 0 && $dieselLitres > 0) {
                 if ($dieselUnitPrice <= 0 && $diesel <= 0) {
@@ -723,6 +726,7 @@ class FleetController
         $truck = trim($_GET['truck'] ?? '');
         $month = trim($_GET['month'] ?? '');
         $year = trim($_GET['year'] ?? '');
+        $search = trim($_GET['search'] ?? '');
 
         // Support month passed as "YYYY-MM" (e.g. 2026-05)
         if (strpos($month, '-') !== false) {
@@ -742,7 +746,14 @@ class FleetController
             $params[] = $truck;
         }
 
-        // 2. Filter by Year and/or Month
+        // 2. Filter by search term if provided
+        if ($search !== '') {
+            $sql .= ' AND (trip_number LIKE ? OR truck LIKE ? OR driver LIKE ? OR destination LIKE ? OR client_name LIKE ? OR product LIKE ?)';
+            $sTerm = "%{$search}%";
+            $params = array_merge($params, [$sTerm, $sTerm, $sTerm, $sTerm, $sTerm, $sTerm]);
+        }
+
+        // 3. Filter by Year and/or Month
         $hasYear = ($year !== '' && strtolower($year) !== 'all');
         $hasMonth = ($month !== '' && strtolower($month) !== 'all');
 
@@ -805,6 +816,7 @@ class FleetController
             'Diesel Litres',
             'Diesel Unit Price (' . $currencySymbol . '/L)',
             'Diesel Fuel Cost (' . $currencySymbol . ')',
+            'Country of Refueling',
             'Origin Loading Depot',
             'Destination',
             'Client / Consignee',
@@ -814,11 +826,10 @@ class FleetController
             'Final Client Payout (' . $currencySymbol . ')',
             'Payout Difference (' . $currencySymbol . ')',
             'Mileage Expense (' . $currencySymbol . ')',
-            'Extra Breakdown Cost (' . $currencySymbol . ')',
-            'Remarks / Breakdown Notes',
-            'Shortage Reconciliation Notes',
             'Net Trip Profit (' . $currencySymbol . ')',
             'Trip Status',
+            'Remarks / Breakdown Notes',
+            'Shortage Reconciliation Notes',
             'Seal Numbers',
             'BOL Number',
         ];
@@ -849,8 +860,6 @@ class FleetController
             $displayPayoutDiff = $isKes ? ($payoutDiff * $rate) : $payoutDiff;
             $mileage = (float) $d['mileage_cost'];
             $displayMileage = $isKes ? ($mileage * $rate) : $mileage;
-            $extra = (float) $d['extra_expenses'];
-            $displayExtra = $isKes ? ($extra * $rate) : $extra;
             $balance = (float) $d['balance'];
             $displayBalance = $isKes ? ($balance * $rate) : $balance;
 
@@ -865,6 +874,7 @@ class FleetController
                 $dieselLitres,
                 $canViewFin ? round($displayDieselUnitPrice, 2) : '[Restricted]',
                 $canViewFin ? round($displayDiesel, 2) : '[Restricted]',
+                $d['refuel_countries'] ?: '—',
                 $d['from_location'] ?: 'Eldoret',
                 $d['destination'],
                 $d['client_name'] ?? 'Regional Consignee',
@@ -874,11 +884,10 @@ class FleetController
                 $canViewFin ? round($displayFinalPayout, 2) : '[Restricted]',
                 $canViewFin ? round($displayPayoutDiff, 2) : '[Restricted]',
                 $canViewFin ? round($displayMileage, 2) : '[Restricted]',
-                $canViewFin ? round($displayExtra, 2) : '[Restricted]',
-                $d['breakdown_notes'] ?? '',
-                $d['shortage_notes'] ?? '',
                 $canViewFin ? round($displayBalance, 2) : '[Restricted]',
                 $d['status'],
+                $d['breakdown_notes'] ?? '',
+                $d['shortage_notes'] ?? '',
                 $d['seal_numbers'] ?? '',
                 $d['bol_number'] ?? '',
             ];
@@ -890,7 +899,7 @@ class FleetController
             $rows[] = $row;
         }
 
-        // Summary / Totals Row at the bottom of the export
+        // Summary / Totals Row at the bottom of the export (matched 1-to-1 with $headers)
         if (!empty($dispatches)) {
             $totalLoaded = (int)array_sum(array_column($dispatches, 'loaded_litres'));
             $totalShortage = (int)array_sum(array_column($dispatches, 'shortage_litres'));
@@ -912,7 +921,6 @@ class FleetController
                 $totalLoss += (float)$pDiff;
             }
             $totalMileage = (float)array_sum(array_column($dispatches, 'mileage_cost'));
-            $totalExtra = (float)array_sum(array_column($dispatches, 'extra_expenses'));
             $totalBalance = (float)array_sum(array_column($dispatches, 'balance'));
 
             $summaryRow = [
@@ -920,14 +928,13 @@ class FleetController
                 '',
                 ($truck && strtolower($truck) !== 'all') ? $truck : 'ALL TRUCKS',
                 '',
-                '',
                 $totalLoaded,
                 $totalShortage,
                 $totalDelivered,
-                '',
                 round($totalDieselLitres, 2),
                 '',
                 $canViewFin ? round($isKes ? $totalDieselCost * $rate : $totalDieselCost, 2) : '[Restricted]',
+                '',
                 '',
                 '',
                 '',
@@ -937,11 +944,10 @@ class FleetController
                 $canViewFin ? round($isKes ? $totalPayout * $rate : $totalPayout, 2) : '[Restricted]',
                 $canViewFin ? round($isKes ? $totalLoss * $rate : $totalLoss, 2) : '[Restricted]',
                 $canViewFin ? round($isKes ? $totalMileage * $rate : $totalMileage, 2) : '[Restricted]',
-                $canViewFin ? round($isKes ? $totalExtra * $rate : $totalExtra, 2) : '[Restricted]',
-                '',
-                '',
                 $canViewFin ? round($isKes ? $totalBalance * $rate : $totalBalance, 2) : '[Restricted]',
                 'SUMMARY',
+                '',
+                '',
                 '',
                 '',
             ];
@@ -971,7 +977,11 @@ class FleetController
         }
         $periodPart = !empty($periodParts) ? implode('_', $periodParts) : date('Y_m_d');
         $filenameBase = 'fleet_dispatches_' . $truckPart . $periodPart;
-        $sheetTitle = ($truck && strtolower($truck) !== 'all') ? substr($truck, 0, 31) : 'Fleet Dispatches';
+        
+        // Sanitize sheetTitle against illegal OpenXML characters (\, /, ?, *, [, ], :)
+        $cleanTitle = preg_replace('/[\\\\\\/\\?\\*\\[\\]\\:]/', ' ', $truck);
+        $cleanTitle = trim(preg_replace('/\\s+/', ' ', $cleanTitle));
+        $sheetTitle = ($truck && strtolower($truck) !== 'all') ? (substr($cleanTitle, 0, 31) ?: 'Fleet Dispatches') : 'Fleet Dispatches';
 
         if ($format === 'xls') {
             ExcelService::exportXls($filenameBase . '.xls', $headers, $rows, $sheetTitle);
@@ -1423,6 +1433,8 @@ class FleetController
 
         if ($row && !empty($row['trip_number'])) {
             $pdo->prepare('DELETE FROM trips WHERE trip_number = ?')->execute([$row['trip_number']]);
+            \App\Services\DatabaseSyncService::recordDeletion('fleet_dispatches', $row['trip_number']);
+            \App\Services\DatabaseSyncService::recordDeletion('trips', $row['trip_number']);
         }
 
         $tripRef = $row ? ($row['trip_number'] . ' - ' . $row['truck'] . ' (' . ($row['client_name'] ?? 'Consignee') . ')') : "ID #{$id}";
@@ -1909,6 +1921,15 @@ class FleetController
         $del = $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE id = ?');
         $del->execute([$logId]);
 
+        $compositeKey = implode('::', [
+            $log['trip_number'] ?? '',
+            $log['truck'] ?? '',
+            $log['fuel_date'] ?? '',
+            (string)(float)($log['litres'] ?? 0),
+            (string)(float)($log['local_total_cost'] ?? 0)
+        ]);
+        \App\Services\DatabaseSyncService::recordDeletion('fleet_diesel_logs', $compositeKey);
+
         $updatedTotals = self::recalculateDispatchDiesel($pdo, $dispatchId);
 
         log_audit('Diesel Fueling', 'DELETE_FUEL_STOP', "Deleted fuel stop #{$logId} for trip {$log['trip_number']}");
@@ -2101,8 +2122,14 @@ class FleetController
         $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         try {
+            $rate = $pdo->query("SELECT origin, destination FROM route_mileage_rates WHERE id = {$rateId}")->fetch(PDO::FETCH_ASSOC);
             $stmt = $pdo->prepare('DELETE FROM route_mileage_rates WHERE id = ?');
             $stmt->execute([$rateId]);
+
+            if ($rate) {
+                $comp = implode('::', [$rate['origin'] ?? '', $rate['destination'] ?? '']);
+                \App\Services\DatabaseSyncService::recordDeletion('route_mileage_rates', $comp);
+            }
 
             log_audit('Mileage Rates', 'DELETE_MILEAGE_RATE', "Deleted corridor allowance rate #{$rateId}");
 

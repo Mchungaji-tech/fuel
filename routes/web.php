@@ -16,6 +16,7 @@ use App\Controllers\CurrencyController;
 use App\Controllers\ProductController;
 use App\Controllers\TruckController;
 use App\Controllers\ExpenseController;
+use App\Controllers\FinancialController;
 use App\Controllers\UserController;
 use App\Controllers\SyncController;
 
@@ -73,6 +74,13 @@ return [
     ['POST', '/expenses/store', [ExpenseController::class, 'store']],
     ['POST', '/expenses/inline-update', [ExpenseController::class, 'inlineUpdate']],
     ['POST', '/expenses/delete/{id}', [ExpenseController::class, 'delete']],
+
+    // Financial Cash Flow & Daily Management
+    ['GET', '/financial', [FinancialController::class, 'index']],
+    ['POST', '/financial/store', [FinancialController::class, 'store']],
+    ['POST', '/financial/inline-update', [FinancialController::class, 'inlineUpdate']],
+    ['POST', '/financial/delete/{id}', [FinancialController::class, 'delete']],
+    ['GET', '/financial/export', [FinancialController::class, 'export']],
 
     // Drivers & Dynamic Assignment
     ['GET', '/drivers', [DriverController::class, 'index']],

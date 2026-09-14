@@ -40,23 +40,15 @@ class ProductController
         $name = trim($_POST['name'] ?? '');
         $category = trim($_POST['category'] ?? 'Fuel');
         $unit = trim($_POST['unit'] ?? 'Litres');
-        $isKes = current_currency() === 'KES';
-        $rate = exchange_rate();
-        if (isset($_POST['unit_price_usd']) && $_POST['unit_price_usd'] !== '') {
-            $unitPrice = (float)$_POST['unit_price_usd'];
-        } elseif (isset($_POST['unit_price_kes']) && $_POST['unit_price_kes'] !== '') {
-            $unitPrice = (float)$_POST['unit_price_kes'] / ($rate > 0 ? $rate : 130.0);
-        } else {
-            $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
-            $unitPrice = $isKes ? ($rawUnitPrice / ($rate > 0 ? $rate : 130.0)) : $rawUnitPrice;
-        }
+        $unitPrice = (float)($_POST['unit_price'] ?? 0);
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($code !== '' && $name !== '') {
             $stmt = $pdo->prepare('INSERT INTO products (code, name, category, unit, unit_price, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
             try {
                 $stmt->execute([$code, $name, $category, $unit, $unitPrice, $status, date('Y-m-d H:i:s')]);
-                flash('product_success', "Product {$code} - {$name} added successfully (Unit Price: " . format_money($unitPrice) . " per {$unit}).");
+                \App\Services\DatabaseSyncService::clearDeletion('products', $code);
+                flash('product_success', "Product {$code} - {$name} added successfully.");
             } catch (\Exception $e) {
                 flash('product_error', "Product code {$code} already exists or error occurred.");
             }
@@ -75,22 +67,13 @@ class ProductController
         $name = trim($_POST['name'] ?? '');
         $category = trim($_POST['category'] ?? 'Fuel');
         $unit = trim($_POST['unit'] ?? 'Litres');
-        $isKes = current_currency() === 'KES';
-        $rate = exchange_rate();
-        if (isset($_POST['unit_price_usd']) && $_POST['unit_price_usd'] !== '') {
-            $unitPrice = (float)$_POST['unit_price_usd'];
-        } elseif (isset($_POST['unit_price_kes']) && $_POST['unit_price_kes'] !== '') {
-            $unitPrice = (float)$_POST['unit_price_kes'] / ($rate > 0 ? $rate : 130.0);
-        } else {
-            $rawUnitPrice = (float) ($_POST['unit_price'] ?? 0);
-            $unitPrice = $isKes ? ($rawUnitPrice / ($rate > 0 ? $rate : 130.0)) : $rawUnitPrice;
-        }
+        $unitPrice = (float)($_POST['unit_price'] ?? 0);
         $status = trim($_POST['status'] ?? 'Active');
 
         if ($id > 0 && $code !== '' && $name !== '') {
             $stmt = $pdo->prepare('UPDATE products SET code = ?, name = ?, category = ?, unit = ?, unit_price = ?, status = ? WHERE id = ?');
             $stmt->execute([$code, $name, $category, $unit, $unitPrice, $status, $id]);
-            flash('product_success', "Product {$code} updated successfully (Unit Price: " . format_money($unitPrice) . " per {$unit}).");
+            flash('product_success', "Product {$code} updated successfully.");
         } else {
             flash('product_error', 'Invalid product data for update.');
         }
@@ -101,8 +84,13 @@ class ProductController
     public function delete(string $id): void
     {
         $pdo = Database::connection();
+        $code = $pdo->query('SELECT code FROM products WHERE id = ' . (int)$id)->fetchColumn();
         $stmt = $pdo->prepare('DELETE FROM products WHERE id = ?');
         $stmt->execute([$id]);
+
+        if ($code) {
+            \App\Services\DatabaseSyncService::recordDeletion('products', $code);
+        }
 
         flash('product_success', 'Product removed successfully.');
         redirect('/products');

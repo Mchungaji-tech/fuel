@@ -83,6 +83,8 @@ class UserController
         $stmt = $pdo->prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)');
         $stmt->execute([$name, $email, $hash, $role]);
 
+        \App\Services\DatabaseSyncService::clearDeletion('users', $email);
+
         log_audit('User Security', 'REGISTER_USER', "Registered user {$name} ({$email}) with role {$role}");
         flash('user_success', "User '{$name}' registered successfully with role [{$role}].");
         redirect('/users');
@@ -252,6 +254,10 @@ class UserController
         if ($user) {
             $del = $pdo->prepare('DELETE FROM users WHERE id = ?');
             $del->execute([(int) $id]);
+
+            if (!empty($user['email'])) {
+                \App\Services\DatabaseSyncService::recordDeletion('users', $user['email']);
+            }
 
             log_audit('User Security', 'DELETE_USER', "Deleted staff user account {$user['name']} ({$user['email']})", 1);
             flash('user_success', "User account {$user['name']} has been removed.");

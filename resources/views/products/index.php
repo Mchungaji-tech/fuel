@@ -20,18 +20,8 @@
             </div>
             <div class="lbl" style="margin-top:12px;font-size:16px;font-weight:800;color:var(--text);">Automotive Gas Oil (Diesel)</div>
             <div style="font-size:13px;color:var(--text-2);margin-top:4px;">Heavy low-sulphur commercial diesel for long-haul freight tankers.</div>
-            <div style="margin-top:10px;font-size:14px;font-weight:800;color:var(--brand);">
-                Standard Transport Payout: 
-                <?php
-                    $agoProd = array_values(array_filter($products, fn($p) => strtoupper($p['code']) === 'AGO'))[0] ?? null;
-                    if ($agoProd) {
-                        $agoUsd = (float)($agoProd['unit_price'] ?? 0);
-                        $agoKes = $agoUsd * $exRate;
-                        echo '$' . number_format($agoUsd, 2) . ' / L <span style="font-size:12.5px;color:var(--text-2);font-weight:700;">(KSh ' . number_format($agoKes, 2) . ' / L)</span>';
-                    } else {
-                        echo '—';
-                    }
-                ?>
+            <div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--brand);">
+                Cargo Type: Bulk Transported Commercial Fuel
             </div>
         </div>
 
@@ -42,18 +32,8 @@
             </div>
             <div class="lbl" style="margin-top:12px;font-size:16px;font-weight:800;color:var(--text);">Premium Motor Spirit (Super Petrol)</div>
             <div style="font-size:13px;color:var(--text-2);margin-top:4px;">Unleaded motor gasoline (RON 93+) for passenger vehicles and light commercial transport.</div>
-            <div style="margin-top:10px;font-size:14px;font-weight:800;color:var(--accent);">
-                Standard Transport Payout: 
-                <?php
-                    $pmsProd = array_values(array_filter($products, fn($p) => strtoupper($p['code']) === 'PMS'))[0] ?? null;
-                    if ($pmsProd) {
-                        $pmsUsd = (float)($pmsProd['unit_price'] ?? 0);
-                        $pmsKes = $pmsUsd * $exRate;
-                        echo '$' . number_format($pmsUsd, 2) . ' / L <span style="font-size:12.5px;color:var(--text-2);font-weight:700;">(KSh ' . number_format($pmsKes, 2) . ' / L)</span>';
-                    } else {
-                        echo '—';
-                    }
-                ?>
+            <div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--accent);">
+                Cargo Type: Bulk Transported Clean Petroleum
             </div>
         </div>
     </div>
@@ -63,7 +43,7 @@
         <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
             <div>
                 <h3 style="margin:0;">Registered Fuel Cargo Products</h3>
-                <small style="color:var(--text-3);">Used to calculate automatic transport payout in Fleet Dispatches</small>
+                <small style="color:var(--text-3);">Bulk petroleum grades carried across fleet routes</small>
             </div>
             <input type="text" id="prodFilter" placeholder="Filter product initials, name…" style="padding:6px 12px;border:1.5px solid var(--border-2);border-radius:8px;background:var(--card);font-size:13.5px;min-width:240px;">
         </div>
@@ -75,7 +55,6 @@
                         <th>Full Official Name</th>
                         <th>Category</th>
                         <th>Standard Unit</th>
-                        <th>Unit Price (Rate / L)</th>
                         <th>Status</th>
                         <th style="text-align:center;">Action</th>
                     </tr>
@@ -83,7 +62,7 @@
                 <tbody>
                     <?php if (empty($products)): ?>
                         <tr>
-                            <td colspan="7" style="text-align:center;padding:32px;color:var(--text-3);">No products registered yet. Click "Add Product".</td>
+                            <td colspan="6" style="text-align:center;padding:32px;color:var(--text-3);">No products registered yet. Click "Add Product".</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($products as $p): ?>
@@ -99,22 +78,6 @@
                                 <td><?= htmlspecialchars($p['category']) ?></td>
                                 <td><?= htmlspecialchars($p['unit']) ?></td>
                                 <td>
-                                    <?php 
-                                        $usdRate = (float)($p['unit_price'] ?? 0);
-                                        $kesRate = $usdRate * $exRate;
-                                    ?>
-                                    <div style="display:flex;flex-direction:column;gap:3px;">
-                                        <div style="display:inline-flex;align-items:center;gap:6px;">
-                                            <span style="font-size:10.5px;font-weight:800;color:var(--brand);background:var(--brand-soft);padding:1px 6px;border-radius:4px;border:1px solid rgba(79,70,229,0.2);">USD</span>
-                                            <b style="color:var(--text);font-size:14px;">$<?= number_format($usdRate, 4) ?> / L</b>
-                                        </div>
-                                        <div style="display:inline-flex;align-items:center;gap:6px;">
-                                            <span style="font-size:10.5px;font-weight:800;color:var(--green);background:var(--green-soft);padding:1px 6px;border-radius:4px;border:1px solid rgba(5,150,105,0.2);">KSH</span>
-                                            <b style="color:var(--green);font-size:13px;">KSh <?= number_format($kesRate, 2) ?> / L</b>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
                                     <span class="status <?= $p['status'] === 'Active' ? 's-done' : 's-hold' ?>">
                                         <i></i><?= htmlspecialchars($p['status']) ?>
                                     </span>
@@ -127,9 +90,8 @@
                                             'name' => $p['name'],
                                             'category' => $p['category'],
                                             'unit' => $p['unit'],
-                                            'unit_price' => (float)($p['unit_price'] ?? 0),
                                             'status' => $p['status'],
-                                        ])) ?>)" title="Edit product and unit price">
+                                        ])) ?>)" title="Edit product">
                                             ✏️ Edit
                                         </button>
                                         <form method="POST" action="<?= url('products/delete/' . $p['id']) ?>" style="display:inline;" onsubmit="return confirm('Remove fuel product <?= htmlspecialchars(addslashes($p['code'])) ?>?');">
@@ -165,24 +127,6 @@
                     <label>Full Product Description *</label>
                     <input type="text" name="name" placeholder="e.g. Automotive Gas Oil (Diesel Low Sulphur)" required>
                 </div>
-                <div style="background:var(--card-2);border:1.5px solid var(--border-2);border-radius:10px;padding:12px 14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-                        <label style="margin:0;font-weight:800;font-size:13px;color:var(--text);">Unit Price / Transport Rate (per Litre) *</label>
-                        <span style="font-size:11px;font-weight:700;color:var(--text-2);background:var(--card);padding:2px 8px;border-radius:4px;border:1px solid var(--border);">1 USD = <?= $exRate ?> KSh</span>
-                    </div>
-                    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-                        <div class="form-group" style="margin:0;">
-                            <label style="font-size:12px;font-weight:700;color:var(--brand);">Rate in USD ($ / L) *</label>
-                            <input type="number" step="0.0001" id="addProdPriceUsd" name="unit_price_usd" placeholder="e.g. 0.08" oninput="syncProductPrice('add', 'usd')" required style="font-weight:800;color:var(--brand);font-size:14.5px;">
-                        </div>
-                        <div class="form-group" style="margin:0;">
-                            <label style="font-size:12px;font-weight:700;color:var(--green);">Rate in KSh (KES / L) *</label>
-                            <input type="number" step="0.01" id="addProdPriceKes" name="unit_price_kes" placeholder="e.g. 10.40" oninput="syncProductPrice('add', 'kes')" required style="font-weight:800;color:var(--green);font-size:14.5px;">
-                        </div>
-                    </div>
-                    <input type="hidden" name="unit_price" id="addProdUnitPrice">
-                    <small style="color:var(--text-3);display:block;margin-top:6px;font-size:11.5px;">Used to calculate automatic transport payout in fleet dispatches (Litres × Unit Price)</small>
-                </div>
                 <div class="form-group">
                     <label>Category</label>
                     <input type="text" name="category" value="Fuel" placeholder="e.g. Clean Fuel, Heavy Fuel">
@@ -211,7 +155,7 @@
 <div class="modal-backdrop" id="editProductModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
-            <h2>✏️ Edit Fuel Product & Unit Price</h2>
+            <h2>✏️ Edit Fuel Product</h2>
             <button class="close-modal" onclick="document.getElementById('editProductModal').classList.remove('active')">✕</button>
         </div>
         <form method="POST" action="<?= url('products/update') ?>">
@@ -225,24 +169,6 @@
                 <div class="form-group">
                     <label>Full Product Description *</label>
                     <input type="text" name="name" id="editProdName" required>
-                </div>
-                <div style="background:var(--card-2);border:1.5px solid var(--border-2);border-radius:10px;padding:12px 14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-                        <label style="margin:0;font-weight:800;font-size:13px;color:var(--text);">Unit Price / Transport Rate (per Litre) *</label>
-                        <span style="font-size:11px;font-weight:700;color:var(--text-2);background:var(--card);padding:2px 8px;border-radius:4px;border:1px solid var(--border);">1 USD = <?= $exRate ?> KSh</span>
-                    </div>
-                    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-                        <div class="form-group" style="margin:0;">
-                            <label style="font-size:12px;font-weight:700;color:var(--brand);">Rate in USD ($ / L) *</label>
-                            <input type="number" step="0.0001" id="editProdPriceUsd" name="unit_price_usd" placeholder="e.g. 0.08" oninput="syncProductPrice('edit', 'usd')" required style="font-weight:800;color:var(--brand);font-size:14.5px;">
-                        </div>
-                        <div class="form-group" style="margin:0;">
-                            <label style="font-size:12px;font-weight:700;color:var(--green);">Rate in KSh (KES / L) *</label>
-                            <input type="number" step="0.01" id="editProdPriceKes" name="unit_price_kes" placeholder="e.g. 10.40" oninput="syncProductPrice('edit', 'kes')" required style="font-weight:800;color:var(--green);font-size:14.5px;">
-                        </div>
-                    </div>
-                    <input type="hidden" name="unit_price" id="editProdUnitPrice">
-                    <small style="color:var(--text-3);display:block;margin-top:6px;font-size:11.5px;">Used to calculate automatic transport payout in fleet dispatches (Litres × Unit Price)</small>
                 </div>
                 <div class="form-group">
                     <label>Category</label>
@@ -269,36 +195,6 @@
 </div>
 
 <script>
-const PROD_EX_RATE = <?= (float)$exRate ?>;
-
-function syncProductPrice(mode, source) {
-    const usdInput = document.getElementById(mode + 'ProdPriceUsd');
-    const kesInput = document.getElementById(mode + 'ProdPriceKes');
-    const hiddenInput = document.getElementById(mode + 'ProdUnitPrice');
-    if (!usdInput || !kesInput) return;
-
-    if (source === 'usd') {
-        const usdVal = parseFloat(usdInput.value);
-        if (!isNaN(usdVal) && usdVal >= 0) {
-            kesInput.value = (usdVal * PROD_EX_RATE).toFixed(2);
-            if (hiddenInput) hiddenInput.value = usdVal;
-        } else {
-            kesInput.value = '';
-            if (hiddenInput) hiddenInput.value = '';
-        }
-    } else if (source === 'kes') {
-        const kesVal = parseFloat(kesInput.value);
-        if (!isNaN(kesVal) && kesVal >= 0) {
-            const calculatedUsd = (kesVal / PROD_EX_RATE).toFixed(4);
-            usdInput.value = calculatedUsd;
-            if (hiddenInput) hiddenInput.value = calculatedUsd;
-        } else {
-            usdInput.value = '';
-            if (hiddenInput) hiddenInput.value = '';
-        }
-    }
-}
-
 const prodFilter = document.getElementById('prodFilter');
 if (prodFilter) {
     prodFilter.addEventListener('input', function(e) {
@@ -314,11 +210,6 @@ function openEditProductModal(prod) {
     document.getElementById('editProdId').value = prod.id;
     document.getElementById('editProdCode').value = prod.code;
     document.getElementById('editProdName').value = prod.name;
-    const usd = parseFloat(prod.unit_price) || 0;
-    const kes = usd * PROD_EX_RATE;
-    document.getElementById('editProdPriceUsd').value = usd > 0 ? usd : '';
-    document.getElementById('editProdPriceKes').value = usd > 0 ? (kes >= 1 ? kes.toFixed(2) : kes.toFixed(4)) : '';
-    document.getElementById('editProdUnitPrice').value = usd;
     document.getElementById('editProdCategory').value = prod.category || 'Fuel';
     document.getElementById('editProdUnit').value = prod.unit || 'Litres';
     document.getElementById('editProdStatus').value = prod.status || 'Active';

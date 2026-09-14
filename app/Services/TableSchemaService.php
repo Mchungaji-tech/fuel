@@ -16,6 +16,7 @@ class TableSchemaService
         'trucks' => 'Trucks & Tankers',
         'trips' => 'Trips Board',
         'expenses' => 'Operating Expenses',
+        'financial_records' => 'Financial Management',
         'drivers' => 'Drivers & Salaries',
         'customers' => 'Clients & Consignees',
         'products' => 'Fuel Products',
@@ -104,6 +105,18 @@ class TableSchemaService
                     ['orders', 'Total Orders', 'number', 1],
                     ['outstanding', 'Outstanding Balance', 'currency', 1],
                     ['status', 'Credit Status', 'status', 1],
+                ];
+
+            case 'financial_records':
+                return [
+                    ['entry_date', 'Date', 'date', 1],
+                    ['category', 'Category', 'status', 1],
+                    ['amount_in', 'Amount In', 'currency', 1],
+                    ['amount_out', 'Amount Out', 'currency', 1],
+                    ['balance', 'Net Balance', 'currency', 1],
+                    ['reason', 'Expenditure Note / Reason', 'text', 1],
+                    ['payment_method', 'Payment Method', 'status', 1],
+                    ['reference_no', 'Reference #', 'text', 1],
                 ];
 
             default:

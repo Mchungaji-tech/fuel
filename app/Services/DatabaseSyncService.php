@@ -42,6 +42,9 @@ class DatabaseSyncService
             ['table' => 'products', 'key' => 'code', 'composite' => []],
             ['table' => 'fleet_dispatches', 'key' => 'trip_number', 'composite' => []],
             ['table' => 'trips', 'key' => 'trip_number', 'composite' => []],
+            ['table' => 'fleet_diesel_logs', 'key' => null, 'composite' => ['trip_number', 'truck', 'fuel_date', 'litres', 'local_total_cost']],
+            ['table' => 'route_mileage_rates', 'key' => null, 'composite' => ['origin', 'destination']],
+            ['table' => 'financial_records', 'key' => null, 'composite' => ['entry_date', 'category', 'amount_in', 'amount_out', 'reason']],
             ['table' => 'expenses', 'key' => null, 'composite' => ['expense_date', 'expense_title', 'amount']],
             ['table' => 'driver_salaries', 'key' => null, 'composite' => ['driver_name', 'period_reference', 'amount']],
             ['table' => 'invoices', 'key' => 'invoice_number', 'composite' => []],
@@ -89,12 +92,86 @@ class DatabaseSyncService
     }
 
     /**
-     * Bidirectional sync for a single table.
+     * Record a deletion event so it propagates across both MySQL and SQLite and is never re-inserted.
+     */
+    public static function recordDeletion(string $table, string $recordKey): void
+    {
+        if (trim($recordKey) === '') return;
+        $now = date('Y-m-d H:i:s');
+
+        // 1. Record in SQLite
+        try {
+            $sqlite = Database::getSqliteConnection();
+            if ($sqlite) {
+                $stmt = $sqlite->prepare("INSERT OR REPLACE INTO sync_deletions (table_name, record_key, deleted_at) VALUES (?, ?, ?)");
+                $stmt->execute([$table, $recordKey, $now]);
+            }
+        } catch (\Throwable $e) {}
+
+        // 2. Record in MySQL if online
+        try {
+            $mysql = Database::getMysqlConnection();
+            if ($mysql) {
+                $stmt = $mysql->prepare("INSERT INTO sync_deletions (table_name, record_key, deleted_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)");
+                $stmt->execute([$table, $recordKey, $now]);
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Clear a deletion tombstone if a record with this key is legitimately created or re-added.
+     */
+    public static function clearDeletion(string $table, string $recordKey): void
+    {
+        if (trim($recordKey) === '') return;
+        try {
+            $sqlite = Database::getSqliteConnection();
+            if ($sqlite) {
+                $stmt = $sqlite->prepare("DELETE FROM sync_deletions WHERE table_name = ? AND record_key = ?");
+                $stmt->execute([$table, $recordKey]);
+            }
+        } catch (\Throwable $e) {}
+        try {
+            $mysql = Database::getMysqlConnection();
+            if ($mysql) {
+                $stmt = $mysql->prepare("DELETE FROM sync_deletions WHERE table_name = ? AND record_key = ?");
+                $stmt->execute([$table, $recordKey]);
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Bidirectional sync for a single table with full deletion propagation.
      */
     protected static function syncTable(PDO $sqlite, PDO $mysql, string $table, ?string $key, array $composite): array
     {
         $uploaded = 0;
         $downloaded = 0;
+
+        // 1. Fetch deleted keys for this table from both SQLite and MySQL
+        $sqDeleted = [];
+        try {
+            $sqDeleted = $sqlite->query("SELECT record_key FROM sync_deletions WHERE table_name = " . $sqlite->quote($table))->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        } catch (\Throwable $e) {}
+
+        $myDeleted = [];
+        try {
+            $myDeleted = $mysql->query("SELECT record_key FROM sync_deletions WHERE table_name = " . $mysql->quote($table))->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        } catch (\Throwable $e) {}
+
+        $allDeleted = array_flip(array_unique(array_merge($sqDeleted, $myDeleted)));
+
+        // Synchronize sync_deletions between SQLite and MySQL
+        foreach (array_keys($allDeleted) as $delKey) {
+            try {
+                $sqlite->prepare("INSERT OR IGNORE INTO sync_deletions (table_name, record_key, deleted_at) VALUES (?, ?, ?)")
+                    ->execute([$table, $delKey, date('Y-m-d H:i:s')]);
+            } catch (\Throwable $e) {}
+            try {
+                $mysql->prepare("INSERT IGNORE INTO sync_deletions (table_name, record_key, deleted_at) VALUES (?, ?, ?)")
+                    ->execute([$table, $delKey, date('Y-m-d H:i:s')]);
+            } catch (\Throwable $e) {}
+        }
 
         // Fetch all rows from SQLite
         $sqRows = $sqlite->query("SELECT * FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
@@ -122,16 +199,30 @@ class DatabaseSyncService
 
         $sqMap = [];
         foreach ($sqRows as $r) {
-            $sqMap[$rowKey($r)] = $r;
+            $k = $rowKey($r);
+            // If marked deleted, remove from SQLite
+            if (isset($allDeleted[$k])) {
+                self::deleteRow($sqlite, $table, $k, $key, $composite, $r);
+            } else {
+                $sqMap[$k] = $r;
+            }
         }
 
         $myMap = [];
         foreach ($myRows as $r) {
-            $myMap[$rowKey($r)] = $r;
+            $k = $rowKey($r);
+            // If marked deleted, remove from MySQL
+            if (isset($allDeleted[$k])) {
+                self::deleteRow($mysql, $table, $k, $key, $composite, $r);
+            } else {
+                $myMap[$k] = $r;
+            }
         }
 
         // Process records found in SQLite
         foreach ($sqMap as $k => $sqRow) {
+            if (isset($allDeleted[$k])) continue;
+
             if (!isset($myMap[$k])) {
                 // Exists in SQLite but not MySQL -> Upload to MySQL
                 self::insertRow($mysql, $table, $sqRow);
@@ -158,6 +249,8 @@ class DatabaseSyncService
 
         // Process records found in MySQL but not in SQLite
         foreach ($myMap as $k => $myRow) {
+            if (isset($allDeleted[$k])) continue;
+
             if (!isset($sqMap[$k])) {
                 // Exists in MySQL but not SQLite -> Download to SQLite
                 self::insertRow($sqlite, $table, $myRow);
@@ -166,6 +259,31 @@ class DatabaseSyncService
         }
 
         return ['uploaded' => $uploaded, 'downloaded' => $downloaded];
+    }
+
+    /**
+     * Delete a row from a target PDO connection.
+     */
+    protected static function deleteRow(PDO $pdo, string $table, string $k, ?string $key, array $composite, array $row): void
+    {
+        try {
+            if ($key && isset($row[$key])) {
+                $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `{$key}` = ?");
+                $stmt->execute([$row[$key]]);
+            } elseif (!empty($composite)) {
+                $clauses = [];
+                $params = [];
+                foreach ($composite as $c) {
+                    $clauses[] = "`{$c}` = ?";
+                    $params[] = $row[$c] ?? '';
+                }
+                $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE " . implode(' AND ', $clauses));
+                $stmt->execute($params);
+            } elseif (isset($row['id'])) {
+                $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
+                $stmt->execute([$row['id']]);
+            }
+        } catch (\Throwable $e) {}
     }
 
     /**

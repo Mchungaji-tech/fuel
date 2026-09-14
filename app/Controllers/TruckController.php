@@ -141,6 +141,7 @@ class TruckController
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
             try {
                 $stmt->execute([$plate, $model, $capacity, $compartments, $ownershipType, $ownerName, $commissionRate, $status, date('Y-m-d H:i:s')]);
+                \App\Services\DatabaseSyncService::clearDeletion('trucks', $plate);
                 flash('truck_success', "Truck {$plate} registered ({$ownershipType}) with capacity " . number_format($capacity) . " L.");
             } catch (\Exception $e) {
                 flash('truck_error', "Truck {$plate} already exists or error occurred.");
@@ -203,8 +204,13 @@ class TruckController
     public function delete(string $id): void
     {
         $pdo = Database::connection();
+        $plate = $pdo->query('SELECT plate_number FROM trucks WHERE id = ' . (int)$id)->fetchColumn();
         $stmt = $pdo->prepare('DELETE FROM trucks WHERE id = ?');
         $stmt->execute([$id]);
+
+        if ($plate) {
+            \App\Services\DatabaseSyncService::recordDeletion('trucks', $plate);
+        }
 
         flash('truck_success', 'Truck removed from roster.');
         redirect('/trucks');

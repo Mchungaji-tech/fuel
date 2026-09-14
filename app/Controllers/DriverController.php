@@ -139,6 +139,7 @@ class DriverController
             $stmt = $pdo->prepare('INSERT INTO drivers (name, phone, license_number, license_class, truck, status) VALUES (?, ?, ?, ?, ?, ?)');
             $stmt->execute([$name, $phone, $license, $class, 'Unassigned (Assigned at dispatch)', $status]);
 
+            \App\Services\DatabaseSyncService::clearDeletion('drivers', $name);
             flash('driver_success', "Driver {$name} registered successfully.");
         } else {
             flash('driver_error', 'Driver name is required.');
@@ -259,8 +260,18 @@ class DriverController
     public function deleteSalary(string $id): void
     {
         $pdo = Database::connection();
+        $sal = $pdo->query('SELECT driver_name, period_reference, amount FROM driver_salaries WHERE id = ' . (int)$id)->fetch(PDO::FETCH_ASSOC);
         $stmt = $pdo->prepare('DELETE FROM driver_salaries WHERE id = ?');
         $stmt->execute([(int)$id]);
+
+        if ($sal) {
+            $comp = implode('::', [
+                $sal['driver_name'] ?? '',
+                $sal['period_reference'] ?? '',
+                (string)(float)($sal['amount'] ?? 0)
+            ]);
+            \App\Services\DatabaseSyncService::recordDeletion('driver_salaries', $comp);
+        }
 
         log_audit('Payroll', 'DELETE_SALARY', "Deleted salary record #{$id}", 1);
         flash('salary_success', 'Salary record removed successfully.');
@@ -291,8 +302,13 @@ class DriverController
     public function delete(string $id): void
     {
         $pdo = Database::connection();
+        $name = $pdo->query('SELECT name FROM drivers WHERE id = ' . (int)$id)->fetchColumn();
         $stmt = $pdo->prepare('DELETE FROM drivers WHERE id = ?');
         $stmt->execute([$id]);
+
+        if ($name) {
+            \App\Services\DatabaseSyncService::recordDeletion('drivers', $name);
+        }
 
         flash('driver_success', 'Driver record removed.');
         redirect('/drivers');

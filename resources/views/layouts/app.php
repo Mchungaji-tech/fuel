@@ -843,6 +843,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></span>
         <span>Expenses</span>
       </a>
+      <a class="nav-item <?= isActiveNav('financial') ?>" href="<?= url('financial') ?>" title="Financial Management">
+        <span class="icon"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 7H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+        <span>Financial Management</span>
+      </a>
     <?php endif; ?>
     <a class="nav-item <?= isActiveNav('customers') ?>" href="<?= url('customers') ?>" title="Customers">
       <span class="icon"><svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg></span>
@@ -925,6 +929,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <a class="nav-item <?= isActiveNav('products') ?>" href="<?= url('products') ?>"><span>Fuel Products</span></a>
       <?php if (can_view_financials()): ?>
         <a class="nav-item <?= isActiveNav('expenses') ?>" href="<?= url('expenses') ?>"><span>Expenses</span></a>
+        <a class="nav-item <?= isActiveNav('financial') ?>" href="<?= url('financial') ?>"><span>Financial Management 💵</span></a>
       <?php endif; ?>
       <a class="nav-item <?= isActiveNav('customers') ?>" href="<?= url('customers') ?>"><span>Customers</span></a>
       <a class="nav-item <?= isActiveNav('custom-tables') ?>" href="<?= url('custom-tables') ?>"><span>Custom Tables 📑</span></a>
