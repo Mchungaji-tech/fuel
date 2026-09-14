@@ -27,8 +27,9 @@ return [
     ['POST', '/register', [AuthController::class, 'register']],
     ['POST', '/logout', [AuthController::class, 'logout']],
 
-    // Currency Switcher
+    // Currency Switcher & Rate Settings
     ['POST', '/currency/toggle', [CurrencyController::class, 'toggle']],
+    ['POST', '/currency/set-rate', [CurrencyController::class, 'setRate']],
 
     // Dashboard
     ['GET', '/', [DashboardController::class, 'index']],
@@ -43,6 +44,10 @@ return [
     ['POST', '/fleet/diesel/update/{id}', [FleetController::class, 'updateDieselLog']],
     ['GET', '/fleet/diesel/list/{id}', [FleetController::class, 'getDieselLogs']],
     ['POST', '/fleet/diesel/delete/{id}', [FleetController::class, 'deleteDieselLog']],
+    ['GET', '/fleet/mileage-rates', [FleetController::class, 'getMileageRates']],
+    ['POST', '/fleet/mileage-rates/store', [FleetController::class, 'storeMileageRate']],
+    ['POST', '/fleet/mileage-rates/update/{id}', [FleetController::class, 'updateMileageRate']],
+    ['POST', '/fleet/mileage-rates/delete/{id}', [FleetController::class, 'deleteMileageRate']],
     ['GET', '/fleet/bol/{id}', [FleetController::class, 'bol']],
     ['GET', '/fleet/export', [FleetController::class, 'export']],
     ['POST', '/fleet/import', [FleetController::class, 'import']],

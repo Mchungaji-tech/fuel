@@ -61,7 +61,6 @@
                     <tr>
                         <th>Truck Plate</th>
                         <th>Ownership</th>
-                        <th>Capacity</th>
                         <th>Trips</th>
                         <th>Litres Hauled</th>
                         <th>Transport Billed</th>
@@ -74,7 +73,7 @@
                 <tbody>
                     <?php if (empty($truckRows)): ?>
                         <tr>
-                            <td colspan="10" style="text-align:center;padding:32px;color:var(--text-3);">No truck records found.</td>
+                            <td colspan="9" style="text-align:center;padding:32px;color:var(--text-3);">No truck records found.</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($truckRows as $tr): ?>
@@ -103,7 +102,6 @@
                                         </span>
                                     <?php endif; ?>
                                 </td>
-                                <td><b><?= number_format($tr['capacity_litres']) ?> L</b></td>
                                 <td style="font-weight:700;"><?= $tr['trips_count'] ?></td>
                                 <td style="font-weight:800;color:var(--brand);"><?= number_format($tr['total_litres']) ?> L</td>
                                 <td style="font-weight:700;"><?= format_money($tr['total_transport']) ?></td>

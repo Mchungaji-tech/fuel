@@ -379,6 +379,20 @@ function current_currency(): string
  */
 function exchange_rate(): float
 {
+    if (isset($_SESSION['exchange_rate']) && (float)$_SESSION['exchange_rate'] > 0) {
+        return (float)$_SESSION['exchange_rate'];
+    }
+
+    try {
+        $pdo = \App\Core\Database::connection();
+        $rate = $pdo->query("SELECT setting_value FROM settings WHERE setting_key = 'usd_kes_exchange_rate'")->fetchColumn();
+        if ($rate !== false && $rate !== null && (float)$rate > 0) {
+            $fRate = (float)$rate;
+            $_SESSION['exchange_rate'] = $fRate;
+            return $fRate;
+        }
+    } catch (\Throwable $e) {}
+
     return 130.0;
 }
 

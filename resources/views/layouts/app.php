@@ -964,11 +964,14 @@ document.addEventListener('DOMContentLoaded', function() {
       <form method="POST" action="<?= url('currency/toggle') ?>" style="margin:0;display:inline-flex;align-items:center;gap:8px;">
         <?= csrf_field() ?>
         <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? '/dashboard') ?>">
-        <div class="currency-toggle" title="Click to toggle currency between USD and KES (1 USD = 130 KES)">
+        <div class="currency-toggle" title="Click to toggle currency between USD and KES (1 USD = <?= exchange_rate() ?> KES)">
           <button type="submit" class="currency-opt <?= $activeCurrency === 'USD' ? 'active' : '' ?>"><b>$ USD</b></button>
           <button type="submit" class="currency-opt <?= $activeCurrency === 'KES' ? 'active' : '' ?>"><b>KES</b></button>
         </div>
-        <span class="rate-badge">1$ = 130 KES</span>
+        <button type="button" class="rate-badge" onclick="openExchangeRateModal()" style="cursor:pointer;background:var(--card-2);border:1px solid var(--border-2);padding:4px 8px;border-radius:6px;font-weight:700;font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:4px;" title="Click to adjust currency exchange rate">
+          <span>1$ = <?= exchange_rate() ?> KES</span>
+          <span style="font-size:11px;color:var(--brand);">✏️</span>
+        </button>
       </form>
 
       <!-- Regional FX & Diesel Converter Drawer Trigger -->
@@ -1519,6 +1522,56 @@ function copyQcResult() {
     </div>
   </div>
 </div>
+
+<!-- Exchange Rate Setting Modal -->
+<div class="modal-backdrop" id="exchangeRateModal">
+  <div class="modal-card" style="max-width:440px;">
+    <div class="modal-head">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:24px;background:var(--brand-soft);padding:6px;border-radius:10px;">💱</span>
+        <div>
+          <h2 style="margin:0;font-size:18px;">Set Exchange Rate</h2>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Base rate for USD ($) to Kenya Shillings (KSh)</div>
+        </div>
+      </div>
+      <button type="button" class="close-modal" onclick="document.getElementById('exchangeRateModal').classList.remove('active')">✕</button>
+    </div>
+    <form method="POST" action="<?= url('currency/set-rate') ?>">
+      <?= csrf_field() ?>
+      <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? '/dashboard') ?>">
+      <div style="padding:16px 20px;">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:700;color:var(--text-2);display:block;margin-bottom:6px;">Exchange Rate: 1 USD ($) = ? KES (KSh) *</label>
+          <div style="position:relative;">
+            <input type="number" step="0.01" min="1" name="rate" id="navExchangeRateInput" value="<?= exchange_rate() ?>" required style="width:100%;font-size:18px;font-weight:900;padding:10px 12px;border:2px solid var(--brand);border-radius:10px;color:var(--brand);">
+            <span style="position:absolute;right:14px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text-3);">KES / $</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+          <span style="font-size:11.5px;color:var(--text-3);font-weight:700;">Presets:</span>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('navExchangeRateInput').value='128.00'">128.00</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('navExchangeRateInput').value='129.50'">129.50</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('navExchangeRateInput').value='130.00'">130.00</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('navExchangeRateInput').value='131.00'">131.00</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('navExchangeRateInput').value='132.50'">132.50</button>
+        </div>
+        <div style="background:var(--card-2);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text-2);margin-bottom:14px;">
+          ℹ️ Updating this rate immediately recalculates currency conversions, product unit rates, fuel pump conversions, and financial summaries across the entire system.
+        </div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);background:var(--card-2);display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('exchangeRateModal').classList.remove('active')">Cancel</button>
+        <button type="submit" class="btn btn-brand btn-sm" style="font-weight:800;">✓ Save Exchange Rate</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+window.openExchangeRateModal = function() {
+  document.getElementById('exchangeRateModal')?.classList.add('active');
+};
+</script>
 </body>
 </html>
 

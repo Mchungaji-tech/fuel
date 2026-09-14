@@ -1,5 +1,5 @@
 <?php
-    $content = function () use ($title, $dispatches, $aggregates, $trucks, $drivers, $products, $search, $statusFilter, $availableYears, $customers) {
+    $content = function () use ($title, $dispatches, $aggregates, $trucks, $drivers, $products, $search, $statusFilter, $availableYears, $customers, $mileageRates) {
         $canViewFin = can_view_financials();
 ?>
 <section class="view active" id="view-fleet">
@@ -13,6 +13,9 @@
             <a href="<?= url('reports/trucks') ?>" class="btn btn-ghost" title="Detailed Truck Performance Report">📊 Truck Reports</a>
             <button class="btn btn-ghost" onclick="document.getElementById('columnManagerModal').classList.add('active')" title="Customize column titles, show/hide columns, add custom columns, or reset table">
                 ⚙️ Columns & Schema
+            </button>
+            <button type="button" class="btn btn-ghost" onclick="openMileageRatesModal()" style="font-weight:700;" title="Manage corridor destination mileage rates & driver allowances">
+                🛣️ Mileage Rates
             </button>
             <button class="btn btn-ghost" onclick="document.getElementById('importModal').classList.add('active')">📥 Import Spreadsheet</button>
             <div style="display:inline-flex;border-radius:10px;overflow:hidden;border:1.5px solid var(--border-2);box-shadow:var(--shadow-sm);">
@@ -37,27 +40,27 @@
     <div class="kpis" style="margin-top:20px;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
         <div class="kpi">
             <div class="lbl">Expected Transport Billed</div>
-            <div class="val" style="color:var(--brand);"><?= $canViewFin ? format_money($aggregates['total_transport'] ?? 0) : '[Restricted]' ?></div>
+            <div class="val" id="statTotalTransport" style="color:var(--brand);"><?= $canViewFin ? format_money($aggregates['total_transport'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Across <?= (int) ($aggregates['total_count'] ?? 0) ?> dispatches</div>
         </div>
         <div class="kpi" style="border:1.5px solid rgba(245,158,11,0.5);background:rgba(245,158,11,0.04);">
             <div class="lbl" style="color:var(--amber);font-weight:800;">⛽ Diesel Fuel (Owner Expense)</div>
-            <div class="val" style="color:var(--amber);"><?= $canViewFin ? format_money($aggregates['total_diesel'] ?? 0) : '[Restricted]' ?></div>
+            <div class="val" id="statTotalDiesel" style="color:var(--amber);"><?= $canViewFin ? format_money($aggregates['total_diesel'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:12.5px;color:var(--amber);margin-top:4px;font-weight:700;">Owner paid (Deducted from profit)</div>
         </div>
         <div class="kpi">
             <div class="lbl">Mileage & En-Route Costs</div>
-            <div class="val" style="color:var(--amber);"><?= $canViewFin ? format_money($aggregates['total_mileage'] ?? 0) : '[Restricted]' ?></div>
+            <div class="val" id="statTotalMileage" style="color:var(--amber);"><?= $canViewFin ? format_money($aggregates['total_mileage'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Driver allowances & road tolls</div>
         </div>
         <div class="kpi">
             <div class="lbl">Breakdown / Road Fixes</div>
-            <div class="val" style="color:var(--red);"><?= $canViewFin ? format_money($aggregates['total_extra'] ?? 0) : '[Restricted]' ?></div>
+            <div class="val" id="statTotalExtra" style="color:var(--red);"><?= $canViewFin ? format_money($aggregates['total_extra'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:13px;color:var(--text-3);margin-top:4px;">En-route repairs & punctures</div>
         </div>
         <div class="kpi" style="border:2px solid var(--green);background:linear-gradient(135deg,var(--card),var(--green-soft));">
             <div class="lbl" style="color:var(--green);font-weight:800;">Net Balance (Profit / Commission)</div>
-            <div class="val" style="color:var(--green);font-size:28px;"><?= $canViewFin ? format_money($aggregates['total_balance'] ?? 0) : '[Restricted]' ?></div>
+            <div class="val" id="statTotalBalance" style="color:var(--green);font-size:28px;"><?= $canViewFin ? format_money($aggregates['total_balance'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:12.5px;color:var(--green);font-weight:700;margin-top:4px;">Revenue - (Diesel + Mileage + Repairs)</div>
         </div>
     </div>
@@ -127,10 +130,9 @@
                     <tr>
                         <th style="min-width:95px;" title="Date of Loading"><?= htmlspecialchars($metaMap['dispatch_date']['display_label'] ?? 'DOL') ?></th>
                         <th><?= htmlspecialchars($metaMap['truck']['display_label'] ?? 'Truck') ?></th>
-                        <th style="min-width:95px;" title="Tanker Capacity from Truck Management"><?= htmlspecialchars($metaMap['truck_capacity']['display_label'] ?? 'Tank Capacity') ?></th>
                         <th><?= htmlspecialchars($metaMap['driver']['display_label'] ?? 'Driver') ?></th>
                         <th><?= htmlspecialchars($metaMap['status']['display_label'] ?? 'Status') ?></th>
-                        <th><?= htmlspecialchars($metaMap['loaded_litres']['display_label'] ?? 'Actual litre (L20)') ?></th>
+                        <th title="Actual volume carried in litres at 20°C (DOL Volume)"><?= htmlspecialchars($metaMap['loaded_litres']['display_label'] ?? 'Actual @ L20') ?></th>
                         <th style="min-width:90px;text-align:center;"><?= htmlspecialchars($metaMap['shortage_litres']['display_label'] ?? 'Shortage (L)') ?></th>
                         <th><?= htmlspecialchars($metaMap['destination']['display_label'] ?? 'Destination & Client') ?></th>
                         <th><?= htmlspecialchars($metaMap['product']['display_label'] ?? 'Product') ?></th>
@@ -260,15 +262,7 @@
                                     </div>
                                 </td>
 
-                                <!-- Tank Capacity (Auto-reflected from Truck Management) -->
-                                <?php
-                                    $truckCap = !empty($d['truck_capacity']) ? (int)$d['truck_capacity'] : (int)($truckCapMap[$d['truck']] ?? 0);
-                                ?>
-                                <td class="cell-capacity" style="white-space:nowrap;">
-                                    <span class="view-val-capacity" style="font-weight:700;color:var(--text);font-size:13.5px;">
-                                        <?= $truckCap > 0 ? number_format($truckCap) . ' L' : '—' ?>
-                                    </span>
-                                </td>
+
 
                                 <!-- Driver (Dedicated Column) -->
                                 <td class="cell-driver" style="font-weight:600;white-space:nowrap;">
@@ -663,12 +657,9 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Truck Tanker Capacity (Litres) *</label>
-                        <input type="number" name="truck_capacity" id="dispatchTruckCapacity" placeholder="e.g. 28000" required oninput="onTruckCapacityInput(this.value)">
-                    </div>
+                    <input type="hidden" name="truck_capacity" id="dispatchTruckCapacity" value="0">
 
-                    <div class="form-group">
+                    <div class="form-group" style="grid-column:1/-1;">
                         <label>Loading Depot (Origin) *</label>
                         <input type="text" name="from_location" id="wizardFromLocation" value="Eldoret" required placeholder="e.g. Eldoret Depot / Kisumu">
                     </div>
@@ -700,58 +691,62 @@
             <!-- STEP 2: Fuel Cargo & Consignee Customer -->
             <div class="wizard-step-panel" id="wizardStep2" style="display:none;">
                 <div style="background:var(--card-2);border-left:3px solid var(--green);padding:10px 14px;border-radius:8px;margin-bottom:16px;">
-                    <b style="font-size:13.5px;color:var(--text);">Step 2: Fuel Cargo & Consignee Customer</b>
-                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Cargo specifications, loaded volume, transport unit rate, and customer destination.</div>
+                    <b style="font-size:13.5px;color:var(--text);">Step 2: Cargo Hauled, Actual @ L20 & Agreed Transport Payment</b>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;">Cargo type, actual litres carried (@ L20), agreed transportation payment in USD ($), and destination.</div>
                 </div>
 
                 <div class="form-grid">
                     <div class="form-group">
-                        <label>Product (Kenya Fuel Specs) *</label>
-                        <select name="product" id="dispatchProductSelect" required onchange="onProductSelected(this)">
+                        <label>Product Carried (Cargo Type) *</label>
+                        <select name="product" id="dispatchProductSelect" required>
                             <?php foreach ($products as $pr): ?>
-                                <?php 
-                                    $rawPrPrice = (float)($pr['unit_price'] ?? 0);
-                                    $displayPrPrice = convert_currency($rawPrPrice);
-                                ?>
-                                <option value="<?= htmlspecialchars($pr['code']) ?>" data-price="<?= number_format($displayPrPrice, 2, '.', '') ?>">
-                                    <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?> (<?= format_money($rawPrPrice) ?>/L)
+                                <option value="<?= htmlspecialchars($pr['code']) ?>">
+                                    <?= htmlspecialchars($pr['code']) ?> — <?= htmlspecialchars($pr['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Fuel product being transported</span>
                     </div>
 
                     <div class="form-group">
-                        <label>Product Unit Price (<?= app_currency_symbol() ?>/L) *</label>
-                        <?php 
-                            $firstPrPrice = !empty($products) ? (float)($products[0]['unit_price'] ?? 0) : 0.08;
-                            $initPrPrice = convert_currency($firstPrPrice);
-                        ?>
-                        <input type="number" step="0.01" name="unit_price" id="dispatchUnitPrice" value="<?= number_format($initPrPrice, 2, '.', '') ?>" placeholder="0.00" required oninput="calcExpectedTransport()">
-                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Transport rate billed to customer per litre</span>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Litres Loaded (DOL Volume L20) *</label>
+                        <label>Actual Litres Carried (@ L20) *</label>
                         <input type="number" name="loaded_litres" id="dispatchLoadedLitres" placeholder="Volume loaded into tanker" required oninput="calcExpectedTransport()">
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Litres loaded into tanker (Actual @ L20)</span>
                     </div>
 
                     <div class="form-group">
-                        <label>Expected Transport Billed [<?= app_currency_symbol() ?>] (Auto-Calculated) *</label>
-                        <input type="number" step="0.01" name="transport_amount" id="dispTransport" placeholder="0.00" readonly style="background:var(--card-2);font-weight:800;color:var(--brand);cursor:not-allowed;" required>
-                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">= Litres Loaded × Unit Price</span>
+                        <label>Agreed Transport Payment [USD $] *</label>
+                        <div style="position:relative;">
+                            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--brand);font-size:14px;">$</span>
+                            <input type="number" step="0.01" name="transport_amount_usd" id="dispatchTransportUsd" placeholder="e.g. 2400.00" required oninput="onTransportUsdInput(this.value)" style="width:100%;padding:9px 10px 9px 28px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;font-size:15px;color:var(--brand);background:var(--card);">
+                        </div>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Agreed haulier payment for this trip</span>
                     </div>
+
+                    <div class="form-group">
+                        <label>Agreed Transport in KSh (KES)</label>
+                        <div style="position:relative;">
+                            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:12px;">KES</span>
+                            <input type="number" step="1" id="dispatchTransportKes" placeholder="0" oninput="onTransportKesInput(this.value)" style="width:100%;padding:9px 10px 9px 44px;border:1.5px solid var(--amber);border-radius:8px;font-weight:700;font-size:15px;color:var(--amber);background:var(--card);">
+                        </div>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Live sync: 1 USD = <?= exchange_rate() ?> KES</span>
+                    </div>
+
+                    <!-- Hidden system fields for database compatibility -->
+                    <input type="hidden" name="transport_amount" id="dispTransport" value="0.00">
+                    <input type="hidden" name="unit_price" id="dispatchUnitPrice" value="0.00">
 
                     <!-- Dynamic Live Expected Transport Display Banner -->
                     <div id="dispTransportLiveCard" style="grid-column:1/-1;background:linear-gradient(135deg, var(--card), var(--brand-soft));border:1.5px solid var(--brand);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px;">
                         <div>
-                            <div style="font-size:11px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Transport Revenue (Gross Billed)</div>
-                            <div id="dispTransportFormulaText" style="font-size:13px;color:var(--text-2);margin-top:2px;">0 Litres × <?= app_currency_symbol() ?> 0.00/L</div>
+                            <div style="font-size:11px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:0.5px;">Agreed Transportation Payment (Trip Revenue)</div>
+                            <div id="dispTransportFormulaText" style="font-size:13px;color:var(--text-2);margin-top:2px;">Fixed agreed transportation haulier fee</div>
                         </div>
                         <div style="text-align:right;">
                             <div id="dispTransportBigDisplay" style="font-size:22px;font-weight:900;color:var(--brand);">
-                                <?= app_currency_symbol() ?> 0.00
+                                $ 0.00
                             </div>
-                            <div id="dispTransportAltDisplay" style="font-size:12px;color:var(--text-3);font-weight:700;"></div>
+                            <div id="dispTransportAltDisplay" style="font-size:12px;color:var(--text-3);font-weight:700;">≈ KES 0.00</div>
                         </div>
                     </div>
 
@@ -762,19 +757,15 @@
 
                     <div class="form-group">
                         <label>Destination Country / City *</label>
-                        <input list="destPresets" name="destination" id="wizardDestination" placeholder="e.g. Uganda (Kampala), DR Congo (Goma)" required>
+                        <input list="destPresets" name="destination" id="wizardDestination" placeholder="e.g. Uganda (Kampala), DR Congo (Goma)" required onchange="onDestinationChanged(this.value)">
                         <datalist id="destPresets">
-                            <option value="Uganda (Kampala)">
-                            <option value="DR Congo (Goma)">
-                            <option value="DR Congo (Lubumbashi)">
-                            <option value="South Sudan (Juba)">
-                            <option value="Sudan (Khartoum / Port Sudan)">
-                            <option value="Rwanda (Kigali)">
-                            <option value="Tanzania (Dar es Salaam)">
-                            <option value="Kenya (Kisumu Depot)">
-                            <option value="Kenya (Eldoret Depot)">
-                            <option value="Kenya (Nairobi Terminal)">
+                            <?php foreach ($mileageRates as $mr): ?>
+                                <option value="<?= htmlspecialchars($mr['destination']) ?>" data-kes="<?= (float)$mr['standard_allowance_kes'] ?>" data-usd="<?= (float)$mr['standard_allowance_usd'] ?>" data-km="<?= (int)$mr['distance_km'] ?>">
+                                    <?= htmlspecialchars($mr['destination']) ?> (<?= number_format($mr['distance_km']) ?> km • KES <?= number_format($mr['standard_allowance_kes']) ?>)
+                                </option>
+                            <?php endforeach; ?>
                         </datalist>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Corridor selection auto-suggests driver mileage allowance in Step 3</span>
                     </div>
 
                     <div class="form-group">
@@ -1086,6 +1077,26 @@
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
+                    <div style="background:var(--card-2);padding:10px 14px;border-radius:10px;border:1.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                        <span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.5px;">💰 Fuel Entry Currency:</span>
+                        <div style="display:flex;gap:14px;align-items:center;">
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--amber);">
+                                <input type="radio" name="dlm_input_currency" value="KES" checked onchange="onDlmInputCurrencyChange('KES')">
+                                <span>🇰🇪 Pay in KSh (KES)</span>
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--text-2);">
+                                <input type="radio" name="dlm_input_currency" value="LOCAL" onchange="onDlmInputCurrencyChange('LOCAL')">
+                                <span id="dlmLocalCurOptionLabel">🇺🇬 Local UGX</span>
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--brand);">
+                                <input type="radio" name="dlm_input_currency" value="USD" onchange="onDlmInputCurrencyChange('USD')">
+                                <span>💵 Direct USD ($)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
                     <label>Fuel Station / Road Location (Optional)</label>
                     <input type="text" name="station_location" id="dlmStationLocation" placeholder="e.g. Total Malaba Border, Shell Jinja Road, Goma Depot Station (or leave blank)">
                 </div>
@@ -1095,9 +1106,20 @@
                     <input type="number" step="0.01" name="litres" id="dlmLitres" placeholder="e.g. 350" required oninput="calcDlmDiesel()">
                 </div>
 
-                <div class="form-group">
-                    <label>Local Pump Price / Litre *</label>
+                <!-- Dual Price Inputs: KES vs Local Price -->
+                <div class="form-group" id="dlmKesPriceGroup">
+                    <label id="dlmKesPriceLabel" style="color:var(--amber);font-weight:800;">🇰🇪 Price / Litre in KSh (KES) *</label>
+                    <div style="position:relative;">
+                        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:11.5px;">KES</span>
+                        <input type="number" step="0.01" id="dlmKesPrice" placeholder="e.g. 185.00" oninput="onDlmKesPriceInput(this.value)" style="width:100%;padding:9px 10px 9px 42px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:14px;color:var(--amber);background:var(--card);">
+                    </div>
+                    <span style="font-size:11px;color:var(--text-3);display:block;margin-top:2px;">Amount paid per litre in Kenya Shillings</span>
+                </div>
+
+                <div class="form-group" id="dlmLocalPriceGroup" style="display:none;">
+                    <label id="dlmLocalPriceLabel">Local Pump Price / Litre *</label>
                     <input type="number" step="0.01" name="local_unit_price" id="dlmLocalPrice" placeholder="Local price per litre" required oninput="calcDlmDiesel()">
+                    <span style="font-size:11px;color:var(--text-3);display:block;margin-top:2px;" id="dlmLocalPriceHint">Price in local currency</span>
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
@@ -1111,19 +1133,23 @@
 
                 <!-- Live Auto-Calculation Box -->
                 <div style="grid-column:1/-1;background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:14px;">
-                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Financial Conversion</div>
+                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Multi-Currency Breakdown</div>
                     
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;margin-top:8px;">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:12px;margin-top:8px;">
                         <div>
-                            <span style="font-size:12px;color:var(--text-2);">Local Pump Total:</span>
+                            <span style="font-size:12px;color:var(--amber);font-weight:700;">🇰🇪 Kenya (KES):</span>
+                            <div id="dlmKesTotalDisplay" style="font-size:16px;font-weight:800;color:var(--amber);margin-top:2px;">KES 0.00</div>
+                        </div>
+                        <div>
+                            <span style="font-size:12px;color:var(--text-2);font-weight:700;" id="dlmLocalTotalLabel">🇺🇬 Local Pump Total:</span>
                             <div id="dlmLocalTotalDisplay" style="font-size:16px;font-weight:800;color:var(--text);margin-top:2px;">UGX 0.00</div>
                         </div>
                         <div>
-                            <span style="font-size:12px;color:var(--text-2);">Standard USD Base:</span>
+                            <span style="font-size:12px;color:var(--brand);font-weight:700;">💵 USD Accounting:</span>
                             <div id="dlmUsdDisplay" style="font-size:16px;font-weight:800;color:var(--brand);margin-top:2px;">$ 0.00</div>
                         </div>
                         <div>
-                            <span style="font-size:12px;color:var(--text-2);">Active Display (<?= current_currency() ?>):</span>
+                            <span style="font-size:12px;color:var(--green);font-weight:700;">Active Display (<?= current_currency() ?>):</span>
                             <div id="dlmSysDisplay" style="font-size:16px;font-weight:900;color:var(--green);margin-top:2px;"><?= app_currency_symbol() ?> 0.00</div>
                         </div>
                     </div>
@@ -1166,6 +1192,108 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Corridor Mileage Rates & Transit Allowances Management Modal -->
+<div class="modal-backdrop" id="mileageRatesModal">
+    <div class="modal-card" style="max-width:860px;">
+        <div class="modal-head">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:24px;background:rgba(79,70,229,0.1);padding:6px;border-radius:10px;">🛣️</span>
+                <div>
+                    <h2 style="margin:0;font-size:19px;">Corridor Mileage Rates & Driver Allowances</h2>
+                    <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">
+                        Manage standard corridor transit allowances (KES & USD) auto-suggested when dispatching trucks.
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="close-modal" onclick="closeMileageRatesModal()">✕</button>
+        </div>
+
+        <div id="mrFeedbackBanner" style="display:none;padding:10px 14px;background:var(--green-soft);border:1px solid var(--green);border-radius:10px;margin-bottom:14px;color:var(--green);font-weight:700;font-size:13px;"></div>
+
+        <!-- Add / Edit Route Rate Card Form -->
+        <div style="background:var(--card-2);border:1.5px solid var(--border-2);border-radius:12px;padding:16px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <b id="mrFormTitle" style="font-size:13.5px;color:var(--text);">➕ Add Corridor Destination Rate</b>
+                <button type="button" id="mrCancelEditBtn" onclick="resetMileageRateForm()" style="display:none;background:transparent;border:0;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;">✕ Cancel Edit</button>
+            </div>
+            <form id="mileageRateForm" onsubmit="return handleMileageRateSubmit(event)">
+                <input type="hidden" id="mrRateId" value="">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+                    <div>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Origin Depot *</label>
+                        <input type="text" id="mrOrigin" value="Eldoret" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Corridor Destination *</label>
+                        <input type="text" id="mrDestination" placeholder="e.g. Uganda (Kampala)" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Distance (km)</label>
+                        <input type="number" id="mrDistanceKm" placeholder="e.g. 350" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;">
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--amber);display:block;margin-bottom:4px;">Standard Allowance (KES) *</label>
+                        <input type="number" step="1" id="mrAllowanceKes" placeholder="e.g. 50000" required oninput="onMrKesInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;color:var(--amber);">
+                    </div>
+                    <div>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--brand);display:block;margin-bottom:4px;">Standard Allowance (USD $) *</label>
+                        <input type="number" step="0.01" id="mrAllowanceUsd" placeholder="0.00" required oninput="onMrUsdInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;color:var(--brand);">
+                    </div>
+                </div>
+                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                    <input type="text" id="mrNotes" placeholder="Optional notes (e.g. Malaba border toll inclusive)" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
+                    <button type="submit" id="mrSubmitBtn" class="btn btn-brand btn-sm" style="font-weight:800;padding:8px 18px;">
+                        💾 Save Corridor Rate
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Corridor Routes Table -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <b style="font-size:13.5px;color:var(--text);">Active Corridor Route Presets</b>
+            <span id="mrTableCountBadge" style="font-size:12px;color:var(--text-3);font-weight:700;"><?= count($mileageRates) ?> routes</span>
+        </div>
+        <div class="table-responsive" style="max-height:300px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;">
+            <table style="width:100%;font-size:13px;margin:0;">
+                <thead>
+                    <tr>
+                        <th style="padding:9px 12px;">Origin ➔ Destination</th>
+                        <th style="padding:9px 12px;text-align:right;">Distance</th>
+                        <th style="padding:9px 12px;text-align:right;">Allowance (KES)</th>
+                        <th style="padding:9px 12px;text-align:right;">Allowance (USD)</th>
+                        <th style="padding:9px 12px;">Notes</th>
+                        <th style="padding:9px 12px;text-align:center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="mrTableBody">
+                    <?php if (empty($mileageRates)): ?>
+                        <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No corridor rates configured yet.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($mileageRates as $mr): ?>
+                            <tr id="mr-row-<?= $mr['id'] ?>">
+                                <td style="padding:9px 12px;font-weight:700;">
+                                    <span><?= htmlspecialchars($mr['origin']) ?> ➔ <span style="color:var(--brand);"><?= htmlspecialchars($mr['destination']) ?></span></span>
+                                </td>
+                                <td style="padding:9px 12px;text-align:right;color:var(--text-2);"><?= $mr['distance_km'] ? number_format($mr['distance_km']) . ' km' : '—' ?></td>
+                                <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--amber);">KES <?= number_format($mr['standard_allowance_kes']) ?></td>
+                                <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--brand);">$ <?= number_format($mr['standard_allowance_usd'], 2) ?></td>
+                                <td style="padding:9px 12px;color:var(--text-3);font-size:12px;"><?= htmlspecialchars($mr['notes'] ?? '—') ?></td>
+                                <td style="padding:9px 12px;text-align:center;">
+                                    <div style="display:inline-flex;gap:4px;">
+                                        <button type="button" class="btn btn-ghost btn-xs" onclick='editMileageRate(<?= json_encode($mr) ?>)' title="Edit Rate">✏️</button>
+                                        <button type="button" class="btn btn-ghost btn-xs" onclick="deleteMileageRate(<?= $mr['id'] ?>)" style="color:var(--red);" title="Delete Rate">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -1506,10 +1634,6 @@
                         <span style="color:var(--text-2);font-size:13px;">Ownership:</span>
                         <span id="vdmOwnership" style="font-size:12px;font-weight:700;">—</span>
                     </div>
-                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-                        <span style="color:var(--text-2);font-size:13px;">Tanker Capacity:</span>
-                        <b id="vdmCapacity" style="color:var(--text);">— L</b>
-                    </div>
                     <div style="display:flex;justify-content:space-between;">
                         <span style="color:var(--text-2);font-size:13px;">Assigned Driver:</span>
                         <b id="vdmDriver" style="color:var(--brand);">—</b>
@@ -1697,6 +1821,13 @@ window.openProceduralDispatchModal = function() {
     const fromLoc = document.getElementById('wizardFromLocation');
     if (fromLoc) fromLoc.value = 'Eldoret';
 
+    // Reset transport payment inputs
+    const trUsd = document.getElementById('dispatchTransportUsd');
+    if (trUsd) trUsd.value = '';
+    const trKes = document.getElementById('dispatchTransportKes');
+    if (trKes) trKes.value = '';
+    syncTransportPayment(0, 0);
+
     // Reset mileage inputs in dual KES/USD
     const milKesEl = document.getElementById('dispMileageKes');
     if (milKesEl) milKesEl.value = '';
@@ -1796,12 +1927,6 @@ function validateWizardStep(step) {
             truck?.focus();
             return false;
         }
-        const cap = document.getElementById('dispatchTruckCapacity');
-        if (!cap || Number(cap.value) <= 0) {
-            alert('Please enter a valid Truck Tanker Capacity in litres.');
-            cap?.focus();
-            return false;
-        }
         const origin = document.getElementById('wizardFromLocation');
         if (!origin || !origin.value.trim()) {
             alert('Please specify the Loading Depot / Origin.');
@@ -1829,16 +1954,16 @@ function validateWizardStep(step) {
             pr?.focus();
             return false;
         }
-        const unitPrice = document.getElementById('dispatchUnitPrice');
-        if (!unitPrice || Number(unitPrice.value) <= 0) {
-            alert('Please specify the Product Unit Price billed to customer per litre.');
-            unitPrice?.focus();
-            return false;
-        }
         const loaded = document.getElementById('dispatchLoadedLitres');
         if (!loaded || Number(loaded.value) <= 0) {
-            alert('Please enter actual Loaded Litres (DOL volume).');
+            alert('Please enter actual Loaded Litres carried (@ L20).');
             loaded?.focus();
+            return false;
+        }
+        const transportUsd = document.getElementById('dispatchTransportUsd');
+        if (!transportUsd || Number(transportUsd.value) <= 0) {
+            alert('Please enter the Agreed Transport Payment in USD ($).');
+            transportUsd?.focus();
             return false;
         }
         const dest = document.getElementById('wizardDestination');
@@ -2021,7 +2146,7 @@ function renderWizardReview() {
     if (revClient) revClient.textContent = 'Consignee: ' + client;
 
     const revCargo = document.getElementById('wzRevCargo');
-    if (revCargo) revCargo.textContent = product + ' • ' + loaded.toLocaleString() + ' L';
+    if (revCargo) revCargo.textContent = product + ' • ' + loaded.toLocaleString() + ' L (Actual @ L20)';
     const revDate = document.getElementById('wzRevDate');
     if (revDate) revDate.textContent = 'Loading: ' + date;
 
@@ -2118,17 +2243,56 @@ window.onDlmDispatchChanged = function(dispatchId) {
     }
 };
 
+let dlmInputCurrency = 'KES';
+
+window.onDlmInputCurrencyChange = function(mode) {
+    dlmInputCurrency = mode;
+    const kesGroup = document.getElementById('dlmKesPriceGroup');
+    const localGroup = document.getElementById('dlmLocalPriceGroup');
+    const localPriceLabel = document.getElementById('dlmLocalPriceLabel');
+    const sel = document.getElementById('dlmCountrySelect');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const curCode = opt ? opt.value : 'UGX';
+
+    if (mode === 'KES') {
+        if (kesGroup) kesGroup.style.display = 'block';
+        if (localGroup) localGroup.style.display = 'none';
+    } else if (mode === 'LOCAL') {
+        if (kesGroup) kesGroup.style.display = 'none';
+        if (localGroup) localGroup.style.display = 'block';
+        if (localPriceLabel) localPriceLabel.textContent = `Local Price / Litre (${curCode}) *`;
+    } else if (mode === 'USD') {
+        if (kesGroup) kesGroup.style.display = 'none';
+        if (localGroup) localGroup.style.display = 'block';
+        if (localPriceLabel) localPriceLabel.textContent = `Price / Litre in USD ($) *`;
+    }
+    calcDlmDiesel();
+};
+
+window.onDlmKesPriceInput = function(kesPriceVal) {
+    calcDlmDiesel();
+};
+
 window.onDlmCountryChange = function() {
     const sel = document.getElementById('dlmCountrySelect');
     if (!sel) return;
     const opt = sel.options[sel.selectedIndex];
     const rate = opt.dataset.rate || '1.0';
     const country = opt.dataset.country || 'Uganda';
+    const curCode = opt.value;
 
     const cName = document.getElementById('dlmCountryName');
     if (cName) cName.value = country;
     const exRate = document.getElementById('dlmExchangeRate');
     if (exRate) exRate.value = rate;
+
+    const localOptLbl = document.getElementById('dlmLocalCurOptionLabel');
+    if (localOptLbl) localOptLbl.textContent = `In ${country} (${curCode})`;
+
+    const localPriceLabel = document.getElementById('dlmLocalPriceLabel');
+    if (localPriceLabel && dlmInputCurrency === 'LOCAL') {
+        localPriceLabel.textContent = `Local Price / Litre (${curCode}) *`;
+    }
 
     calcDlmDiesel();
 };
@@ -2145,21 +2309,51 @@ window.resetDlmRate = function() {
 
 window.calcDlmDiesel = function() {
     const litres = parseFloat(document.getElementById('dlmLitres')?.value) || 0;
-    const localPrice = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
-    const exRate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || 1;
-    const currCode = document.getElementById('dlmCountrySelect')?.value || 'UGX';
+    const sel = document.getElementById('dlmCountrySelect');
+    const localExRate = parseFloat(document.getElementById('dlmExchangeRate')?.value) || 1; // local units per 1 USD
+    const currCode = sel?.value || 'UGX';
 
-    const localTotal = litres * localPrice;
-    const usdCost = exRate > 0 ? (localTotal / exRate) : 0;
+    let usdCost = 0;
+    let kesTotal = 0;
+    let localTotal = 0;
+    let localUnitPrice = 0;
+
+    if (dlmInputCurrency === 'KES') {
+        const kesPrice = parseFloat(document.getElementById('dlmKesPrice')?.value) || 0;
+        kesTotal = litres * kesPrice;
+        usdCost = SYS_EX_RATE > 0 ? (kesTotal / SYS_EX_RATE) : 0;
+        localTotal = usdCost * localExRate;
+        localUnitPrice = litres > 0 ? (localTotal / litres) : 0;
+        const localPriceInput = document.getElementById('dlmLocalPrice');
+        if (localPriceInput) localPriceInput.value = localUnitPrice > 0 ? localUnitPrice.toFixed(2) : '';
+    } else if (dlmInputCurrency === 'USD') {
+        const usdPrice = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
+        usdCost = litres * usdPrice;
+        kesTotal = usdCost * SYS_EX_RATE;
+        localTotal = usdCost * localExRate;
+        localUnitPrice = litres > 0 ? (localTotal / litres) : 0;
+    } else { // LOCAL
+        localUnitPrice = parseFloat(document.getElementById('dlmLocalPrice')?.value) || 0;
+        localTotal = litres * localUnitPrice;
+        usdCost = localExRate > 0 ? (localTotal / localExRate) : 0;
+        kesTotal = usdCost * SYS_EX_RATE;
+        const kesPriceInput = document.getElementById('dlmKesPrice');
+        if (kesPriceInput && litres > 0) kesPriceInput.value = (kesTotal / litres).toFixed(2);
+    }
+
     const sysCost = toSystemCurrency(usdCost);
 
-    const locEl = document.getElementById('dlmLocalTotalDisplay');
-    const usdEl = document.getElementById('dlmUsdDisplay');
-    const sysEl = document.getElementById('dlmSysDisplay');
+    const kesDisp = document.getElementById('dlmKesTotalDisplay');
+    const locDisp = document.getElementById('dlmLocalTotalDisplay');
+    const locLbl = document.getElementById('dlmLocalTotalLabel');
+    const usdDisp = document.getElementById('dlmUsdDisplay');
+    const sysDisp = document.getElementById('dlmSysDisplay');
 
-    if (locEl) locEl.textContent = currCode + ' ' + localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    if (usdEl) usdEl.textContent = '$ ' + usdCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    if (sysEl) sysEl.textContent = formatSystemMoney(sysCost);
+    if (kesDisp) kesDisp.textContent = 'KES ' + kesTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (locLbl) locLbl.textContent = `${currCode} Pump Total:`;
+    if (locDisp) locDisp.textContent = `${currCode} ${localTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    if (usdDisp) usdDisp.textContent = '$ ' + usdCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (sysDisp) sysDisp.textContent = formatSystemMoney(sysCost);
 };
 
 window.editDieselLogAjax = function(s) {
@@ -2278,10 +2472,10 @@ window.handleDieselLogSubmit = async function(e) {
             cancelDieselLogEdit(false);
             loadDispatchFuelHistory(dispatchId);
 
-            if (json.data && json.data.totals) {
-                updateFleetRowTotals(dispatchId, json.data.totals);
-            } else if (json.totals) {
-                updateFleetRowTotals(dispatchId, json.totals);
+            const gAggs = json.global_aggregates || (json.data && json.data.global_aggregates);
+            const totals = (json.data && json.data.totals) || json.totals;
+            if (totals) {
+                updateFleetRowTotals(dispatchId, totals, gAggs);
             }
 
             const fb = document.getElementById('dlmFeedbackBanner');
@@ -2380,10 +2574,10 @@ window.deleteDieselLogAjax = async function(logId, dispatchId) {
         const json = await res.json();
         if (json.success) {
             loadDispatchFuelHistory(dispatchId);
-            if (json.data && json.data.totals) {
-                updateFleetRowTotals(dispatchId, json.data.totals);
-            } else if (json.totals) {
-                updateFleetRowTotals(dispatchId, json.totals);
+            const gAggs = json.global_aggregates || (json.data && json.data.global_aggregates);
+            const totals = (json.data && json.data.totals) || json.totals;
+            if (totals) {
+                updateFleetRowTotals(dispatchId, totals, gAggs);
             }
         } else {
             alert('Could not delete fuel stop: ' + (json.error || 'Server error'));
@@ -2394,7 +2588,38 @@ window.deleteDieselLogAjax = async function(logId, dispatchId) {
     }
 };
 
-window.updateFleetRowTotals = function(dispatchId, totals) {
+window.refreshFleetStatCards = function(aggs) {
+    if (!aggs) return;
+    const canView = <?= $canViewFin ? 'true' : 'false' ?>;
+    if (!canView) return;
+
+    const elTrans = document.getElementById('statTotalTransport');
+    const elDiesel = document.getElementById('statTotalDiesel');
+    const elMileage = document.getElementById('statTotalMileage');
+    const elExtra = document.getElementById('statTotalExtra');
+    const elBal = document.getElementById('statTotalBalance');
+
+    if (elTrans && aggs.total_transport !== undefined) {
+        elTrans.textContent = formatSystemMoney(toSystemCurrency(aggs.total_transport));
+    }
+    if (elDiesel && aggs.total_diesel !== undefined) {
+        elDiesel.textContent = formatSystemMoney(toSystemCurrency(aggs.total_diesel));
+    }
+    if (elMileage && aggs.total_mileage !== undefined) {
+        elMileage.textContent = formatSystemMoney(toSystemCurrency(aggs.total_mileage));
+    }
+    if (elExtra && aggs.total_extra !== undefined) {
+        elExtra.textContent = formatSystemMoney(toSystemCurrency(aggs.total_extra));
+    }
+    if (elBal && aggs.total_balance !== undefined) {
+        elBal.textContent = formatSystemMoney(toSystemCurrency(aggs.total_balance));
+    }
+};
+
+window.updateFleetRowTotals = function(dispatchId, totals, globalAggregates = null) {
+    if (globalAggregates) {
+        refreshFleetStatCards(globalAggregates);
+    }
     if (window.FLEET_ROWS_MAP && window.FLEET_ROWS_MAP[dispatchId]) {
         const d = window.FLEET_ROWS_MAP[dispatchId];
         d.diesel = (totals.diesel !== undefined) ? totals.diesel : (totals.diesel_raw ?? 0);
@@ -2780,64 +3005,263 @@ function onTruckSelected() {
 }
 window.onTruckSelected = onTruckSelected;
 
-function onProductSelected(sel) {
-    if (!sel || sel.selectedIndex < 0) return;
-    const opt = sel.options[sel.selectedIndex];
-    if (opt && opt.dataset.price) {
-        const upInput = document.getElementById('dispatchUnitPrice');
-        if (upInput) {
-            upInput.value = parseFloat(opt.dataset.price).toFixed(2);
-            calcExpectedTransport();
-        }
-    }
-}
-window.onProductSelected = onProductSelected;
+window.onTransportUsdInput = function(usdVal) {
+    const usd = parseFloat(usdVal) || 0;
+    const kes = usd * SYS_EX_RATE;
+    const kesInput = document.getElementById('dispatchTransportKes');
+    if (kesInput) kesInput.value = kes > 0 ? Math.round(kes) : '';
+    syncTransportPayment(usd, kes);
+};
 
-function calcExpectedTransport() {
-    const loaded = parseFloat(document.getElementById('dispatchLoadedLitres')?.value) || 0;
-    const unitPrice = parseFloat(document.getElementById('dispatchUnitPrice')?.value) || 0;
-    const shortage = Math.max(0, parseFloat(document.getElementById('dispatchShortageLitres')?.value) || 0);
+window.onTransportKesInput = function(kesVal) {
+    const kes = parseFloat(kesVal) || 0;
+    const usd = SYS_EX_RATE > 0 ? (kes / SYS_EX_RATE) : 0;
+    const usdInput = document.getElementById('dispatchTransportUsd');
+    if (usdInput) usdInput.value = usd > 0 ? usd.toFixed(2) : '';
+    syncTransportPayment(usd, kes);
+};
 
-    const transport = loaded * unitPrice;
+function syncTransportPayment(usd, kes) {
     const dispTransport = document.getElementById('dispTransport');
     if (dispTransport) {
-        dispTransport.value = transport > 0 ? transport.toFixed(2) : '0.00';
+        dispTransport.value = IS_KES ? kes.toFixed(2) : usd.toFixed(2);
+    }
+    const loaded = parseFloat(document.getElementById('dispatchLoadedLitres')?.value) || 0;
+    const unitPriceEl = document.getElementById('dispatchUnitPrice');
+    if (unitPriceEl) {
+        unitPriceEl.value = (loaded > 0) ? ((IS_KES ? kes : usd) / loaded).toFixed(4) : '0.00';
     }
 
-    const delivered = Math.max(0, loaded - shortage);
-    const finalPayout = delivered * unitPrice;
     const dispFinal = document.getElementById('dispFinalPayout');
     if (dispFinal) {
-        dispFinal.value = finalPayout > 0 ? finalPayout.toFixed(2) : '0.00';
+        dispFinal.value = IS_KES ? kes.toFixed(2) : usd.toFixed(2);
     }
 
-    // Dynamic Live Expected Transport Display Banner in Step 2:
     const bigDisp = document.getElementById('dispTransportBigDisplay');
     if (bigDisp) {
-        bigDisp.textContent = CURRENCY_SYM + ' ' + (transport > 0 ? transport.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00');
-    }
-    const formulaDisp = document.getElementById('dispTransportFormulaText');
-    if (formulaDisp) {
-        formulaDisp.textContent = `${loaded.toLocaleString()} Litres × ${CURRENCY_SYM} ${unitPrice.toFixed(2)}/L`;
+        bigDisp.textContent = '$ ' + usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
     const altDisp = document.getElementById('dispTransportAltDisplay');
     if (altDisp) {
-        const isKes = ('<?= current_currency() ?>' === 'KES');
-        const exRate = <?= exchange_rate() ?>;
-        if (isKes && exRate > 0) {
-            const usdVal = transport / exRate;
-            altDisp.textContent = `≈ $${usdVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} USD`;
-        } else if (!isKes && exRate > 0) {
-            const kesVal = transport * exRate;
-            altDisp.textContent = `≈ KSh ${kesVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        } else {
-            altDisp.textContent = '';
-        }
+        altDisp.textContent = '≈ KES ' + kes.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    }
+    const formulaDisp = document.getElementById('dispTransportFormulaText');
+    if (formulaDisp) {
+        formulaDisp.textContent = `Agreed payment for hauling ${loaded.toLocaleString()} L`;
     }
 
     calcBalance();
 }
+
+window.onDestinationChanged = function(destVal) {
+    if (!destVal) return;
+    const dList = document.getElementById('destPresets');
+    if (!dList) return;
+    const opt = Array.from(dList.options).find(o => o.value.toLowerCase() === destVal.trim().toLowerCase());
+    if (opt && (opt.dataset.kes || opt.dataset.usd)) {
+        const kes = parseFloat(opt.dataset.kes) || 0;
+        const usd = parseFloat(opt.dataset.usd) || (SYS_EX_RATE > 0 ? kes / SYS_EX_RATE : 0);
+        const milKes = document.getElementById('dispMileageKes');
+        const milUsd = document.getElementById('dispMileageUsd');
+        if (milKes) milKes.value = kes > 0 ? Math.round(kes) : '';
+        if (milUsd) milUsd.value = usd > 0 ? usd.toFixed(2) : '';
+        syncMileageFields(kes, usd);
+    }
+};
+
+function calcExpectedTransport() {
+    const usdVal = parseFloat(document.getElementById('dispatchTransportUsd')?.value) || 0;
+    const kesVal = parseFloat(document.getElementById('dispatchTransportKes')?.value) || (usdVal * SYS_EX_RATE);
+    syncTransportPayment(usdVal, kesVal);
+}
 window.calcExpectedTransport = calcExpectedTransport;
+
+/* =========================================================================
+   CORRIDOR MILEAGE RATES MODAL & AJAX CRUD
+   ========================================================================= */
+window.openMileageRatesModal = function() {
+    resetMileageRateForm();
+    document.getElementById('mileageRatesModal')?.classList.add('active');
+};
+
+window.closeMileageRatesModal = function() {
+    document.getElementById('mileageRatesModal')?.classList.remove('active');
+};
+
+window.onMrKesInput = function(kesVal) {
+    const kes = parseFloat(kesVal) || 0;
+    const usd = SYS_EX_RATE > 0 ? (kes / SYS_EX_RATE) : 0;
+    const usdEl = document.getElementById('mrAllowanceUsd');
+    if (usdEl) usdEl.value = usd > 0 ? usd.toFixed(2) : '';
+};
+
+window.onMrUsdInput = function(usdVal) {
+    const usd = parseFloat(usdVal) || 0;
+    const kes = usd * SYS_EX_RATE;
+    const kesEl = document.getElementById('mrAllowanceKes');
+    if (kesEl) kesEl.value = kes > 0 ? Math.round(kes) : '';
+};
+
+window.resetMileageRateForm = function() {
+    const form = document.getElementById('mileageRateForm');
+    if (form) form.reset();
+    const idEl = document.getElementById('mrRateId');
+    if (idEl) idEl.value = '';
+    const titleEl = document.getElementById('mrFormTitle');
+    if (titleEl) titleEl.textContent = '➕ Add Corridor Destination Rate';
+    const cancelBtn = document.getElementById('mrCancelEditBtn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    const btn = document.getElementById('mrSubmitBtn');
+    if (btn) btn.textContent = '💾 Save Corridor Rate';
+    const org = document.getElementById('mrOrigin');
+    if (org) org.value = 'Eldoret';
+};
+
+window.editMileageRate = function(rate) {
+    document.getElementById('mrRateId').value = rate.id;
+    document.getElementById('mrOrigin').value = rate.origin || 'Eldoret';
+    document.getElementById('mrDestination').value = rate.destination || '';
+    document.getElementById('mrDistanceKm').value = rate.distance_km || '';
+    document.getElementById('mrAllowanceKes').value = Math.round(rate.standard_allowance_kes || 0);
+    document.getElementById('mrAllowanceUsd').value = parseFloat(rate.standard_allowance_usd || 0).toFixed(2);
+    document.getElementById('mrNotes').value = rate.notes || '';
+
+    const titleEl = document.getElementById('mrFormTitle');
+    if (titleEl) titleEl.textContent = `✏️ Editing Rate: ${rate.origin} ➔ ${rate.destination}`;
+    const cancelBtn = document.getElementById('mrCancelEditBtn');
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    const btn = document.getElementById('mrSubmitBtn');
+    if (btn) btn.textContent = '✓ Update Corridor Rate';
+
+    document.getElementById('mrDestination')?.focus();
+};
+
+window.handleMileageRateSubmit = async function(e) {
+    if (e) e.preventDefault();
+    const id = document.getElementById('mrRateId')?.value;
+    const isEdit = Boolean(id);
+    const url = isEdit ? ('<?= url("fleet/mileage-rates/update") ?>/' + id) : '<?= url("fleet/mileage-rates/store") ?>';
+
+    const origin = document.getElementById('mrOrigin')?.value.trim() || 'Eldoret';
+    const dest = document.getElementById('mrDestination')?.value.trim();
+    const km = document.getElementById('mrDistanceKm')?.value;
+    const kes = document.getElementById('mrAllowanceKes')?.value;
+    const usd = document.getElementById('mrAllowanceUsd')?.value;
+    const notes = document.getElementById('mrNotes')?.value.trim();
+
+    if (!dest) {
+        alert('Please specify the destination corridor.');
+        return false;
+    }
+    if (!kes || parseFloat(kes) <= 0) {
+        alert('Please specify standard allowance in KES.');
+        return false;
+    }
+
+    const payload = new URLSearchParams({
+        _csrf_token: CSRF_TOKEN,
+        origin: origin,
+        destination: dest,
+        distance_km: km,
+        standard_allowance_kes: kes,
+        standard_allowance_usd: usd,
+        notes: notes
+    });
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: payload.toString()
+        });
+        const json = await res.json();
+        if (json.success) {
+            resetMileageRateForm();
+            refreshMileageRatesTable(json.rates || []);
+            const fb = document.getElementById('mrFeedbackBanner');
+            if (fb) {
+                fb.style.display = 'block';
+                fb.textContent = isEdit ? '✓ Corridor rate updated successfully!' : '✓ New corridor rate saved!';
+                setTimeout(() => { if (fb) fb.style.display = 'none'; }, 4000);
+            }
+        } else {
+            alert('Error: ' + (json.error || 'Could not save rate.'));
+        }
+    } catch(err) {
+        console.error(err);
+        alert('Network error saving corridor mileage rate.');
+    }
+    return false;
+};
+
+window.deleteMileageRate = async function(id) {
+    if (!confirm('Are you sure you want to delete this corridor mileage preset?')) return;
+    try {
+        const res = await fetch('<?= url("fleet/mileage-rates/delete") ?>/' + id, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: new URLSearchParams({ _csrf_token: CSRF_TOKEN }).toString()
+        });
+        const json = await res.json();
+        if (json.success) {
+            refreshMileageRatesTable(json.rates || []);
+        } else {
+            alert('Could not delete rate: ' + (json.error || 'Server error'));
+        }
+    } catch(err) {
+        console.error(err);
+        alert('Network error deleting rate.');
+    }
+};
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function refreshMileageRatesTable(rates) {
+    const tbody = document.getElementById('mrTableBody');
+    const badge = document.getElementById('mrTableCountBadge');
+    const datalist = document.getElementById('destPresets');
+    if (badge) badge.textContent = `${rates.length} routes`;
+    if (!tbody) return;
+
+    if (rates.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No corridor rates configured yet.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rates.map(r => `
+        <tr id="mr-row-${r.id}">
+            <td style="padding:9px 12px;font-weight:700;">
+                <span>${escapeHtml(r.origin)} ➔ <span style="color:var(--brand);">${escapeHtml(r.destination)}</span></span>
+            </td>
+            <td style="padding:9px 12px;text-align:right;color:var(--text-2);">${r.distance_km ? Number(r.distance_km).toLocaleString() + ' km' : '—'}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--amber);">KES ${Number(r.standard_allowance_kes).toLocaleString()}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--brand);">$ ${Number(r.standard_allowance_usd).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            <td style="padding:9px 12px;color:var(--text-3);font-size:12px;">${escapeHtml(r.notes || '—')}</td>
+            <td style="padding:9px 12px;text-align:center;">
+                <div style="display:inline-flex;gap:4px;">
+                    <button type="button" class="btn btn-ghost btn-xs" onclick='editMileageRate(${JSON.stringify(r)})' title="Edit Rate">✏️</button>
+                    <button type="button" class="btn btn-ghost btn-xs" onclick="deleteMileageRate(${r.id})" style="color:var(--red);" title="Delete Rate">🗑️</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    if (datalist) {
+        datalist.innerHTML = rates.map(r => `
+            <option value="${escapeHtml(r.destination)}" data-kes="${r.standard_allowance_kes}" data-usd="${r.standard_allowance_usd}" data-km="${r.distance_km}">
+                ${escapeHtml(r.destination)} (${Number(r.distance_km || 0).toLocaleString()} km • KES ${Number(r.standard_allowance_kes).toLocaleString()})
+            </option>
+        `).join('');
+    }
+}
 
 function calcDieselExpense() {
     const litres = parseFloat(document.getElementById('dispDieselLitres')?.value) || 0;

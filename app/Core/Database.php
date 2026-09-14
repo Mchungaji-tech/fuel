@@ -445,6 +445,17 @@ class Database
                 notes TEXT,
                 created_at VARCHAR(50)
             )",
+            "CREATE TABLE IF NOT EXISTS route_mileage_rates (
+                {$idColumnSql},
+                origin VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
+                destination VARCHAR(150) NOT NULL,
+                distance_km INT DEFAULT 0,
+                standard_allowance_kes DECIMAL(12,2) NOT NULL DEFAULT 0,
+                standard_allowance_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
+                notes TEXT,
+                created_at VARCHAR(50),
+                UNIQUE(origin, destination)
+            )",
         ];
 
         foreach ($tables as $sql) {
@@ -581,6 +592,35 @@ class Database
                 ->execute(['AGO', 'Automotive Gas Oil (Diesel)', 'Heavy Fuel', 'Litres', 9.50, 'Active', date('Y-m-d H:i:s')]);
         } else {
             $pdo->exec("UPDATE products SET unit_price = 9.50 WHERE UPPER(code) = 'AGO' AND (unit_price = 0 OR unit_price IS NULL)");
+        }
+
+        // Initialize default USD to KES exchange rate if not set
+        $fxCheck = $pdo->query("SELECT COUNT(*) FROM settings WHERE setting_key = 'usd_kes_exchange_rate'")->fetchColumn();
+        if ((int)$fxCheck === 0) {
+            $pdo->prepare("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('usd_kes_exchange_rate', '130.0', ?)")
+                ->execute([date('Y-m-d H:i:s')]);
+        }
+
+        // Initialize standard East African route mileage rates
+        $routesCheck = (int)$pdo->query("SELECT COUNT(*) FROM route_mileage_rates")->fetchColumn();
+        if ($routesCheck === 0) {
+            $standardRoutes = [
+                ['Eldoret', 'Uganda (Kampala)', 350, 45000.00, 346.15, 'Standard corridor allowance (Malaba border transit & per diem)'],
+                ['Eldoret', 'Uganda (Jinja)', 270, 40000.00, 307.69, 'Eastern Uganda depot transit allowance'],
+                ['Eldoret', 'DR Congo (Goma)', 850, 85000.00, 653.85, 'Cross-border transit via Busia/Katuna & Rwanda border post'],
+                ['Eldoret', 'DR Congo (Lubumbashi)', 2100, 140000.00, 1076.92, 'Long haul Southern corridor allowance'],
+                ['Eldoret', 'South Sudan (Juba)', 920, 95000.00, 730.77, 'Northern corridor allowance via Lokichogio / Nadapal'],
+                ['Eldoret', 'Rwanda (Kigali)', 780, 75000.00, 576.92, 'Kagitumba / Gatuna corridor driver per diem'],
+                ['Eldoret', 'Tanzania (Dar es Salaam)', 1200, 110000.00, 846.15, 'Namanga / Holili border route transit allowance'],
+                ['Eldoret', 'Kenya (Nairobi Terminal)', 320, 30000.00, 230.77, 'Domestic Western-to-Capital corridor allowance'],
+                ['Eldoret', 'Kenya (Kisumu Depot)', 120, 15000.00, 115.38, 'Lake Victoria regional shuttle allowance'],
+                ['Eldoret', 'Kenya (Mombasa Terminal)', 800, 65000.00, 500.00, 'Coastline port route driver allowance'],
+            ];
+
+            $insRoute = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            foreach ($standardRoutes as $r) {
+                $insRoute->execute([$r[0], $r[1], $r[2], $r[3], $r[4], $r[5], date('Y-m-d H:i:s')]);
+            }
         }
     }
 }

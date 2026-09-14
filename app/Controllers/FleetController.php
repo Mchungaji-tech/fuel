@@ -36,6 +36,15 @@ class FleetController
         $stmt->execute($params);
         $dispatches = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Automatically sync diesel totals and balances from fleet_diesel_logs
+        try {
+            $pdo->exec("UPDATE fleet_dispatches SET 
+                diesel = (SELECT COALESCE(SUM(base_usd_cost), 0) FROM fleet_diesel_logs WHERE fleet_diesel_logs.dispatch_id = fleet_dispatches.id),
+                diesel_litres = (SELECT COALESCE(SUM(litres), 0) FROM fleet_diesel_logs WHERE fleet_diesel_logs.dispatch_id = fleet_dispatches.id)
+                WHERE id IN (SELECT DISTINCT dispatch_id FROM fleet_diesel_logs)");
+            $pdo->exec("UPDATE fleet_dispatches SET balance = (CASE WHEN is_subcontracted = 1 THEN agreed_commission ELSE COALESCE(final_payout, transport_amount) - (COALESCE(mileage_cost, 0) + COALESCE(diesel, 0) + COALESCE(extra_expenses, 0)) END)");
+        } catch (\Throwable $e) {}
+
         // Calculate aggregates across all dispatches
         $aggStmt = $pdo->query('SELECT 
             COUNT(*) as total_count,
@@ -60,6 +69,10 @@ class FleetController
         }
         $customers = $pdo->query('SELECT DISTINCT name FROM customers ORDER BY name ASC')->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
+        // Fetch route mileage presets
+        $mileageRatesStmt = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC');
+        $mileageRates = $mileageRatesStmt ? $mileageRatesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
         $yearsStmt = $pdo->query('SELECT DISTINCT substr(dispatch_date, 1, 4) as yr FROM fleet_dispatches WHERE dispatch_date IS NOT NULL AND dispatch_date != "" ORDER BY yr DESC');
         $availableYears = $yearsStmt ? $yearsStmt->fetchAll(PDO::FETCH_COLUMN) : [];
         $curY = (string)date('Y');
@@ -75,6 +88,7 @@ class FleetController
             'drivers' => $drivers,
             'products' => $products,
             'customers' => $customers,
+            'mileageRates' => $mileageRates,
             'search' => $search,
             'statusFilter' => $statusFilter,
             'availableYears' => $availableYears,
@@ -130,18 +144,22 @@ class FleetController
         $isKes = current_currency() === 'KES';
         $rate = exchange_rate();
 
-        // Cargo Product Unit Price (transport payout rate per litre)
-        $prodStmt = $pdo->prepare('SELECT unit_price FROM products WHERE UPPER(code) = ? LIMIT 1');
-        $prodStmt->execute([$product]);
-        if (isset($_POST['unit_price']) && $_POST['unit_price'] !== '') {
-            $rawUnitPrice = (float)$_POST['unit_price'];
-            $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
+        // Agreed Initial Transport Payment (USD)
+        // Sarura does not sell fuel; company is paid an agreed transportation fee for the trip
+        if (isset($_POST['transport_amount_usd']) && $_POST['transport_amount_usd'] !== '') {
+            $transportAmount = (float)$_POST['transport_amount_usd'];
+        } elseif (isset($_POST['transport_amount_kes']) && $_POST['transport_amount_kes'] !== '') {
+            $rawKes = (float)$_POST['transport_amount_kes'];
+            $transportAmount = $rate > 0 ? ($rawKes / $rate) : $rawKes;
+        } elseif (isset($_POST['transport_amount']) && $_POST['transport_amount'] !== '') {
+            $rawTrans = (float)$_POST['transport_amount'];
+            $transportAmount = $isKes ? ($rawTrans / $rate) : $rawTrans;
         } else {
-            $unitPrice = $catalogPrice;
+            $transportAmount = 0.0;
         }
 
-        // Automatically calculated Expected Transport Billed: Loaded Litres × Unit Price
-        $transportAmount = (float)($loadedLitres * $unitPrice);
+        // Nominal transport yield per litre for table display & schema compatibility
+        $unitPrice = $loadedLitres > 0 ? round($transportAmount / $loadedLitres, 4) : 0.0;
 
         // Transit Shortage & Delivered Litres logic
         $shortageLitres = max(0, (int)($_POST['shortage_litres'] ?? 0));
@@ -150,8 +168,8 @@ class FleetController
 
         if ($shortageLitres > 0) {
             $deliveredLitres = max(0, $loadedLitres - $shortageLitres);
-            $finalPayout = (float)($deliveredLitres * $unitPrice);
-            $payoutDiff = (float)($shortageLitres * $unitPrice);
+            $payoutDiff = ($loadedLitres > 0) ? round(($shortageLitres / $loadedLitres) * $transportAmount, 2) : 0.0;
+            $finalPayout = max(0, $transportAmount - $payoutDiff);
         } elseif ($isDelivered) {
             $deliveredLitres = $loadedLitres;
             $finalPayout = $transportAmount;
@@ -524,20 +542,20 @@ class FleetController
         $destination = trim($_POST['destination'] ?? $current['destination']);
         $clientName = trim($_POST['client_name'] ?? ($current['client_name'] ?? 'Regional Fuel Consignee'));
 
-        // Unit Price
-        if (isset($_POST['unit_price']) && $_POST['unit_price'] !== '') {
-            $rawUnitPrice = (float)$_POST['unit_price'];
-            $unitPrice = $isKes ? ($rawUnitPrice / $rate) : $rawUnitPrice;
+        // Transport Amount (Agreed Transport Payment in USD)
+        if (isset($_POST['transport_amount_usd']) && $_POST['transport_amount_usd'] !== '') {
+            $transportAmount = (float)$_POST['transport_amount_usd'];
+        } elseif (isset($_POST['transport_amount_kes']) && $_POST['transport_amount_kes'] !== '') {
+            $transportAmount = $rate > 0 ? ((float)$_POST['transport_amount_kes'] / $rate) : (float)$_POST['transport_amount_kes'];
+        } elseif (isset($_POST['transport_amount']) && $_POST['transport_amount'] !== '') {
+            $rawTrans = (float)$_POST['transport_amount'];
+            $transportAmount = $isKes ? ($rawTrans / $rate) : $rawTrans;
         } else {
-            $unitPrice = (float)($current['unit_price'] ?? 0);
-            if ($unitPrice <= 0) {
-                $prodStmt = $pdo->prepare('SELECT unit_price FROM products WHERE UPPER(code) = ? LIMIT 1');
-                $prodStmt->execute([$product]);
-                $unitPrice = (float)($prodStmt->fetchColumn() ?: ($product === 'PMS' ? 10.50 : 9.50));
-            }
+            $transportAmount = (float)($current['transport_amount'] ?? 0);
         }
 
         $loadedLitres = isset($_POST['loaded_litres']) ? (int)$_POST['loaded_litres'] : (int)$current['loaded_litres'];
+        $unitPrice = $loadedLitres > 0 ? round($transportAmount / $loadedLitres, 4) : (float)($current['unit_price'] ?? 0);
 
         // Shortage & Delivered Litres
         if (isset($_POST['shortage_litres'])) {
@@ -551,16 +569,13 @@ class FleetController
             $deliveredLitres = isset($current['delivered_litres']) && $current['delivered_litres'] !== null ? (int)$current['delivered_litres'] : null;
         }
 
-        // Expected Transport is automatically: Loaded Litres × Unit Price
-        $transportAmount = (float)($loadedLitres * $unitPrice);
-
         // Final Payout
         $isDelivered = (strtolower($status) === 'delivered');
         if (isset($_POST['final_payout']) && $_POST['final_payout'] !== '') {
             $rawFinal = (float)$_POST['final_payout'];
             $finalPayout = $isKes ? ($rawFinal / $rate) : $rawFinal;
-        } elseif ($deliveredLitres !== null && $deliveredLitres > 0) {
-            $finalPayout = (float)($deliveredLitres * $unitPrice);
+        } elseif ($deliveredLitres !== null && $deliveredLitres > 0 && $loadedLitres > 0) {
+            $finalPayout = round(($deliveredLitres / $loadedLitres) * $transportAmount, 2);
         } elseif ($isDelivered) {
             $finalPayout = $transportAmount;
         } else {
@@ -765,11 +780,9 @@ class FleetController
             'Loading Date (DOL)',
             'Truck Plate',
             'Carrier / Ownership',
-            'Truck Capacity (L)',
-            'Loaded Litres',
+            'Actual @ L20 (Litres)',
             'Shortage Litres',
             'Delivered Litres',
-            'Product Unit Price (' . $currencySymbol . '/L)',
             'Diesel Litres',
             'Diesel Unit Price (' . $currencySymbol . '/L)',
             'Diesel Fuel Cost (' . $currencySymbol . ')',
@@ -778,7 +791,7 @@ class FleetController
             'Client / Consignee',
             'Fuel Product',
             'Driver Name',
-            'Transport Revenue (' . $currencySymbol . ')',
+            'Agreed Transport (' . $currencySymbol . ')',
             'Final Client Payout (' . $currencySymbol . ')',
             'Payout Difference (' . $currencySymbol . ')',
             'Mileage Expense (' . $currencySymbol . ')',
@@ -804,8 +817,6 @@ class FleetController
             $loaded = (int) $d['loaded_litres'];
             $shortage = (int) ($d['shortage_litres'] ?? 0);
             $delivered = ($d['delivered_litres'] !== null && $d['delivered_litres'] !== '') ? (int) $d['delivered_litres'] : max(0, $loaded - $shortage);
-            $unitPriceVal = (float) ($d['unit_price'] ?? 0);
-            $displayUnitPrice = $isKes ? ($unitPriceVal * $rate) : $unitPriceVal;
             $dieselLitres = (float) ($d['diesel_litres'] ?? 0);
             $dieselUnitPriceVal = (float) ($d['diesel_unit_price'] ?? 0);
             $displayDieselUnitPrice = $isKes ? ($dieselUnitPriceVal * $rate) : $dieselUnitPriceVal;
@@ -829,11 +840,9 @@ class FleetController
                 $d['dispatch_date'],
                 $d['truck'],
                 $ownership,
-                (int) $d['truck_capacity'],
                 $loaded,
                 $shortage,
                 $delivered,
-                $canViewFin ? round($displayUnitPrice, 2) : '[Restricted]',
                 $dieselLitres,
                 $canViewFin ? round($displayDieselUnitPrice, 2) : '[Restricted]',
                 $canViewFin ? round($displayDiesel, 2) : '[Restricted]',
@@ -1417,7 +1426,7 @@ class FleetController
         $totalLitres = round((float)($stats['total_litres'] ?? 0), 2);
         $unitPrice = $totalLitres > 0 ? round($totalDiesel / $totalLitres, 4) : 0;
 
-        $dStmt = $pdo->prepare('SELECT transport_amount, final_payout, mileage_cost, is_subcontracted, agreed_commission FROM fleet_dispatches WHERE id = ?');
+        $dStmt = $pdo->prepare('SELECT transport_amount, final_payout, mileage_cost, extra_expenses, is_subcontracted, agreed_commission FROM fleet_dispatches WHERE id = ?');
         $dStmt->execute([$dispatchId]);
         $d = $dStmt->fetch(PDO::FETCH_ASSOC);
         if (!$d) {
@@ -1430,17 +1439,41 @@ class FleetController
         } else {
             $effectiveRev = ($d['final_payout'] !== null && (float)$d['final_payout'] > 0) ? (float)$d['final_payout'] : (float)$d['transport_amount'];
             $mileage = (float)($d['mileage_cost'] ?? 0);
-            $balance = round($effectiveRev - ($mileage + $totalDiesel), 2);
+            $extra = (float)($d['extra_expenses'] ?? 0);
+            $balance = round($effectiveRev - ($mileage + $totalDiesel + $extra), 2);
         }
 
         $upStmt = $pdo->prepare('UPDATE fleet_dispatches SET diesel = ?, diesel_litres = ?, diesel_unit_price = ?, balance = ? WHERE id = ?');
         $upStmt->execute([$totalDiesel, $totalLitres, $unitPrice, $balance, $dispatchId]);
 
+        // Calculate up-to-date global fleet aggregates across all trips
+        $aggStmt = $pdo->query('SELECT 
+            COUNT(*) as total_count,
+            COALESCE(SUM(transport_amount), 0) as total_transport,
+            COALESCE(SUM(mileage_cost), 0) as total_mileage,
+            COALESCE(SUM(extra_expenses), 0) as total_extra,
+            COALESCE(SUM(diesel), 0) as total_diesel,
+            COALESCE(SUM(balance), 0) as total_balance
+            FROM fleet_dispatches');
+        $globalAgg = $aggStmt->fetch(PDO::FETCH_ASSOC);
+
         return [
             'diesel' => $totalDiesel,
             'diesel_litres' => $totalLitres,
             'diesel_unit_price' => $unitPrice,
-            'balance' => $balance
+            'balance' => $balance,
+            'global_aggregates' => [
+                'total_transport' => (float)($globalAgg['total_transport'] ?? 0),
+                'total_transport_formatted' => format_money($globalAgg['total_transport'] ?? 0),
+                'total_diesel' => (float)($globalAgg['total_diesel'] ?? 0),
+                'total_diesel_formatted' => format_money($globalAgg['total_diesel'] ?? 0),
+                'total_mileage' => (float)($globalAgg['total_mileage'] ?? 0),
+                'total_mileage_formatted' => format_money($globalAgg['total_mileage'] ?? 0),
+                'total_extra' => (float)($globalAgg['total_extra'] ?? 0),
+                'total_extra_formatted' => format_money($globalAgg['total_extra'] ?? 0),
+                'total_balance' => (float)($globalAgg['total_balance'] ?? 0),
+                'total_balance_formatted' => format_money($globalAgg['total_balance'] ?? 0),
+            ]
         ];
     }
 
@@ -1495,8 +1528,32 @@ class FleetController
             else $exchangeRate = 1.0;
         }
 
-        $localTotal = round($litres * $localUnitPrice, 2);
-        $baseUsdCost = round($localTotal / $exchangeRate, 2);
+        // Multi-currency calculation: Support entering in KSh (KES) even for Uganda/Congo stops
+        $entryCurrency = strtoupper(trim($_POST['entry_currency'] ?? ''));
+        $kesRate = (float)exchange_rate();
+        if ($kesRate <= 0) $kesRate = 130.0;
+
+        if ($entryCurrency === 'KES' && isset($_POST['kes_unit_price']) && (float)$_POST['kes_unit_price'] > 0) {
+            $kesUnitPrice = (float)$_POST['kes_unit_price'];
+            $baseUsdUnitPrice = $kesUnitPrice / $kesRate;
+            $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
+            if ($currencyCode === 'KES') {
+                $localUnitPrice = $kesUnitPrice;
+                $localTotal = round($litres * $localUnitPrice, 2);
+            } else {
+                $localUnitPrice = round($baseUsdUnitPrice * $exchangeRate, 2);
+                $localTotal = round($litres * $localUnitPrice, 2);
+            }
+        } elseif ($entryCurrency === 'USD' && isset($_POST['usd_unit_price']) && (float)$_POST['usd_unit_price'] > 0) {
+            $usdUnitPrice = (float)$_POST['usd_unit_price'];
+            $baseUsdCost = round($litres * $usdUnitPrice, 2);
+            $localUnitPrice = round($usdUnitPrice * $exchangeRate, 2);
+            $localTotal = round($litres * $localUnitPrice, 2);
+        } else {
+            $localTotal = round($litres * $localUnitPrice, 2);
+            $baseUsdCost = round($localTotal / $exchangeRate, 2);
+        }
+
         $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
         $receiptNumber = trim($_POST['receipt_number'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
@@ -1527,7 +1584,7 @@ class FleetController
         ]);
         $newLogId = (int)$pdo->lastInsertId();
 
-        // Recalculate dispatch aggregates
+        // Recalculate dispatch aggregates and global fleet totals
         $updatedTotals = self::recalculateDispatchDiesel($pdo, $dispatchId);
 
         log_audit('Diesel Fueling', 'LOG_FUEL_STOP', "Logged {$litres}L fueling in {$country} ({$currencyCode} {$localTotal}) for trip {$dispatch['trip_number']}");
@@ -1546,8 +1603,10 @@ class FleetController
                 'message' => 'Fuel stop recorded successfully!',
                 'log_id' => $newLogId,
                 'totals' => $totalsPayload,
+                'global_aggregates' => $updatedTotals['global_aggregates'] ?? null,
                 'data' => [
                     'totals' => $totalsPayload,
+                    'global_aggregates' => $updatedTotals['global_aggregates'] ?? null,
                     'log_id' => $newLogId
                 ]
             ]);
@@ -1704,8 +1763,32 @@ class FleetController
             return;
         }
 
-        $localTotalCost = round($litres * $localUnitPrice, 2);
-        $baseUsdCost = round($localTotalCost / $exRate, 2);
+        // Multi-currency calculation: Support entering in KSh (KES) even for Uganda/Congo stops
+        $entryCurrency = strtoupper(trim($_POST['entry_currency'] ?? ''));
+        $kesRate = (float)exchange_rate();
+        if ($kesRate <= 0) $kesRate = 130.0;
+
+        if ($entryCurrency === 'KES' && isset($_POST['kes_unit_price']) && (float)$_POST['kes_unit_price'] > 0) {
+            $kesUnitPrice = (float)$_POST['kes_unit_price'];
+            $baseUsdUnitPrice = $kesUnitPrice / $kesRate;
+            $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
+            if ($currCode === 'KES') {
+                $localUnitPrice = $kesUnitPrice;
+                $localTotalCost = round($litres * $localUnitPrice, 2);
+            } else {
+                $localUnitPrice = round($baseUsdUnitPrice * $exRate, 2);
+                $localTotalCost = round($litres * $localUnitPrice, 2);
+            }
+        } elseif ($entryCurrency === 'USD' && isset($_POST['usd_unit_price']) && (float)$_POST['usd_unit_price'] > 0) {
+            $usdUnitPrice = (float)$_POST['usd_unit_price'];
+            $baseUsdCost = round($litres * $usdUnitPrice, 2);
+            $localUnitPrice = round($usdUnitPrice * $exRate, 2);
+            $localTotalCost = round($litres * $localUnitPrice, 2);
+        } else {
+            $localTotalCost = round($litres * $localUnitPrice, 2);
+            $baseUsdCost = round($localTotalCost / $exRate, 2);
+        }
+
         $receiptStatus = trim($_POST['receipt_status'] ?? 'Received');
         $receiptNumber = trim($_POST['receipt_number'] ?? '');
         $notes = trim($_POST['notes'] ?? '');
@@ -1764,7 +1847,8 @@ class FleetController
                     'diesel_unit_price' => $updatedTotals['diesel_unit_price'],
                     'balance_raw' => $updatedTotals['balance'],
                     'balance_formatted' => format_money($updatedTotals['balance']),
-                ]
+                ],
+                'global_aggregates' => $updatedTotals['global_aggregates'] ?? null,
             ]);
             exit;
         }
@@ -1813,12 +1897,204 @@ class FleetController
                     'diesel_litres' => $updatedTotals['diesel_litres'],
                     'balance_raw' => $updatedTotals['balance'],
                     'balance_formatted' => format_money($updatedTotals['balance']),
-                ]
+                ],
+                'global_aggregates' => $updatedTotals['global_aggregates'] ?? null,
             ]);
             exit;
         }
 
         flash('fleet_success', 'Fuel record removed and dispatch balance updated.');
+        redirect('/fleet');
+    }
+
+    /* =========================================================================
+       LOCATION MILEAGE RATES MANAGEMENT
+       ========================================================================= */
+    public function getMileageRates(): void
+    {
+        $pdo = Database::connection();
+        $stmt = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC');
+        $rates = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'rates' => $rates]);
+        exit;
+    }
+
+    public function storeMileageRate(): void
+    {
+        $pdo = Database::connection();
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        $origin = trim($_POST['origin'] ?? 'Eldoret');
+        if ($origin === '') $origin = 'Eldoret';
+        $destination = trim($_POST['destination'] ?? '');
+        $distanceKm = (int)($_POST['distance_km'] ?? 0);
+        $allowanceKes = (float)($_POST['standard_allowance_kes'] ?? 0);
+        $allowanceUsd = (float)($_POST['standard_allowance_usd'] ?? 0);
+        $rate = (float)exchange_rate();
+        if ($rate <= 0) $rate = 130.0;
+
+        if ($allowanceKes > 0 && $allowanceUsd <= 0) {
+            $allowanceUsd = round($allowanceKes / $rate, 2);
+        } elseif ($allowanceUsd > 0 && $allowanceKes <= 0) {
+            $allowanceKes = round($allowanceUsd * $rate, 2);
+        }
+
+        $notes = trim($_POST['notes'] ?? '');
+
+        if ($destination === '') {
+            if ($isAjax) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Destination name is required.']);
+                exit;
+            }
+            flash('fleet_error', 'Destination name is required.');
+            redirect('/fleet');
+            return;
+        }
+
+        try {
+            $stmt = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$origin, $destination, $distanceKm, $allowanceKes, $allowanceUsd, $notes, date('Y-m-d H:i:s')]);
+            $newId = (int)$pdo->lastInsertId();
+
+            log_audit('Mileage Rates', 'ADD_MILEAGE_RATE', "Added corridor allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => "Mileage allowance for {$destination} saved successfully!",
+                    'rate' => [
+                        'id' => $newId,
+                        'origin' => $origin,
+                        'destination' => $destination,
+                        'distance_km' => $distanceKm,
+                        'standard_allowance_kes' => $allowanceKes,
+                        'standard_allowance_usd' => $allowanceUsd,
+                        'notes' => $notes
+                    ]
+                ]);
+                exit;
+            }
+
+            flash('fleet_success', "Mileage allowance for {$destination} created successfully.");
+        } catch (\Throwable $e) {
+            if ($isAjax) {
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Error saving route rate: ' . $e->getMessage()]);
+                exit;
+            }
+            flash('fleet_error', 'Error saving route rate: ' . $e->getMessage());
+        }
+
+        redirect('/fleet');
+    }
+
+    public function updateMileageRate(string $id): void
+    {
+        $pdo = Database::connection();
+        $rateId = (int)$id;
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        $origin = trim($_POST['origin'] ?? 'Eldoret');
+        if ($origin === '') $origin = 'Eldoret';
+        $destination = trim($_POST['destination'] ?? '');
+        $distanceKm = (int)($_POST['distance_km'] ?? 0);
+        $allowanceKes = (float)($_POST['standard_allowance_kes'] ?? 0);
+        $allowanceUsd = (float)($_POST['standard_allowance_usd'] ?? 0);
+        $rate = (float)exchange_rate();
+        if ($rate <= 0) $rate = 130.0;
+
+        if ($allowanceKes > 0 && $allowanceUsd <= 0) {
+            $allowanceUsd = round($allowanceKes / $rate, 2);
+        } elseif ($allowanceUsd > 0 && $allowanceKes <= 0) {
+            $allowanceKes = round($allowanceUsd * $rate, 2);
+        }
+        $notes = trim($_POST['notes'] ?? '');
+
+        if ($destination === '') {
+            if ($isAjax) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Destination name is required.']);
+                exit;
+            }
+            flash('fleet_error', 'Destination name is required.');
+            redirect('/fleet');
+            return;
+        }
+
+        try {
+            $stmt = $pdo->prepare('UPDATE route_mileage_rates SET origin = ?, destination = ?, distance_km = ?, standard_allowance_kes = ?, standard_allowance_usd = ?, notes = ? WHERE id = ?');
+            $stmt->execute([$origin, $destination, $distanceKm, $allowanceKes, $allowanceUsd, $notes, $rateId]);
+
+            log_audit('Mileage Rates', 'UPDATE_MILEAGE_RATE', "Updated corridor allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => "Mileage allowance for {$destination} updated successfully!",
+                    'rate' => [
+                        'id' => $rateId,
+                        'origin' => $origin,
+                        'destination' => $destination,
+                        'distance_km' => $distanceKm,
+                        'standard_allowance_kes' => $allowanceKes,
+                        'standard_allowance_usd' => $allowanceUsd,
+                        'notes' => $notes
+                    ]
+                ]);
+                exit;
+            }
+
+            flash('fleet_success', "Mileage allowance updated successfully.");
+        } catch (\Throwable $e) {
+            if ($isAjax) {
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Error updating route: ' . $e->getMessage()]);
+                exit;
+            }
+            flash('fleet_error', 'Error updating route: ' . $e->getMessage());
+        }
+
+        redirect('/fleet');
+    }
+
+    public function deleteMileageRate(string $id): void
+    {
+        $pdo = Database::connection();
+        $rateId = (int)$id;
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        try {
+            $stmt = $pdo->prepare('DELETE FROM route_mileage_rates WHERE id = ?');
+            $stmt->execute([$rateId]);
+
+            log_audit('Mileage Rates', 'DELETE_MILEAGE_RATE', "Deleted corridor allowance rate #{$rateId}");
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Mileage rate deleted successfully.']);
+                exit;
+            }
+
+            flash('fleet_success', 'Mileage rate deleted successfully.');
+        } catch (\Throwable $e) {
+            if ($isAjax) {
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Could not delete mileage rate: ' . $e->getMessage()]);
+                exit;
+            }
+            flash('fleet_error', 'Could not delete mileage rate: ' . $e->getMessage());
+        }
+
         redirect('/fleet');
     }
 }
