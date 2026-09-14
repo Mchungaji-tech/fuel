@@ -207,6 +207,9 @@ class FinancialController
         $stmt->execute([$date]);
         $res = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        $rate = function_exists('exchange_rate') ? (float)exchange_rate() : 130.0;
+        if ($rate <= 0) $rate = 130.0;
+
         $dayIn = (float)($res['day_in'] ?? 0);
         $dayOut = (float)($res['day_out'] ?? 0);
         $dayBal = (float)($res['day_balance'] ?? ($dayIn - $dayOut));
@@ -217,8 +220,12 @@ class FinancialController
             'date' => $date,
             'formatted_date' => date('l, M j, Y', strtotime($date)),
             'day_in' => $dayIn,
+            'day_in_kes' => $dayIn * $rate,
             'day_out' => $dayOut,
+            'day_out_kes' => $dayOut * $rate,
             'day_balance' => $dayBal,
+            'day_balance_kes' => $dayBal * $rate,
+            'rate' => $rate,
             'count' => $count
         ]);
         exit;
@@ -238,9 +245,22 @@ class FinancialController
             $entryDate = ExcelService::normalizeDate($entryDate);
         }
 
+        $rate = function_exists('exchange_rate') ? (float)exchange_rate() : 130.0;
+        if ($rate <= 0) $rate = 130.0;
+
+        $amountIn = (float)($_POST['amount_in_usd'] ?? $_POST['amount_in'] ?? 0);
+        if ($amountIn <= 0 && !empty($_POST['amount_in_kes'])) {
+            $amountIn = (float)$_POST['amount_in_kes'] / $rate;
+        }
+        $amountIn = max(0.0, $amountIn);
+
+        $amountOut = (float)($_POST['amount_out_usd'] ?? $_POST['amount_out'] ?? 0);
+        if ($amountOut <= 0 && !empty($_POST['amount_out_kes'])) {
+            $amountOut = (float)$_POST['amount_out_kes'] / $rate;
+        }
+        $amountOut = max(0.0, $amountOut);
+
         $category = trim($_POST['category'] ?? 'General');
-        $amountIn = max(0.0, (float)($_POST['amount_in'] ?? 0));
-        $amountOut = max(0.0, (float)($_POST['amount_out'] ?? 0));
         $balance = $amountIn - $amountOut;
         $reason = trim($_POST['reason'] ?? $_POST['notes'] ?? '');
         $method = trim($_POST['payment_method'] ?? 'Cash');

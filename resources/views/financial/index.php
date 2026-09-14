@@ -8,8 +8,12 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
     $todayOut = (float)($todayKpis['today_out'] ?? 0);
     $todayNet = (float)($todayKpis['today_net'] ?? ($todayIn - $todayOut));
 
+    $exRate = function_exists('exchange_rate') ? (float)exchange_rate() : 128.0;
+    if ($exRate <= 0) $exRate = 128.0;
+
     $currCode = function_exists('get_current_currency') ? get_current_currency() : 'USD';
     $currSym = function_exists('currency_symbol') ? currency_symbol() : '$';
+    $isKesActive = ($currCode === 'KES');
 
     $currentPage = (int)($pagination['current_page'] ?? 1);
     $perPage = (int)($pagination['per_page'] ?? 20);
@@ -20,24 +24,24 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
 
     // Build base filter params for URLs
     $filterParams = array_filter($filters, fn($v) => $v !== null && $v !== '');
-    unset($filterParams['page']); // page will be appended specifically
+    unset($filterParams['page']);
 
     $exportXlsxUrl = url('financial/export') . '?' . http_build_query(array_merge($filterParams, ['format' => 'xlsx']));
     $exportCsvUrl = url('financial/export') . '?' . http_build_query(array_merge($filterParams, ['format' => 'csv']));
 ?>
 <section class="view active" id="view-financial">
     <!-- Header & Action Buttons -->
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:22px;">
         <div class="hello">
-            <h1 style="display:flex;align-items:center;gap:10px;margin:0;">
+            <h1 style="display:flex;align-items:center;gap:10px;margin:0;flex-wrap:wrap;">
                 <span>Finances & Cash Flow</span>
                 <span style="font-size:24px;">💵</span>
-                <span class="status s-done" style="font-size:12px;font-weight:800;letter-spacing:0.5px;">
-                    CURRENCY: <?= htmlspecialchars($currCode) ?> (<?= htmlspecialchars($currSym) ?>)
+                <span class="status s-done" style="font-size:12px;font-weight:800;letter-spacing:0.3px;padding:3px 10px;">
+                    🇰🇪 KES ⇄ 🇺🇸 USD (1 USD = <?= number_format($exRate, 2) ?> KES)
                 </span>
             </h1>
             <p style="margin-top:4px;color:var(--text-2);font-size:14px;">
-                Track funds received (Amount In), how they were used (Amount Out), and remaining balances separated by date.
+                Track received funds (Amount In), expenditures (Amount Out), and remaining balances separated by date.
             </p>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
@@ -49,69 +53,97 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                 <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 <span>Export CSV</span>
             </a>
-            <button class="btn btn-brand" onclick="openNewFinancialModal()" style="display:inline-flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(79,70,229,.35);">
+            <button class="btn btn-brand" onclick="openNewFinancialModal()" style="display:inline-flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(79,70,229,.35);font-weight:800;">
                 <span style="font-size:16px;font-weight:900;">＋</span>
                 <span>Record Cash Flow</span>
             </button>
         </div>
     </div>
 
-    <!-- KPI Summary Cards -->
-    <div class="kpis" style="margin-bottom:24px;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:16px;">
+    <!-- KPI Summary Cards with Proper Spacing & No Overlapping -->
+    <div class="kpis" style="margin-bottom:24px;display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:16px;">
         <!-- Total In -->
-        <div class="kpi" style="border:1.5px solid rgba(16,185,129,.35);background:linear-gradient(135deg,var(--card),rgba(16,185,129,.05));position:relative;overflow:hidden;">
-            <div style="position:absolute;top:12px;right:14px;background:rgba(16,185,129,.15);color:var(--green);padding:4px 8px;border-radius:8px;font-size:11px;font-weight:800;">
-                ▲ CASH IN
+        <div class="kpi" style="border:1.5px solid rgba(16,185,129,.35);background:linear-gradient(135deg,var(--card),rgba(16,185,129,.05));border-radius:14px;padding:18px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+                <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;margin:0;line-height:1.3;">
+                    Total Money In (Received)
+                </div>
+                <span style="background:rgba(16,185,129,.15);color:var(--green);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0;">
+                    ▲ CASH IN
+                </span>
             </div>
-            <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;">Total Money In (Received) [<?= $currCode ?>]</div>
-            <div class="val" id="statTotalIn" style="color:var(--green);font-size:26px;font-weight:900;margin-top:6px;">
-                <?= format_money($totalIn) ?>
+            <div class="val" id="statTotalIn" style="color:var(--green);font-size:26px;font-weight:900;line-height:1.2;">
+                $ <?= number_format($totalIn, 2) ?>
             </div>
-            <div style="font-size:12px;color:var(--text-3);margin-top:4px;">
-                Freight revenues, client advances & injections
+            <div style="font-size:11.5px;color:var(--text-3);font-weight:600;margin-top:2px;">
+                KES <?= number_format($totalIn * $exRate) ?> (dual evaluation)
+            </div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:6px;line-height:1.3;">
+                Freight revenues & client injections
             </div>
         </div>
 
         <!-- Total Out -->
-        <div class="kpi" style="border:1.5px solid rgba(239,68,68,.35);background:linear-gradient(135deg,var(--card),rgba(239,68,68,.05));position:relative;overflow:hidden;">
-            <div style="position:absolute;top:12px;right:14px;background:rgba(239,68,68,.15);color:var(--red);padding:4px 8px;border-radius:8px;font-size:11px;font-weight:800;">
-                ▼ CASH OUT
+        <div class="kpi" style="border:1.5px solid rgba(239,68,68,.35);background:linear-gradient(135deg,var(--card),rgba(239,68,68,.05));border-radius:14px;padding:18px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+                <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;margin:0;line-height:1.3;">
+                    Total Money Out (Spent)
+                </div>
+                <span style="background:rgba(239,68,68,.15);color:var(--red);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0;">
+                    ▼ CASH OUT
+                </span>
             </div>
-            <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;">Total Money Out (Spent) [<?= $currCode ?>]</div>
-            <div class="val" id="statTotalOut" style="color:var(--red);font-size:26px;font-weight:900;margin-top:6px;">
-                <?= format_money($totalOut) ?>
+            <div class="val" id="statTotalOut" style="color:var(--red);font-size:26px;font-weight:900;line-height:1.2;">
+                $ <?= number_format($totalOut, 2) ?>
             </div>
-            <div style="font-size:12px;color:var(--text-3);margin-top:4px;">
-                Operational expenses, fuel & personal draws
+            <div style="font-size:11.5px;color:var(--text-3);font-weight:600;margin-top:2px;">
+                KES <?= number_format($totalOut * $exRate) ?> (dual evaluation)
+            </div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:6px;line-height:1.3;">
+                Operational expenses, fuel & drawings
             </div>
         </div>
 
         <!-- Net Cash Balance -->
-        <div class="kpi" style="border:1.5px solid <?= $netBalance >= 0 ? 'rgba(79,70,229,.4)' : 'rgba(239,68,68,.4)' ?>;background:linear-gradient(135deg,var(--card),<?= $netBalance >= 0 ? 'rgba(79,70,229,.06)' : 'rgba(239,68,68,.06)' ?>);position:relative;overflow:hidden;">
-            <div style="position:absolute;top:12px;right:14px;background:<?= $netBalance >= 0 ? 'rgba(79,70,229,.15)' : 'rgba(239,68,68,.15)' ?>;color:<?= $netBalance >= 0 ? 'var(--brand)' : 'var(--red)' ?>;padding:4px 8px;border-radius:8px;font-size:11px;font-weight:800;">
-                NET BALANCE
+        <div class="kpi" style="border:1.5px solid <?= $netBalance >= 0 ? 'rgba(79,70,229,.4)' : 'rgba(239,68,68,.4)' ?>;background:linear-gradient(135deg,var(--card),<?= $netBalance >= 0 ? 'rgba(79,70,229,.06)' : 'rgba(239,68,68,.06)' ?>);border-radius:14px;padding:18px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+                <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;margin:0;line-height:1.3;">
+                    Cumulative Net Balance
+                </div>
+                <span style="background:<?= $netBalance >= 0 ? 'rgba(79,70,229,.15)' : 'rgba(239,68,68,.15)' ?>;color:<?= $netBalance >= 0 ? 'var(--brand)' : 'var(--red)' ?>;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0;">
+                    NET BALANCE
+                </span>
             </div>
-            <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;">Cumulative Net Balance [<?= $currCode ?>]</div>
-            <div class="val" id="statNetBalance" style="color:<?= $netBalance >= 0 ? 'var(--brand)' : 'var(--red)' ?>;font-size:26px;font-weight:900;margin-top:6px;">
-                <?= format_money($netBalance) ?>
+            <div class="val" id="statNetBalance" style="color:<?= $netBalance >= 0 ? 'var(--brand)' : 'var(--red)' ?>;font-size:26px;font-weight:900;line-height:1.2;">
+                <?= ($netBalance >= 0 ? '$ ' : '-$ ') . number_format(abs($netBalance), 2) ?>
             </div>
-            <div style="font-size:12px;color:var(--text-3);margin-top:4px;">
+            <div style="font-size:11.5px;color:var(--text-3);font-weight:600;margin-top:2px;">
+                KES <?= number_format($netBalance * $exRate) ?> (dual evaluation)
+            </div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:6px;line-height:1.3;">
                 Net cash retained after all expenditures
             </div>
         </div>
 
         <!-- Today's Activity -->
-        <div class="kpi" style="border:1.5px solid var(--border-2);background:var(--card);">
-            <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;">Today's Activity (<?= date('d M') ?>) [<?= $currCode ?>]</div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <div class="kpi" style="border:1.5px solid var(--border-2);background:var(--card);border-radius:14px;padding:18px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+                <div class="lbl" style="color:var(--text-2);font-weight:700;font-size:13px;margin:0;line-height:1.3;">
+                    Today's Activity (<?= date('d M') ?>)
+                </div>
+                <span style="background:var(--card-2);color:var(--text-2);border:1px solid var(--border-2);padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;">
+                    TODAY
+                </span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
                 <div>
-                    <div style="font-size:11.5px;color:var(--text-3);font-weight:600;">In: <b style="color:var(--green);" id="statTodayIn">+<?= format_money($todayIn) ?></b></div>
-                    <div style="font-size:11.5px;color:var(--text-3);font-weight:600;margin-top:2px;">Out: <b style="color:var(--red);" id="statTodayOut">-<?= format_money($todayOut) ?></b></div>
+                    <div style="font-size:12px;color:var(--text-3);font-weight:600;">In: <b style="color:var(--green);" id="statTodayIn">+$ <?= number_format($todayIn, 2) ?></b></div>
+                    <div style="font-size:12px;color:var(--text-3);font-weight:600;margin-top:2px;">Out: <b style="color:var(--red);" id="statTodayOut">-$ <?= number_format($todayOut, 2) ?></b></div>
                 </div>
                 <div style="text-align:right;">
                     <div style="font-size:11px;color:var(--text-3);font-weight:700;">Day Net:</div>
                     <div id="statTodayNet" style="font-size:16px;font-weight:900;color:<?= $todayNet >= 0 ? 'var(--green)' : 'var(--red)' ?>;">
-                        <?= ($todayNet >= 0 ? '+' : '') . format_money($todayNet) ?>
+                        <?= ($todayNet >= 0 ? '+$ ' : '-$ ') . number_format(abs($todayNet), 2) ?>
                     </div>
                 </div>
             </div>
@@ -172,8 +204,8 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
             <div>
                 <h3 style="margin:0;font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;">
                     <span>Daily Transactions & Cash Flow Ledger</span>
-                    <span style="font-size:12px;font-weight:700;color:var(--text-3);background:var(--card-2);padding:2px 8px;border-radius:6px;border:1px solid var(--border-2);">
-                        All amounts in <?= htmlspecialchars($currCode) ?> (<?= htmlspecialchars($currSym) ?>)
+                    <span style="font-size:11.5px;font-weight:700;color:var(--brand);background:var(--brand-soft);padding:2px 8px;border-radius:6px;">
+                        Dual Evaluation: USD ($) & KES (KSh)
                     </span>
                 </h3>
                 <small style="color:var(--text-3);font-size:12.5px;">Click "Edit" on any row to edit columns directly in the table. Changes auto-save.</small>
@@ -189,10 +221,10 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
             <table id="financialTable" style="width:100%;border-collapse:collapse;">
                 <thead>
                     <tr>
-                        <th style="width:115px;">Date</th>
-                        <th style="width:145px;text-align:right;">Amount In (<?= htmlspecialchars($currSym) ?> <?= htmlspecialchars($currCode) ?>)</th>
-                        <th style="width:145px;text-align:right;">Amount Out (<?= htmlspecialchars($currSym) ?> <?= htmlspecialchars($currCode) ?>)</th>
-                        <th style="width:150px;text-align:right;">Balance (<?= htmlspecialchars($currSym) ?> <?= htmlspecialchars($currCode) ?>)</th>
+                        <th style="width:120px;">Date</th>
+                        <th style="width:150px;text-align:right;">Amount In (Received)</th>
+                        <th style="width:150px;text-align:right;">Amount Out (Spent)</th>
+                        <th style="width:155px;text-align:right;">Balance</th>
                         <th>How It Was Used / Expenditure Reason</th>
                         <th style="width:140px;">Category</th>
                         <th style="width:120px;">Method</th>
@@ -236,15 +268,15 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                                             <b style="font-size:13.5px;color:var(--text);"><?= htmlspecialchars($dayLabel) ?></b>
                                             <span class="status s-plan" style="font-size:11px;padding:2px 7px;"><?= count($dateRecords) ?> <?= count($dateRecords) === 1 ? 'entry' : 'entries' ?></span>
                                         </div>
-                                        <div style="display:flex;align-items:center;gap:14px;font-size:12px;font-weight:700;">
+                                        <div style="display:flex;align-items:center;gap:14px;font-size:12px;font-weight:700;flex-wrap:wrap;">
                                             <?php if ($dayIn > 0): ?>
-                                                <span style="color:var(--green);">Received: +<?= format_money($dayIn) ?></span>
+                                                <span style="color:var(--green);">Received: +$<?= number_format($dayIn, 2) ?> <small style="opacity:0.8;">(KES <?= number_format($dayIn * $exRate) ?>)</small></span>
                                             <?php endif; ?>
                                             <?php if ($dayOut > 0): ?>
-                                                <span style="color:var(--red);">Spent: -<?= format_money($dayOut) ?></span>
+                                                <span style="color:var(--red);">Spent: -$<?= number_format($dayOut, 2) ?> <small style="opacity:0.8;">(KES <?= number_format($dayOut * $exRate) ?>)</small></span>
                                             <?php endif; ?>
                                             <span style="color:<?= $dayNet >= 0 ? 'var(--brand)' : 'var(--red)' ?>;background:<?= $dayNet >= 0 ? 'var(--brand-soft)' : 'var(--red-soft)' ?>;padding:2px 8px;border-radius:6px;">
-                                                Day Net: <?= ($dayNet >= 0 ? '+' : '') . format_money($dayNet) ?>
+                                                Day Net: <?= ($dayNet >= 0 ? '+$' : '-$') . number_format(abs($dayNet), 2) ?> <small style="opacity:0.85;">(KES <?= number_format($dayNet * $exRate) ?>)</small>
                                             </span>
                                         </div>
                                     </div>
@@ -265,23 +297,38 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
 
                                     <!-- 2. Amount In (Received) -->
                                     <td class="cell-in" data-field="amount_in" data-val="<?= $in ?>" style="text-align:right;">
-                                        <span class="view-val" style="font-weight:800;color:<?= $in > 0 ? 'var(--green)' : 'var(--text-3)' ?>;font-size:13.5px;">
-                                            <?= $in > 0 ? ('+' . format_money($in)) : '—' ?>
-                                        </span>
+                                        <div class="view-val">
+                                            <?php if ($in > 0): ?>
+                                                <div style="font-weight:800;color:var(--green);font-size:13.5px;">+$ <?= number_format($in, 2) ?></div>
+                                                <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES <?= number_format($in * $exRate) ?></div>
+                                            <?php else: ?>
+                                                <span style="color:var(--text-3);font-weight:700;">—</span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
 
                                     <!-- 3. Amount Out (Used) -->
                                     <td class="cell-out" data-field="amount_out" data-val="<?= $out ?>" style="text-align:right;">
-                                        <span class="view-val" style="font-weight:800;color:<?= $out > 0 ? 'var(--red)' : 'var(--text-3)' ?>;font-size:13.5px;">
-                                            <?= $out > 0 ? ('-' . format_money($out)) : '—' ?>
-                                        </span>
+                                        <div class="view-val">
+                                            <?php if ($out > 0): ?>
+                                                <div style="font-weight:800;color:var(--red);font-size:13.5px;">-$ <?= number_format($out, 2) ?></div>
+                                                <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES <?= number_format($out * $exRate) ?></div>
+                                            <?php else: ?>
+                                                <span style="color:var(--text-3);font-weight:700;">—</span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
 
                                     <!-- 4. Remaining Balance -->
                                     <td class="cell-runbal" data-field="balance" data-val="<?= $runBal ?>" style="text-align:right;">
-                                        <span class="view-val" style="font-weight:900;color:<?= $runBal >= 0 ? 'var(--brand)' : 'var(--red)' ?>;font-size:13.5px;">
-                                            <?= ($runBal >= 0 ? '+' : '') . format_money($runBal) ?>
-                                        </span>
+                                        <div class="view-val">
+                                            <div style="font-weight:900;color:<?= $runBal >= 0 ? 'var(--brand)' : 'var(--red)' ?>;font-size:13.5px;">
+                                                <?= ($runBal >= 0 ? '+$ ' : '-$ ') . number_format(abs($runBal), 2) ?>
+                                            </div>
+                                            <div style="font-size:11px;color:var(--text-3);font-weight:600;">
+                                                KES <?= number_format($runBal * $exRate) ?>
+                                            </div>
+                                        </div>
                                     </td>
 
                                     <!-- 5. How It Was Used / Reason -->
@@ -423,33 +470,32 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
     </div>
 </section>
 
-<!-- RECORD FINANCIAL TRANSACTION MODAL -->
-<div class="modal" id="modalNewFinancial">
-    <div class="modal-backdrop" onclick="closeNewFinancialModal()"></div>
-    <div class="modal-dialog" style="max-width:580px;">
+<!-- RECORD FINANCIAL TRANSACTION MODAL (Standard App Floating Overlay) -->
+<div class="modal-backdrop" id="modalNewFinancial" onclick="handleFinBackdropClick(event)">
+    <div class="modal-card" style="max-width:640px;width:100%;margin:auto;">
+        <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;">
+            <h2 style="margin:0;font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px;">
+                <span>💵 Record Financial Cash Flow</span>
+                <span class="status s-done" style="font-size:11px;font-weight:800;">
+                    1 USD = <?= number_format($exRate, 2) ?> KES
+                </span>
+            </h2>
+            <button type="button" class="close-modal" onclick="closeNewFinancialModal()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text-2);">✕</button>
+        </div>
+
         <form method="POST" action="<?= url('financial/store') ?>" id="formNewFinancial" onsubmit="handleNewFinancialSubmit(event)">
             <?= csrf_field() ?>
-            <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;">
-                <h3 style="margin:0;font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px;">
-                    <span>💵 Record Financial Cash Flow</span>
-                    <span class="status s-done" style="font-size:11px;font-weight:800;">
-                        <?= htmlspecialchars($currCode) ?> (<?= htmlspecialchars($currSym) ?>)
-                    </span>
-                </h3>
-                <button type="button" class="btn-close" onclick="closeNewFinancialModal()" style="border:none;background:none;font-size:20px;cursor:pointer;">✕</button>
-            </div>
-
-            <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:16px;">
+            <div style="padding:20px;display:flex;flex-direction:column;gap:16px;">
                 <!-- Date & Category -->
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="form-group">
-                        <label for="finEntryDate">Transaction Date *</label>
-                        <input type="date" id="finEntryDate" name="entry_date" value="<?= date('Y-m-d') ?>" required onchange="fetchDaySummary(this.value)" style="padding:9px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;">
+                    <div class="form-group" style="margin:0;">
+                        <label for="finEntryDate" style="font-weight:700;font-size:13px;">Transaction Date *</label>
+                        <input type="date" id="finEntryDate" name="entry_date" value="<?= date('Y-m-d') ?>" required onchange="fetchDaySummary(this.value)" style="width:100%;padding:9px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;">
                     </div>
 
-                    <div class="form-group">
-                        <label for="finCategory">Transaction Category *</label>
-                        <select id="finCategory" name="category" required style="padding:9px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;">
+                    <div class="form-group" style="margin:0;">
+                        <label for="finCategory" style="font-weight:700;font-size:13px;">Transaction Category *</label>
+                        <select id="finCategory" name="category" required style="width:100%;padding:9px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;">
                             <option value="Client Inflow">Client Inflow / Freight Revenue</option>
                             <option value="Personal Drawing">Personal Drawing / Owner Draw</option>
                             <option value="Fuel & Fleet">Fuel & Bulk Diesel</option>
@@ -463,78 +509,115 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                     </div>
                 </div>
 
-                <!-- Day Status & Existing Funds Widget -->
+                <!-- Day Status & Existing Funds Widget (Dual Currency) -->
                 <div id="daySummaryWidget" style="background:linear-gradient(135deg, var(--card-2), var(--card));border:1.5px solid var(--border-2);border-radius:12px;padding:12px 14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                        <span style="font-size:12px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:6px;">
                             <span>📅</span>
                             <span id="daySummaryDateLabel">Selected Date Status</span>
                         </span>
                         <span id="daySummaryBadge" class="status s-plan" style="font-size:11px;padding:2px 7px;">Loading…</span>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
-                        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:6px 4px;">
+                        <!-- Day In -->
+                        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:8px 6px;">
                             <div style="font-size:10.5px;color:var(--text-3);font-weight:700;">Day Received In:</div>
-                            <div id="daySummaryIn" style="font-size:13.5px;font-weight:800;color:var(--green);margin-top:2px;">+<?= $currSym ?>0.00</div>
+                            <div id="daySummaryInUsd" style="font-size:14px;font-weight:900;color:var(--green);margin-top:2px;">+$ 0.00</div>
+                            <div id="daySummaryInKes" style="font-size:10.5px;color:var(--text-3);font-weight:600;">KES 0</div>
                         </div>
-                        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:6px 4px;">
+                        <!-- Day Out -->
+                        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:8px 6px;">
                             <div style="font-size:10.5px;color:var(--text-3);font-weight:700;">Day Spent Out:</div>
-                            <div id="daySummaryOut" style="font-size:13.5px;font-weight:800;color:var(--red);margin-top:2px;">-<?= $currSym ?>0.00</div>
+                            <div id="daySummaryOutUsd" style="font-size:14px;font-weight:900;color:var(--red);margin-top:2px;">-$ 0.00</div>
+                            <div id="daySummaryOutKes" style="font-size:10.5px;color:var(--text-3);font-weight:600;">KES 0</div>
                         </div>
-                        <div style="background:rgba(79,70,229,0.08);border:1px solid rgba(79,70,229,0.2);border-radius:8px;padding:6px 4px;">
-                            <div style="font-size:10.5px;color:var(--text-3);font-weight:700;">Available Balance:</div>
-                            <div id="daySummaryBalance" style="font-size:13.5px;font-weight:900;color:var(--brand);margin-top:2px;"><?= $currSym ?>0.00</div>
+                        <!-- Day Available Balance -->
+                        <div style="background:rgba(79,70,229,0.08);border:1px solid rgba(79,70,229,0.25);border-radius:8px;padding:8px 6px;">
+                            <div style="font-size:10.5px;color:var(--text-3);font-weight:700;">Available Day Balance:</div>
+                            <div id="daySummaryBalUsd" style="font-size:14px;font-weight:900;color:var(--brand);margin-top:2px;">$ 0.00</div>
+                            <div id="daySummaryBalKes" style="font-size:10.5px;color:var(--text-3);font-weight:600;">KES 0</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Dual Amount In & Amount Out Inputs with Clear Currency Labels -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--card-2);padding:14px;border-radius:12px;border:1px solid var(--border);">
-                    <div class="form-group">
-                        <label for="finAmountIn" style="color:var(--green);display:flex;align-items:center;gap:5px;font-weight:800;font-size:12.5px;">
-                            <span>▲ Amount In (Received)</span>
-                            <span style="font-size:11px;background:rgba(16,185,129,0.15);padding:1px 5px;border-radius:4px;"><?= htmlspecialchars($currCode) ?></span>
-                        </label>
-                        <div style="position:relative;margin-top:4px;">
-                            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--green);font-size:14px;">+<?= htmlspecialchars($currSym) ?></span>
-                            <input type="number" step="0.01" min="0" id="finAmountIn" name="amount_in" placeholder="0.00" oninput="calcModalNetBalance()" style="padding-left:32px;font-size:15px;font-weight:800;color:var(--green);width:100%;">
-                        </div>
-                        <small style="color:var(--text-3);font-size:11px;margin-top:4px;display:block;">Adds to day's total received funds</small>
+                <!-- DUAL CURRENCY: Amount In (Received) in both USD & KES -->
+                <div style="background:var(--card-2);border:1.5px solid rgba(16,185,129,.35);padding:12px 14px;border-radius:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="color:var(--green);font-weight:800;font-size:13px;display:flex;align-items:center;gap:6px;">
+                            <span>▲ Amount In (Received Funds)</span>
+                            <span style="font-size:11px;background:rgba(16,185,129,0.15);padding:1px 6px;border-radius:4px;">INFLOW</span>
+                        </span>
+                        <small style="color:var(--text-3);font-size:11px;">Enter in either USD or KES</small>
                     </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <!-- In KES -->
+                        <div class="form-group" style="margin:0;">
+                            <label style="color:var(--amber);font-size:11.5px;font-weight:800;">🇰🇪 Kenya Shillings (KES / KSh)</label>
+                            <div style="position:relative;margin-top:2px;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:12px;">KES</span>
+                                <input type="number" step="1" min="0" id="finAmountInKes" name="amount_in_kes" placeholder="0" oninput="onFinInKesInput(this.value)" style="width:100%;padding:8px 10px 8px 42px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:14px;color:var(--amber);background:var(--card);">
+                            </div>
+                        </div>
+                        <!-- In USD -->
+                        <div class="form-group" style="margin:0;">
+                            <label style="color:var(--green);font-size:11.5px;font-weight:800;">🇺🇸 US Dollars (USD / $)</label>
+                            <div style="position:relative;margin-top:2px;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--green);font-size:14px;">$</span>
+                                <input type="number" step="0.01" min="0" id="finAmountInUsd" name="amount_in_usd" placeholder="0.00" oninput="onFinInUsdInput(this.value)" style="width:100%;padding:8px 10px 8px 28px;border:1.5px solid var(--green);border-radius:8px;font-weight:800;font-size:14px;color:var(--green);background:var(--card);">
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    <div class="form-group">
-                        <label for="finAmountOut" style="color:var(--red);display:flex;align-items:center;gap:5px;font-weight:800;font-size:12.5px;">
-                            <span>▼ Amount Out (Spent)</span>
-                            <span style="font-size:11px;background:rgba(239,68,68,0.15);padding:1px 5px;border-radius:4px;"><?= htmlspecialchars($currCode) ?></span>
-                        </label>
-                        <div style="position:relative;margin-top:4px;">
-                            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--red);font-size:14px;">-<?= htmlspecialchars($currSym) ?></span>
-                            <input type="number" step="0.01" min="0" id="finAmountOut" name="amount_out" placeholder="0.00" oninput="calcModalNetBalance()" style="padding-left:32px;font-size:15px;font-weight:800;color:var(--red);width:100%;">
-                        </div>
-                        <small style="color:var(--text-3);font-size:11px;margin-top:4px;display:block;">Deducts from day's available inflow</small>
+                <!-- DUAL CURRENCY: Amount Out (Spent) in both USD & KES -->
+                <div style="background:var(--card-2);border:1.5px solid rgba(239,68,68,.35);padding:12px 14px;border-radius:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="color:var(--red);font-weight:800;font-size:13px;display:flex;align-items:center;gap:6px;">
+                            <span>▼ Amount Out (Spent Funds / Cost)</span>
+                            <span style="font-size:11px;background:rgba(239,68,68,0.15);padding:1px 6px;border-radius:4px;">OUTFLOW</span>
+                        </span>
+                        <small style="color:var(--text-3);font-size:11px;">Enter in either USD or KES</small>
                     </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <!-- Out KES -->
+                        <div class="form-group" style="margin:0;">
+                            <label style="color:var(--amber);font-size:11.5px;font-weight:800;">🇰🇪 Kenya Shillings (KES / KSh)</label>
+                            <div style="position:relative;margin-top:2px;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--amber);font-size:12px;">KES</span>
+                                <input type="number" step="1" min="0" id="finAmountOutKes" name="amount_out_kes" placeholder="0" oninput="onFinOutKesInput(this.value)" style="width:100%;padding:8px 10px 8px 42px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;font-size:14px;color:var(--amber);background:var(--card);">
+                            </div>
+                        </div>
+                        <!-- Out USD -->
+                        <div class="form-group" style="margin:0;">
+                            <label style="color:var(--red);font-size:11.5px;font-weight:800;">🇺🇸 US Dollars (USD / $)</label>
+                            <div style="position:relative;margin-top:2px;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--red);font-size:14px;">$</span>
+                                <input type="number" step="0.01" min="0" id="finAmountOutUsd" name="amount_out_usd" placeholder="0.00" oninput="onFinOutUsdInput(this.value)" style="width:100%;padding:8px 10px 8px 28px;border:1.5px solid var(--red);border-radius:8px;font-weight:800;font-size:14px;color:var(--red);background:var(--card);">
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    <!-- Live Calculation & Deduction Preview Box -->
-                    <div style="grid-column:1/-1;background:var(--card);padding:10px 12px;border-radius:8px;border:1px dashed var(--border-2);margin-top:4px;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;">
-                            <span style="font-weight:700;color:var(--text-2);">This Entry Net Impact:</span>
-                            <span id="finModalNetPreview" style="font-size:14.5px;font-weight:900;color:var(--text-3);">0.00</span>
-                        </div>
-                        <div id="finModalDeductionNote" style="font-size:11.5px;color:var(--text-3);margin-top:4px;font-weight:600;display:none;"></div>
+                <!-- Live Net Impact & Deduction Breakdown Card -->
+                <div style="background:var(--card);padding:12px 14px;border-radius:10px;border:1px dashed var(--border-2);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;flex-wrap:wrap;gap:6px;">
+                        <span style="font-weight:700;color:var(--text-2);">This Entry Net Impact:</span>
+                        <span id="finModalNetPreview" style="font-size:15px;font-weight:900;color:var(--text-3);">$ 0.00 (KES 0)</span>
                     </div>
+                    <div id="finModalDeductionNote" style="font-size:12px;color:var(--text-2);margin-top:6px;font-weight:600;display:none;line-height:1.4;"></div>
                 </div>
 
                 <!-- How It Was Used / Expenditure Reason -->
-                <div class="form-group">
-                    <label for="finReason">How Was It Used? / Expenditure Reason & Details *</label>
-                    <textarea id="finReason" name="reason" rows="2" placeholder="e.g. Bulk diesel refill, Tanker brake repair, Kampala freight haulage payout, Director withdrawal, Yard utilities..." required style="padding:10px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-family:inherit;font-size:13.5px;resize:vertical;"></textarea>
+                <div class="form-group" style="margin:0;">
+                    <label for="finReason" style="font-weight:700;font-size:13px;">How Was It Used? / Expenditure Reason & Details *</label>
+                    <textarea id="finReason" name="reason" rows="2" placeholder="e.g. Bulk diesel refill, Tanker brake repair, Kampala freight haulage payout, Director withdrawal, Yard utilities..." required style="width:100%;padding:10px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-family:inherit;font-size:13.5px;resize:vertical;"></textarea>
                     <small style="color:var(--text-3);font-size:11.5px;">Explain clearly how the funds were used or the nature of received inflow.</small>
                 </div>
 
                 <!-- Payment Method (Receipt concept removed) -->
-                <div class="form-group">
-                    <label for="finPaymentMethod">Payment Method</label>
-                    <select id="finPaymentMethod" name="payment_method" style="padding:9px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;">
+                <div class="form-group" style="margin:0;">
+                    <label for="finPaymentMethod" style="font-weight:700;font-size:13px;">Payment Method</label>
+                    <select id="finPaymentMethod" name="payment_method" style="width:100%;padding:9px 12px;border:1.5px solid var(--border-2);border-radius:10px;background:var(--card);color:var(--text);font-size:13.5px;font-weight:600;">
                         <option value="Cash">Cash</option>
                         <option value="M-Pesa">M-Pesa</option>
                         <option value="Bank Transfer">Bank Transfer (EFT/RTGS)</option>
@@ -544,9 +627,9 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
                 </div>
 
                 <!-- Buttons -->
-                <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px;">
+                <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px;">
                     <button type="button" class="btn btn-ghost" onclick="closeNewFinancialModal()">Cancel</button>
-                    <button type="submit" class="btn btn-brand" id="btnSaveFinancial">
+                    <button type="submit" class="btn btn-brand" id="btnSaveFinancial" style="font-weight:800;padding:10px 20px;">
                         <span>Save Transaction</span>
                     </button>
                 </div>
@@ -557,22 +640,27 @@ $content = function () use ($title, $records, $kpis, $todayKpis, $categories, $m
 
 <script>
 const CSRF_TOKEN = '<?= csrf_token() ?>';
-const CURRENCY_SYM = '<?= addslashes($currSym) ?>';
-const CURRENCY_CODE = '<?= addslashes($currCode) ?>';
+const EX_RATE = <?= (float)$exRate ?>;
 
 let currentDaySummary = {
     day_in: 0,
+    day_in_kes: 0,
     day_out: 0,
+    day_out_kes: 0,
     day_balance: 0,
+    day_balance_kes: 0,
     count: 0
 };
 
 function openNewFinancialModal() {
     const m = document.getElementById('modalNewFinancial');
     if (m) {
+        m.style.display = 'grid';
         m.classList.add('active');
-        document.getElementById('finAmountIn').value = '';
-        document.getElementById('finAmountOut').value = '';
+        document.getElementById('finAmountInKes').value = '';
+        document.getElementById('finAmountInUsd').value = '';
+        document.getElementById('finAmountOutKes').value = '';
+        document.getElementById('finAmountOutUsd').value = '';
         document.getElementById('finReason').value = '';
         const curDate = document.getElementById('finEntryDate')?.value || '<?= date("Y-m-d") ?>';
         fetchDaySummary(curDate);
@@ -582,7 +670,62 @@ function openNewFinancialModal() {
 
 function closeNewFinancialModal() {
     const m = document.getElementById('modalNewFinancial');
-    if (m) m.classList.remove('active');
+    if (m) {
+        m.style.display = 'none';
+        m.classList.remove('active');
+    }
+}
+
+function handleFinBackdropClick(e) {
+    if (e.target && e.target.id === 'modalNewFinancial') {
+        closeNewFinancialModal();
+    }
+}
+
+/* Two-way Dual Currency Handlers for Inflow */
+function onFinInKesInput(kesVal) {
+    const num = parseFloat(kesVal);
+    const usdInput = document.getElementById('finAmountInUsd');
+    if (!isNaN(num) && num > 0) {
+        usdInput.value = (num / EX_RATE).toFixed(2);
+    } else {
+        usdInput.value = '';
+    }
+    calcModalNetBalance();
+}
+
+function onFinInUsdInput(usdVal) {
+    const num = parseFloat(usdVal);
+    const kesInput = document.getElementById('finAmountInKes');
+    if (!isNaN(num) && num > 0) {
+        kesInput.value = Math.round(num * EX_RATE);
+    } else {
+        kesInput.value = '';
+    }
+    calcModalNetBalance();
+}
+
+/* Two-way Dual Currency Handlers for Outflow */
+function onFinOutKesInput(kesVal) {
+    const num = parseFloat(kesVal);
+    const usdInput = document.getElementById('finAmountOutUsd');
+    if (!isNaN(num) && num > 0) {
+        usdInput.value = (num / EX_RATE).toFixed(2);
+    } else {
+        usdInput.value = '';
+    }
+    calcModalNetBalance();
+}
+
+function onFinOutUsdInput(usdVal) {
+    const num = parseFloat(usdVal);
+    const kesInput = document.getElementById('finAmountOutKes');
+    if (!isNaN(num) && num > 0) {
+        kesInput.value = Math.round(num * EX_RATE);
+    } else {
+        kesInput.value = '';
+    }
+    calcModalNetBalance();
 }
 
 async function fetchDaySummary(date) {
@@ -606,17 +749,25 @@ async function fetchDaySummary(date) {
                 badge.textContent = data.count + (data.count === 1 ? ' entry' : ' entries');
                 badge.className = data.count > 0 ? 'status s-done' : 'status s-plan';
             }
-            const elIn = document.getElementById('daySummaryIn');
-            const elOut = document.getElementById('daySummaryOut');
-            const elBal = document.getElementById('daySummaryBalance');
+            
+            const inUsd = Number(data.day_in || 0);
+            const inKes = Number(data.day_in_kes || (inUsd * EX_RATE));
+            const outUsd = Number(data.day_out || 0);
+            const outKes = Number(data.day_out_kes || (outUsd * EX_RATE));
+            const balUsd = Number(data.day_balance || (inUsd - outUsd));
+            const balKes = Number(data.day_balance_kes || (balUsd * EX_RATE));
 
-            if (elIn) elIn.textContent = '+' + CURRENCY_SYM + Number(data.day_in).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            if (elOut) elOut.textContent = '-' + CURRENCY_SYM + Number(data.day_out).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            if (elBal) {
-                const balVal = Number(data.day_balance);
-                elBal.textContent = (balVal >= 0 ? '+' : '') + CURRENCY_SYM + balVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                elBal.style.color = balVal >= 0 ? 'var(--brand)' : 'var(--red)';
-            }
+            document.getElementById('daySummaryInUsd').textContent = '+$ ' + inUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('daySummaryInKes').textContent = 'KES ' + Math.round(inKes).toLocaleString('en-US');
+
+            document.getElementById('daySummaryOutUsd').textContent = '-$ ' + outUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('daySummaryOutKes').textContent = 'KES ' + Math.round(outKes).toLocaleString('en-US');
+
+            const balUsdEl = document.getElementById('daySummaryBalUsd');
+            balUsdEl.textContent = (balUsd >= 0 ? '+$ ' : '-$ ') + Math.abs(balUsd).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            balUsdEl.style.color = balUsd >= 0 ? 'var(--brand)' : 'var(--red)';
+            document.getElementById('daySummaryBalKes').textContent = 'KES ' + Math.round(balKes).toLocaleString('en-US');
+
             calcModalNetBalance();
         }
     } catch (e) {
@@ -625,40 +776,46 @@ async function fetchDaySummary(date) {
 }
 
 function calcModalNetBalance() {
-    const inVal = parseFloat(document.getElementById('finAmountIn')?.value || 0);
-    const outVal = parseFloat(document.getElementById('finAmountOut')?.value || 0);
-    const net = inVal - outVal;
+    const inUsd = parseFloat(document.getElementById('finAmountInUsd')?.value || 0);
+    const outUsd = parseFloat(document.getElementById('finAmountOutUsd')?.value || 0);
+    const netUsd = inUsd - outUsd;
+    const netKes = Math.round(netUsd * EX_RATE);
 
     const el = document.getElementById('finModalNetPreview');
     const noteEl = document.getElementById('finModalDeductionNote');
     if (!el) return;
 
-    if (inVal === 0 && outVal === 0) {
-        el.textContent = '0.00 ' + CURRENCY_CODE;
+    if (inUsd === 0 && outUsd === 0) {
+        el.textContent = '$ 0.00 (KES 0)';
         el.style.color = 'var(--text-3)';
         if (noteEl) noteEl.style.display = 'none';
-    } else if (net >= 0) {
-        el.textContent = '+' + CURRENCY_SYM + net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + CURRENCY_CODE;
+    } else if (netUsd >= 0) {
+        el.textContent = '+$ ' + netUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (KES ' + netKes.toLocaleString('en-US') + ')';
         el.style.color = 'var(--green)';
     } else {
-        el.textContent = '-' + CURRENCY_SYM + Math.abs(net).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + CURRENCY_CODE;
+        el.textContent = '-$ ' + Math.abs(netUsd).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (KES ' + netKes.toLocaleString('en-US') + ')';
         el.style.color = 'var(--red)';
     }
 
-    // Dynamic feedback on day deduction or addition
     if (noteEl) {
-        if (outVal > 0 && inVal === 0) {
-            const newBal = (currentDaySummary.day_balance || 0) - outVal;
+        const curDayBal = Number(currentDaySummary.day_balance || 0);
+        const curDayIn = Number(currentDaySummary.day_in || 0);
+
+        if (outUsd > 0 && inUsd === 0) {
+            const newBalUsd = curDayBal - outUsd;
+            const newBalKes = Math.round(newBalUsd * EX_RATE);
             noteEl.style.display = 'block';
-            noteEl.innerHTML = `🔻 Deducts <b>${CURRENCY_SYM}${outVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</b> from available funds (${CURRENCY_SYM}${(currentDaySummary.day_balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}) → New Day Balance will be <b style="color:${newBal >= 0 ? 'var(--brand)' : 'var(--red)'};">${(newBal >= 0 ? '+' : '')}${CURRENCY_SYM}${newBal.toLocaleString('en-US', {minimumFractionDigits: 2})}</b>`;
-        } else if (inVal > 0 && outVal === 0) {
-            const newIn = (currentDaySummary.day_in || 0) + inVal;
+            noteEl.innerHTML = `🔻 <b>Deduction:</b> Spending <b>$${outUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (KES ${Math.round(outUsd * EX_RATE).toLocaleString()})</b> from day's available balance ($${curDayBal.toLocaleString('en-US', {minimumFractionDigits: 2})}) → New Day Balance will be <b style="color:${newBalUsd >= 0 ? 'var(--brand)' : 'var(--red)'};">${newBalUsd >= 0 ? '+$' : '-$'}${Math.abs(newBalUsd).toLocaleString('en-US', {minimumFractionDigits: 2})} (KES ${newBalKes.toLocaleString()})</b>`;
+        } else if (inUsd > 0 && outUsd === 0) {
+            const newInUsd = curDayIn + inUsd;
+            const newInKes = Math.round(newInUsd * EX_RATE);
             noteEl.style.display = 'block';
-            noteEl.innerHTML = `✨ Adds <b>+${CURRENCY_SYM}${inVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</b> to day's received total (${CURRENCY_SYM}${(currentDaySummary.day_in || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}) → New Day Total Inflow: <b>+${CURRENCY_SYM}${newIn.toLocaleString('en-US', {minimumFractionDigits: 2})}</b>`;
-        } else if (inVal > 0 && outVal > 0) {
-            const newBal = (currentDaySummary.day_balance || 0) + net;
+            noteEl.innerHTML = `✨ <b>New Inflow:</b> Adding <b>+$${inUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (KES ${Math.round(inUsd * EX_RATE).toLocaleString()})</b> to day's total received ($${curDayIn.toLocaleString('en-US', {minimumFractionDigits: 2})}) → New Day Total Inflow: <b>+$${newInUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (KES ${newInKes.toLocaleString()})</b>`;
+        } else if (inUsd > 0 && outUsd > 0) {
+            const newBalUsd = curDayBal + netUsd;
+            const newBalKes = Math.round(newBalUsd * EX_RATE);
             noteEl.style.display = 'block';
-            noteEl.innerHTML = `⚖️ Day Net Adjustment: <b>${(net >= 0 ? '+' : '')}${CURRENCY_SYM}${net.toLocaleString('en-US', {minimumFractionDigits: 2})}</b> → New Day Balance: <b>${(newBal >= 0 ? '+' : '')}${CURRENCY_SYM}${newBal.toLocaleString('en-US', {minimumFractionDigits: 2})}</b>`;
+            noteEl.innerHTML = `⚖️ <b>Net Day Impact:</b> <b>${netUsd >= 0 ? '+$' : '-$'}${Math.abs(netUsd).toLocaleString('en-US', {minimumFractionDigits: 2})} (KES ${netKes.toLocaleString()})</b> → New Day Balance: <b>${newBalUsd >= 0 ? '+$' : '-$'}${Math.abs(newBalUsd).toLocaleString('en-US', {minimumFractionDigits: 2})} (KES ${newBalKes.toLocaleString()})</b>`;
         } else {
             noteEl.style.display = 'none';
         }
@@ -693,7 +850,6 @@ async function handleNewFinancialSubmit(e) {
             btn.innerHTML = 'Save Transaction';
         }
     } catch (err) {
-        // Fallback standard submit if JSON error
         form.submit();
     }
 }
@@ -707,7 +863,6 @@ function startFinInlineEdit(id) {
 
     row.classList.add('tr-editing');
 
-    // Extract current values (No receipt #)
     const dateVal = row.querySelector('.cell-date').getAttribute('data-val') || '';
     const inVal = row.querySelector('.cell-in').getAttribute('data-val') || '0';
     const outVal = row.querySelector('.cell-out').getAttribute('data-val') || '0';
@@ -777,8 +932,12 @@ function calcRowLiveNet(id) {
 
     const balCell = row.querySelector('.cell-runbal');
     if (balCell) {
-        const netStr = (net >= 0 ? '+' : '') + CURRENCY_SYM + net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        balCell.innerHTML = `<span style="font-weight:900;color:${net >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13.5px;">${netStr}</span>`;
+        const netStr = (net >= 0 ? '+$ ' : '-$ ') + Math.abs(net).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const netKesStr = 'KES ' + Math.round(net * EX_RATE).toLocaleString('en-US');
+        balCell.innerHTML = `
+            <div style="font-weight:900;color:${net >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13.5px;">${netStr}</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:600;">${netKesStr}</div>
+        `;
     }
 }
 
@@ -830,18 +989,30 @@ async function saveFinInlineEdit(id) {
 
             // 2. Amount In
             row.querySelector('.cell-in').setAttribute('data-val', r.amount_in);
-            const inStr = r.amount_in > 0 ? ('+' + CURRENCY_SYM + Number(r.amount_in).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '—';
-            row.querySelector('.cell-in').innerHTML = `<span class="view-val" style="font-weight:800;color:${r.amount_in > 0 ? 'var(--green)' : 'var(--text-3)'};font-size:13.5px;">${inStr}</span>`;
+            const inValNum = Number(r.amount_in);
+            row.querySelector('.cell-in').innerHTML = inValNum > 0 ? `
+                <div class="view-val">
+                    <div style="font-weight:800;color:var(--green);font-size:13.5px;">+$ ${inValNum.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES ${Math.round(inValNum * EX_RATE).toLocaleString('en-US')}</div>
+                </div>` : `<span class="view-val" style="color:var(--text-3);font-weight:700;">—</span>`;
 
             // 3. Amount Out
             row.querySelector('.cell-out').setAttribute('data-val', r.amount_out);
-            const outStr = r.amount_out > 0 ? ('-' + CURRENCY_SYM + Number(r.amount_out).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '—';
-            row.querySelector('.cell-out').innerHTML = `<span class="view-val" style="font-weight:800;color:${r.amount_out > 0 ? 'var(--red)' : 'var(--text-3)'};font-size:13.5px;">${outStr}</span>`;
+            const outValNum = Number(r.amount_out);
+            row.querySelector('.cell-out').innerHTML = outValNum > 0 ? `
+                <div class="view-val">
+                    <div style="font-weight:800;color:var(--red);font-size:13.5px;">-$ ${outValNum.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES ${Math.round(outValNum * EX_RATE).toLocaleString('en-US')}</div>
+                </div>` : `<span class="view-val" style="color:var(--text-3);font-weight:700;">—</span>`;
 
             // 4. Remaining Balance
             const balVal = Number(r.balance || (r.amount_in - r.amount_out));
-            const balStr = (balVal >= 0 ? '+' : '') + CURRENCY_SYM + balVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            row.querySelector('.cell-runbal').innerHTML = `<span class="view-val" style="font-weight:900;color:${balVal >= 0 ? 'var(--brand)' : 'var(--red)'};font-size:13.5px;">${balStr}</span>`;
+            const balStr = (balVal >= 0 ? '+$ ' : '-$ ') + Math.abs(balVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            row.querySelector('.cell-runbal').innerHTML = `
+                <div class="view-val">
+                    <div style="font-weight:900;color:${balVal >= 0 ? 'var(--brand)' : 'var(--red)'};font-size:13.5px;">${balStr}</div>
+                    <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES ${Math.round(balVal * EX_RATE).toLocaleString('en-US')}</div>
+                </div>`;
 
             // 5. Reason / How Used
             row.querySelector('.cell-reason').setAttribute('data-val', r.reason);
@@ -870,9 +1041,12 @@ async function saveFinInlineEdit(id) {
                 const elTotIn = document.getElementById('statTotalIn');
                 const elTotOut = document.getElementById('statTotalOut');
                 const elTotBal = document.getElementById('statNetBalance');
-                if (elTotIn) elTotIn.textContent = CURRENCY_SYM + Number(data.kpis.total_in).toLocaleString('en-US', {minimumFractionDigits: 2});
-                if (elTotOut) elTotOut.textContent = CURRENCY_SYM + Number(data.kpis.total_out).toLocaleString('en-US', {minimumFractionDigits: 2});
-                if (elTotBal) elTotBal.textContent = CURRENCY_SYM + Number(data.kpis.net_balance).toLocaleString('en-US', {minimumFractionDigits: 2});
+                if (elTotIn) elTotIn.textContent = '$ ' + Number(data.kpis.total_in).toLocaleString('en-US', {minimumFractionDigits: 2});
+                if (elTotOut) elTotOut.textContent = '$ ' + Number(data.kpis.total_out).toLocaleString('en-US', {minimumFractionDigits: 2});
+                if (elTotBal) {
+                    const nb = Number(data.kpis.net_balance);
+                    elTotBal.textContent = (nb >= 0 ? '$ ' : '-$ ') + Math.abs(nb).toLocaleString('en-US', {minimumFractionDigits: 2});
+                }
             }
         } else {
             alert(data.message || 'Could not update row.');
@@ -902,16 +1076,26 @@ function cancelFinInlineEdit(id) {
     row.querySelector('.cell-date').innerHTML = `<span class="view-val" style="font-weight:700;color:var(--text);font-size:13px;">${escapeHtml(dateVal)}</span>`;
 
     // 2. Amount In
-    const inStr = inVal > 0 ? ('+' + CURRENCY_SYM + inVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '—';
-    row.querySelector('.cell-in').innerHTML = `<span class="view-val" style="font-weight:800;color:${inVal > 0 ? 'var(--green)' : 'var(--text-3)'};font-size:13.5px;">${inStr}</span>`;
+    row.querySelector('.cell-in').innerHTML = inVal > 0 ? `
+        <div class="view-val">
+            <div style="font-weight:800;color:var(--green);font-size:13.5px;">+$ ${inVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES ${Math.round(inVal * EX_RATE).toLocaleString('en-US')}</div>
+        </div>` : `<span class="view-val" style="color:var(--text-3);font-weight:700;">—</span>`;
 
     // 3. Amount Out
-    const outStr = outVal > 0 ? ('-' + CURRENCY_SYM + outVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '—';
-    row.querySelector('.cell-out').innerHTML = `<span class="view-val" style="font-weight:800;color:${outVal > 0 ? 'var(--red)' : 'var(--text-3)'};font-size:13.5px;">${outStr}</span>`;
+    row.querySelector('.cell-out').innerHTML = outVal > 0 ? `
+        <div class="view-val">
+            <div style="font-weight:800;color:var(--red);font-size:13.5px;">-$ ${outVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES ${Math.round(outVal * EX_RATE).toLocaleString('en-US')}</div>
+        </div>` : `<span class="view-val" style="color:var(--text-3);font-weight:700;">—</span>`;
 
     // 4. Remaining Balance
-    const balStr = (balVal >= 0 ? '+' : '') + CURRENCY_SYM + balVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    row.querySelector('.cell-runbal').innerHTML = `<span class="view-val" style="font-weight:900;color:${balVal >= 0 ? 'var(--brand)' : 'var(--red)'};font-size:13.5px;">${balStr}</span>`;
+    const balStr = (balVal >= 0 ? '+$ ' : '-$ ') + Math.abs(balVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    row.querySelector('.cell-runbal').innerHTML = `
+        <div class="view-val">
+            <div style="font-weight:900;color:${balVal >= 0 ? 'var(--brand)' : 'var(--red)'};font-size:13.5px;">${balStr}</div>
+            <div style="font-size:11px;color:var(--text-3);font-weight:600;">KES ${Math.round(balVal * EX_RATE).toLocaleString('en-US')}</div>
+        </div>`;
 
     // 5. Reason / How Used
     row.querySelector('.cell-reason').innerHTML = `<span class="view-val" style="font-size:13.5px;color:var(--text);line-height:1.4;font-weight:600;">${escapeHtml(reasonVal || '—')}</span>`;
