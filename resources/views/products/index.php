@@ -124,7 +124,7 @@
 </section>
 
 <!-- Add Product Modal -->
-<div class="modal-backdrop" id="productModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="productModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
             <h2>⛽ Add Fuel Product</h2>
@@ -171,7 +171,7 @@
 </div>
 
 <!-- Edit Product Modal -->
-<div class="modal-backdrop" id="editProductModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="editProductModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
             <h2>✏️ Edit Fuel Product & Unit Price</h2>

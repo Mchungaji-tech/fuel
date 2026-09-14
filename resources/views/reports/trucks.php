@@ -161,7 +161,7 @@ if (repFilter) {
 </script>
 
 <!-- Truck Report Export Filter Modal -->
-<div class="modal-backdrop" id="truckExportModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="truckExportModal">
     <div class="modal-card" style="max-width:500px;">
         <div class="modal-head">
             <h2>📊 Export Truck Performance Report</h2>

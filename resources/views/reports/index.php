@@ -345,7 +345,7 @@
 </section>
 
 <!-- Report Export Filter Modal -->
-<div class="modal-backdrop" id="reportExportModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="reportExportModal">
     <div class="modal-card" style="max-width:500px;">
         <div class="modal-head">
             <h2>📊 Export Monthly & Vehicle Reports</h2>

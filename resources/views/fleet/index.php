@@ -574,7 +574,7 @@
 </style>
 
 <!-- New Dispatch Procedural Wizard Modal -->
-<div class="modal-backdrop" id="dispatchModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="dispatchModal">
     <div class="modal-card" style="max-width:760px;">
         <div class="modal-head" style="margin-bottom:14px;">
             <div>
@@ -586,7 +586,7 @@
                     Guided 4-step workflow: Vehicle crew, cargo specs, route & diesel fuel, and financial review.
                 </div>
             </div>
-            <button type="button" class="close-modal" onclick="document.getElementById('dispatchModal').classList.remove('active')">✕</button>
+            <button type="button" class="close-modal" onclick="closeProceduralDispatchModal()">✕</button>
         </div>
 
         <!-- Wizard Step Progress Stepper Bar -->
@@ -684,7 +684,7 @@
                 </div>
 
                 <div style="margin-top:22px;display:flex;justify-content:space-between;align-items:center;">
-                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('dispatchModal').classList.remove('active')">Cancel</button>
+                    <button type="button" class="btn btn-ghost" onclick="closeProceduralDispatchModal()">Cancel</button>
                     <button type="button" class="btn btn-brand" onclick="goToWizardStep(2)">Next: Cargo & Consignee →</button>
                 </div>
             </div>
@@ -1012,7 +1012,7 @@
 </div>
 
 <!-- Dedicated Cross-Border Diesel Fueling Modal -->
-<div class="modal-backdrop" id="dieselLogModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="dieselLogModal">
     <div class="modal-card" style="max-width:680px;">
         <div class="modal-head">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -1182,7 +1182,7 @@
 
 
 <!-- Import CSV Modal -->
-<div class="modal-backdrop" id="importModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="importModal">
     <div class="modal-card" style="max-width:520px;">
         <div class="modal-head">
             <h2>📥 Import Fleet Spreadsheet</h2>
@@ -1226,7 +1226,7 @@
 ?>
 
 <!-- Confirm Delivery & Client Offloading Modal -->
-<div class="modal-backdrop" id="confirmDeliveryModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="confirmDeliveryModal">
     <div class="modal-card" style="max-width:560px;">
         <div class="modal-head">
             <h2>📦 Confirm Client Delivery & Offload</h2>
@@ -1288,7 +1288,7 @@
 </div>
 
 <!-- Trip Expense Management Modal -->
-<div class="modal-backdrop" id="tripExpenseModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="tripExpenseModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
             <h2>🛠️ Manage Trip Expenses</h2>
@@ -1330,7 +1330,7 @@
 </div>
 
 <!-- Fleet Export Filter Modal -->
-<div class="modal-backdrop" id="fleetExportModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="fleetExportModal">
     <div class="modal-card" style="max-width:500px;">
         <div class="modal-head">
             <h2>📊 Export Fleet Ledger</h2>
@@ -1393,8 +1393,9 @@
 <!-- Dispatch Success Modal -->
 <?php $dispatchSuccess = flash('dispatch_success_modal'); ?>
 <?php if ($dispatchSuccess && is_array($dispatchSuccess)): ?>
-<div class="modal-backdrop active" id="dispatchSuccessModal" onclick="if(event.target===this)this.classList.remove('active')">
-    <div class="modal-card" style="max-width:480px;text-align:center;padding:28px 24px;">
+<div class="modal-backdrop active" id="dispatchSuccessModal">
+    <div class="modal-card" style="max-width:480px;text-align:center;padding:28px 24px;position:relative;">
+        <button type="button" class="close-modal" style="position:absolute;top:16px;right:18px;" onclick="document.getElementById('dispatchSuccessModal').classList.remove('active')">✕</button>
         <div style="width:64px;height:64px;border-radius:50%;background:var(--green-soft);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px auto;">
             ✓
         </div>
@@ -1415,8 +1416,9 @@
 <!-- New Driver Prompt Modal -->
 <?php $newDriverPrompt = flash('new_driver_prompt'); ?>
 <?php if ($newDriverPrompt && is_array($newDriverPrompt)): ?>
-<div class="modal-backdrop active" id="newDriverPromptModal" style="z-index:9999;" onclick="if(event.target===this)this.classList.remove('active')">
-    <div class="modal-card" style="max-width:520px;padding:26px;">
+<div class="modal-backdrop active" id="newDriverPromptModal" style="z-index:9999;">
+    <div class="modal-card" style="max-width:520px;padding:26px;position:relative;">
+        <button type="button" class="close-modal" style="position:absolute;top:16px;right:18px;" onclick="document.getElementById('newDriverPromptModal').classList.remove('active')">✕</button>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
             <div style="width:48px;height:48px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">
                 👤
@@ -1449,7 +1451,7 @@
 <?php endif; ?>
 
 <!-- View Full Dispatch Details Inspection Modal -->
-<div class="modal-backdrop" id="viewDispatchModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="viewDispatchModal">
     <div class="modal-card" style="max-width:860px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;padding:0;">
         <div class="modal-head" style="padding:18px 24px;border-bottom:1px solid var(--border);background:var(--card-2);margin:0;">
             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -1693,6 +1695,21 @@ window.openProceduralDispatchModal = function() {
     calcExpectedTransport();
     updateWizardUI();
     document.getElementById('dispatchModal').classList.add('active');
+};
+
+window.closeProceduralDispatchModal = function(force) {
+    if (!force) {
+        const truck = document.getElementById('dispatchTruckSelect')?.value;
+        const driver = document.getElementById('dispatchDriverSelect')?.value;
+        const client = document.getElementById('dispatchClientName')?.value;
+        const isDirty = (currentWizardStep > 1) || Boolean(truck) || Boolean(driver) || Boolean(client);
+        if (isDirty) {
+            if (!confirm('Are you sure you want to exit the New Dispatch Wizard? Any unsubmitted trip details will be lost.')) {
+                return;
+            }
+        }
+    }
+    document.getElementById('dispatchModal')?.classList.remove('active');
 };
 
 window.onTruckCapacityInput = function(val) {

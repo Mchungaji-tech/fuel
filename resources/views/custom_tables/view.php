@@ -156,7 +156,7 @@ $content = function() use ($title, $tableInfo, $columns, $visibleColumns, $recor
 </section>
 
 <!-- Modal: Add Record -->
-<div class="modal-backdrop" id="addRecordModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="addRecordModal">
     <div class="modal-card" style="max-width:600px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
         <div class="modal-head" style="border-bottom:1px solid var(--border);padding-bottom:14px;">
             <h2>＋ Add Record to <?= htmlspecialchars($tableInfo['display_name']) ?></h2>
@@ -193,7 +193,7 @@ $content = function() use ($title, $tableInfo, $columns, $visibleColumns, $recor
 </div>
 
 <!-- Modal: Import Spreadsheet -->
-<div class="modal-backdrop" id="customImportModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="customImportModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head" style="border-bottom:1px solid var(--border);padding-bottom:14px;">
             <h2>📥 Import Spreadsheet to <?= htmlspecialchars($tableInfo['display_name']) ?></h2>

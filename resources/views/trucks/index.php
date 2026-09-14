@@ -157,7 +157,7 @@
 </section>
 
 <!-- Add Truck Modal -->
-<div class="modal-backdrop" id="truckModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="truckModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
             <h2>🚛 Add Fleet Tanker</h2>

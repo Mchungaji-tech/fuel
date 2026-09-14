@@ -200,7 +200,7 @@
 </section>
 
 <!-- Register New User Modal -->
-<div class="modal-backdrop" id="registerUserModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="registerUserModal">
     <div class="modal-card" style="max-width:520px;">
         <div class="modal-head">
             <h2>👤 Register Staff User Account</h2>
@@ -243,7 +243,7 @@
 </div>
 
 <!-- Edit User Profile & Reset Password Modal -->
-<div class="modal-backdrop" id="editUserModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="editUserModal">
     <div class="modal-card" style="max-width:520px;">
         <div class="modal-head">
             <h2>✏️ Edit Staff Profile & Credentials</h2>

@@ -294,7 +294,7 @@
 </section>
 
 <!-- Extensive Driver Details Breakdown Modal -->
-<div class="modal-backdrop" id="driverDetailsModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="driverDetailsModal">
     <div class="modal-card" style="max-width:850px;max-height:90vh;overflow-y:auto;">
         <div class="modal-head">
             <div>
@@ -382,7 +382,7 @@
 </div>
 
 <!-- Issue Salary Modal -->
-<div class="modal-backdrop" id="salaryModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="salaryModal">
     <div class="modal-card" style="max-width:560px;">
         <div class="modal-head">
             <div>
@@ -479,7 +479,7 @@
 </div>
 
 <!-- Edit Salary Modal -->
-<div class="modal-backdrop" id="editSalaryModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="editSalaryModal">
     <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
             <h2>✏️ Edit Driver Salary Record</h2>

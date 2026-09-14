@@ -270,7 +270,7 @@
 </section>
 
 <!-- Record Expense Modal (Free text inputs for any business purchase or repair) -->
-<div class="modal-backdrop" id="expenseModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="expenseModal">
     <div class="modal-card" style="max-width:580px;">
         <div class="modal-head">
             <h2>💰 Record Business Expense</h2>
@@ -328,7 +328,7 @@
 </div>
 
 <!-- Expense Export Modal -->
-<div class="modal-backdrop" id="expenseExportModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="expenseExportModal">
     <div class="modal-card" style="max-width:500px;">
         <div class="modal-head">
             <h2>📊 Export Business & Fleet Expenses</h2>

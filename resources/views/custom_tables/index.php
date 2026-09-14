@@ -135,7 +135,7 @@ $content = function() use ($title, $customTables, $systemTables) {
 </section>
 
 <!-- Modal: Create New Custom Table -->
-<div class="modal-backdrop" id="createTableModal" onclick="if(event.target===this)this.classList.remove('active')">
+<div class="modal-backdrop" id="createTableModal">
     <div class="modal-card" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
         <div class="modal-head" style="border-bottom:1px solid var(--border);padding-bottom:14px;">
             <h2>＋ Create New Custom Table</h2>

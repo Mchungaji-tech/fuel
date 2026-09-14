@@ -407,6 +407,14 @@ tbody tr:hover{background:var(--card-2)}
   box-shadow:var(--shadow-lg);padding:26px;animation:modalUp .25s ease;
 }
 @keyframes modalUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes modalShake{
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.02); }
+  75% { transform: scale(0.99); }
+}
+.modal-card.modal-shake{
+  animation: modalShake .25s ease !important;
+}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
 .modal-head h2{margin:0;font-size:20px;font-weight:800;}
 .close-modal{background:transparent;border:0;font-size:22px;color:var(--text-3);cursor:pointer;}
@@ -759,6 +767,20 @@ async function triggerDbSync() {
     if (icon) icon.classList.remove('spin-anim');
   }
 }
+
+/* Modals must only be closed via X button: clicking outside (backdrop) does not close to prevent data loss */
+document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('modal-backdrop')) {
+      const card = e.target.querySelector('.modal-card');
+      if (card) {
+        card.classList.remove('modal-shake');
+        void card.offsetWidth;
+        card.classList.add('modal-shake');
+      }
+    }
+  });
+});
 </script>
 </head>
 <body>
