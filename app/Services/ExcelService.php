@@ -235,8 +235,10 @@ class ExcelService
         $zip->close();
 
         // Stream file cleanly without any leftover buffered output
-        while (ob_get_level()) {
-            ob_end_clean();
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
         }
 
         if (!headers_sent()) {
@@ -263,8 +265,10 @@ class ExcelService
      */
     public static function exportXls(string $filename, array $headers, array $rows, string $sheetTitle = 'Dispatches'): void
     {
-        while (ob_get_level()) {
-            ob_end_clean();
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
         }
 
         header('Content-Type: application/vnd.ms-excel; charset=utf-8');
@@ -305,13 +309,17 @@ class ExcelService
      */
     public static function exportCsv(string $filename, array $headers, array $rows): void
     {
-        while (ob_get_level()) {
-            ob_end_clean();
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
         }
 
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Cache-Control: max-age=0');
+        if (!headers_sent()) {
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Cache-Control: max-age=0');
+        }
 
         $out = fopen('php://output', 'w');
         // Write UTF-8 BOM for Microsoft Excel compatibility
@@ -322,7 +330,10 @@ class ExcelService
             fputcsv($out, $r);
         }
         fclose($out);
-        exit;
+
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            exit;
+        }
     }
 
     /**

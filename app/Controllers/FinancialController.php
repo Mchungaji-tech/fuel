@@ -498,7 +498,9 @@ class FinancialController
         } else {
             ExcelService::exportXlsx($filename . '.xlsx', $headers, $exportRows, 'Cash Flow');
         }
-        exit;
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            exit;
+        }
     }
 
     /**
