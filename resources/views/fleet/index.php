@@ -878,12 +878,12 @@
                                 <div>
                                     <label style="font-size:11.5px;font-weight:800;color:var(--text);display:block;margin-bottom:4px;">📍 Refueling Country *</label>
                                     <select id="wzDieselCountry" onchange="onWizardDieselCountryChange()" style="width:100%;padding:8px;border:1.5px solid var(--border-2);border-radius:8px;background:var(--card);font-weight:700;">
-                                        <option value="Kenya" data-currency="KES" data-rate="<?= exchange_rate() ?>" data-flag="🇰🇪" selected>🇰🇪 Kenya</option>
-                                        <option value="Uganda" data-currency="UGX" data-rate="3750" data-flag="🇺🇬">🇺🇬 Uganda</option>
-                                        <option value="DR Congo" data-currency="USD" data-rate="1.0" data-flag="🇨🇩">🇨🇩 DR Congo</option>
-                                        <option value="South Sudan" data-currency="SSP" data-rate="1300" data-flag="🇸🇸">🇸🇸 South Sudan</option>
-                                        <option value="Rwanda" data-currency="RWF" data-rate="1350" data-flag="🇷🇼">🇷🇼 Rwanda</option>
-                                        <option value="Tanzania" data-currency="TZS" data-rate="2600" data-flag="🇹🇿">🇹🇿 Tanzania</option>
+                                        <option value="Kenya" data-flag="🇰🇪" selected>🇰🇪 Kenya</option>
+                                        <option value="Uganda" data-flag="🇺🇬">🇺🇬 Uganda</option>
+                                        <option value="DR Congo" data-flag="🇨🇩">🇨🇩 DR Congo</option>
+                                        <option value="South Sudan" data-flag="🇸🇸">🇸🇸 South Sudan</option>
+                                        <option value="Rwanda" data-flag="🇷🇼">🇷🇼 Rwanda</option>
+                                        <option value="Tanzania" data-flag="🇹🇿">🇹🇿 Tanzania</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1096,12 +1096,12 @@
                 <div class="form-group">
                     <label style="font-weight:800;color:var(--text);">📍 Refueling Country *</label>
                     <select name="country" id="dlmCountrySelect" required onchange="onDlmCountryChange()" style="font-weight:700;">
-                        <option value="Uganda" data-currency="UGX" data-rate="3750" data-flag="🇺🇬">🇺🇬 Uganda (UGX)</option>
-                        <option value="Kenya" data-currency="KES" data-rate="<?= exchange_rate() ?>" data-flag="🇰🇪" selected>🇰🇪 Kenya (KES)</option>
-                        <option value="DR Congo" data-currency="USD" data-rate="1.0" data-local-cur="CDF" data-local-rate="2850" data-flag="🇨🇩">🇨🇩 DR Congo (USD / CDF)</option>
-                        <option value="South Sudan" data-currency="SSP" data-rate="1300" data-flag="🇸🇸">🇸🇸 South Sudan (SSP)</option>
-                        <option value="Rwanda" data-currency="RWF" data-rate="1350" data-flag="🇷🇼">🇷🇼 Rwanda (RWF)</option>
-                        <option value="Tanzania" data-currency="TZS" data-rate="2600" data-flag="🇹🇿">🇹🇿 Tanzania (TZS)</option>
+                        <option value="Kenya" data-flag="🇰🇪" selected>🇰🇪 Kenya</option>
+                        <option value="Uganda" data-flag="🇺🇬">🇺🇬 Uganda</option>
+                        <option value="DR Congo" data-flag="🇨🇩">🇨🇩 DR Congo</option>
+                        <option value="South Sudan" data-flag="🇸🇸">🇸🇸 South Sudan</option>
+                        <option value="Rwanda" data-flag="🇷🇼">🇷🇼 Rwanda</option>
+                        <option value="Tanzania" data-flag="🇹🇿">🇹🇿 Tanzania</option>
                     </select>
                     <input type="hidden" name="currency_code" id="dlmCurrencyCode" value="KES">
                 </div>
@@ -1115,7 +1115,7 @@
                         <input type="number" step="0.0001" min="0.0001" name="exchange_rate" id="dlmExchangeRate" value="<?= exchange_rate() ?>" oninput="onDlmRateInput(this.value)" style="width:100%;padding:9px 50px 9px 12px;border:1.5px solid var(--border-2);border-radius:8px;font-weight:800;font-size:13.5px;color:var(--text);background:var(--card);" required>
                         <span id="dlmRateCurrencyCode" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text-3);font-size:12px;">KES</span>
                     </div>
-                    <small style="color:var(--text-3);font-size:11px;">Dynamic transaction rate saved per fuel stop</small>
+                    <small style="color:var(--text-3);font-size:11px;">Fixed currency conversion (KSh to USD only)</small>
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
@@ -1173,7 +1173,7 @@
                     <input type="hidden" name="local_unit_price" id="dlmLocalPrice" value="0">
                 </div>
 
-                <!-- Live Auto-Calculation Box reflecting Country of Refueling -->
+                <!-- Live Auto-Calculation Box -->
                 <div style="grid-column:1/-1;background:var(--card-2);border:1.5px solid var(--border);border-radius:10px;padding:14px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
                         <span style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Auto-Calculated Fueling Breakdown</span>
@@ -1182,22 +1182,18 @@
                         </span>
                     </div>
                     
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px;">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
                         <div>
                             <span style="font-size:12px;color:var(--amber);font-weight:700;">🇰🇪 Total in KSh (KES):</span>
-                            <div id="dlmKesTotalDisplay" style="font-size:16px;font-weight:900;color:var(--amber);margin-top:2px;">KES 0.00</div>
+                            <div id="dlmKesTotalDisplay" style="font-size:17px;font-weight:900;color:var(--amber);margin-top:2px;">KES 0.00</div>
                         </div>
                         <div>
                             <span style="font-size:12px;color:var(--brand);font-weight:700;">💵 Base USD ($):</span>
-                            <div id="dlmUsdDisplay" style="font-size:16px;font-weight:900;color:var(--brand);margin-top:2px;">$ 0.00</div>
-                        </div>
-                        <div>
-                            <span style="font-size:12px;color:var(--text-2);font-weight:700;" id="dlmLocalTotalLabel">Local Pump Total:</span>
-                            <div id="dlmLocalTotalDisplay" style="font-size:15px;font-weight:800;color:var(--text);margin-top:2px;">—</div>
+                            <div id="dlmUsdDisplay" style="font-size:17px;font-weight:900;color:var(--brand);margin-top:2px;">$ 0.00</div>
                         </div>
                         <div>
                             <span style="font-size:12px;color:var(--green);font-weight:700;">Trip Deduction:</span>
-                            <div id="dlmSysDisplay" style="font-size:16px;font-weight:900;color:var(--green);margin-top:2px;"><?= app_currency_symbol() ?> 0.00</div>
+                            <div id="dlmSysDisplay" style="font-size:17px;font-weight:900;color:var(--green);margin-top:2px;"><?= app_currency_symbol() ?> 0.00</div>
                         </div>
                     </div>
                 </div>
@@ -1218,19 +1214,28 @@
                 <span id="dlmHistorySummary" style="font-size:12px;color:var(--amber);font-weight:700;">0 stops • Total: $0.00</span>
             </div>
             
-            <div class="table-responsive" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+            <div class="table-responsive" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
                 <table style="width:100%;font-size:12.5px;margin:0;">
                     <thead>
                         <tr>
                             <th style="padding:8px 10px;">Date</th>
-                            <th style="padding:8px 10px;">Refuel Country & Station</th>
+                            <th style="padding:8px 10px;">Refuel Location & Station</th>
                             <th style="padding:8px 10px;">Litres</th>
-                            <th style="padding:8px 10px;">Payment in KSh</th>
-                            <th style="padding:8px 10px;">Base USD ($)</th>
-                            <th style="padding:8px 10px;">Local Equivalent</th>
+                            <th style="padding:8px 10px;">Cost in KSh (KES)</th>
+                            <th style="padding:8px 10px;">Cost in USD ($)</th>
                             <th style="padding:8px 10px;text-align:center;">Action</th>
                         </tr>
                     </thead>
+                    <tbody id="dlmHistoryTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align:center;padding:18px;color:var(--text-3);">Select a dispatch trip above to view its recorded fuel stops.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
    <!-- Route Checkpoints & Driver Transit Money Management Modal -->
 <div class="modal-backdrop" id="mileageRatesModal">
     <div class="modal-card" style="max-width:900px;">
@@ -2110,13 +2115,11 @@ window.onWizardDieselCountryChange = function() {
     const sel = document.getElementById('wzDieselCountry');
     if (!sel) return;
     const opt = sel.options[sel.selectedIndex];
-    const rate = opt.dataset.rate || '1.0';
     const country = opt.value || 'Kenya';
-    const currency = opt.dataset.currency || 'KES';
     const flag = opt.dataset.flag || '📍';
 
     const exInput = document.getElementById('wzDieselExRate');
-    if (exInput) exInput.value = rate;
+    if (exInput) exInput.value = SYS_EX_RATE;
 
     const badge = document.getElementById('wzDieselCountryBadge');
     if (badge) badge.textContent = `📍 ${flag} ${country}`;
@@ -2124,9 +2127,9 @@ window.onWizardDieselCountryChange = function() {
     const cHidden = document.getElementById('wzDieselCountryHidden');
     if (cHidden) cHidden.value = country;
     const curHidden = document.getElementById('wzDieselCurrencyHidden');
-    if (curHidden) curHidden.value = currency;
+    if (curHidden) curHidden.value = 'KES';
     const rHidden = document.getElementById('wzDieselExRateHidden');
-    if (rHidden) rHidden.value = rate;
+    if (rHidden) rHidden.value = SYS_EX_RATE;
 
     calcWizardDiesel();
 };
@@ -2390,24 +2393,22 @@ window.onDlmCountryChange = function() {
     const sel = document.getElementById('dlmCountrySelect');
     if (!sel) return;
     const opt = sel.options[sel.selectedIndex];
-    const rate = parseFloat(opt.dataset.rate) || SYS_EX_RATE;
     const country = opt.value || 'Kenya';
-    const curCode = opt.dataset.currency || 'KES';
 
     const cCode = document.getElementById('dlmCurrencyCode');
-    if (cCode) cCode.value = curCode;
+    if (cCode) cCode.value = 'KES';
 
     const rateCode = document.getElementById('dlmRateCurrencyCode');
-    if (rateCode) rateCode.textContent = curCode;
+    if (rateCode) rateCode.textContent = 'KES';
 
     const badge = document.getElementById('dlmCountryReflectBadge');
     if (badge) {
         badge.textContent = `📍 Refueling in ${opt.text}`;
     }
 
-    if (curCode === 'KES') {
-        const exRate = document.getElementById('dlmExchangeRate');
-        if (exRate) exRate.value = SYS_EX_RATE;
+    const exRate = document.getElementById('dlmExchangeRate');
+    if (exRate && (!exRate.value || parseFloat(exRate.value) <= 0 || parseFloat(exRate.value) > 500)) {
+        exRate.value = SYS_EX_RATE;
     }
     calcDlmDiesel();
 };
@@ -2446,14 +2447,10 @@ window.calcDlmDiesel = function() {
     const sysCost = toSystemCurrency(totalUsd);
 
     const kesDisp = document.getElementById('dlmKesTotalDisplay');
-    const locDisp = document.getElementById('dlmLocalTotalDisplay');
-    const locLbl = document.getElementById('dlmLocalTotalLabel');
     const usdDisp = document.getElementById('dlmUsdDisplay');
     const sysDisp = document.getElementById('dlmSysDisplay');
 
     if (kesDisp) kesDisp.textContent = 'KES ' + totalKes.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    if (locLbl) locLbl.textContent = `Pump Subtotal:`;
-    if (locDisp) locDisp.textContent = 'KES ' + totalKes.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (usdDisp) usdDisp.textContent = '$ ' + totalUsd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (sysDisp) sysDisp.textContent = formatSystemMoney(sysCost);
 };
@@ -2624,7 +2621,7 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
     const summ = document.getElementById('dlmHistorySummary');
     if (!body) return;
 
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:15px;color:var(--text-3);">Loading fuel stops...</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:15px;color:var(--text-3);">Loading fuel stops...</td></tr>';
 
     try {
         const res = await fetch('<?= url("fleet/diesel/list") ?>/' + dispatchId);
@@ -2632,21 +2629,27 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
         const logsList = json.logs || json.data || [];
         if (json.success && (json.logs || json.data)) {
             if (logsList.length === 0) {
-                body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-3);">No fuel stops recorded yet for this dispatch trip.</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text-3);">No fuel stops recorded yet for this dispatch trip.</td></tr>';
                 if (summ) summ.textContent = '0 stops • Total: $0.00';
             } else {
                 let html = '';
                 logsList.forEach(s => {
-                    const localTot = parseFloat(s.local_total_cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                    const usdTot = parseFloat(s.base_usd_cost || 0).toFixed(2);
-                    const sysTot = formatSystemMoney(toSystemCurrency(s.base_usd_cost));
+                    const usdTot = parseFloat(s.base_usd_cost || 0);
                     const litres = parseFloat(s.litres) || 0;
-                    const stopRate = parseFloat(s.exchange_rate) || SYS_EX_RATE;
-                    const stopUsdPrice = litres > 0 ? (parseFloat(s.base_usd_cost || 0) / litres) : 0;
-                    const stopKesPrice = stopUsdPrice * stopRate;
+                    let stopRate = parseFloat(s.exchange_rate) || SYS_EX_RATE;
+                    if (stopRate <= 0 || stopRate > 500) stopRate = SYS_EX_RATE;
+
+                    let kesTot = parseFloat(s.local_total_cost || 0);
+                    if (kesTot <= 0 || parseFloat(s.exchange_rate) > 500) {
+                        kesTot = usdTot * stopRate;
+                    }
+
+                    const sysTot = formatSystemMoney(toSystemCurrency(usdTot));
+                    const stopUsdPrice = litres > 0 ? (usdTot / litres) : 0;
+                    const stopKesPrice = litres > 0 ? (kesTot / litres) : 0;
 
                     html += `<tr>
-                        <td style="padding:8px 10px;white-space:nowrap;">${s.fuel_date}</td>
+                        <td style="padding:8px 10px;white-space:nowrap;font-weight:600;">${s.fuel_date}</td>
                         <td style="padding:8px 10px;">
                             <b>${s.country}</b><br>
                             <small style="color:var(--text-3);">${s.station_location || 'En-route Station'}</small>
@@ -2656,15 +2659,12 @@ window.loadDispatchFuelHistory = async function(dispatchId) {
                             <div style="font-size:10.5px;color:var(--text-3);font-weight:normal;">$${stopUsdPrice.toFixed(3)}/L • KES ${stopKesPrice.toFixed(1)}/L</div>
                         </td>
                         <td style="padding:8px 10px;font-weight:800;color:var(--amber);">
-                            KES ${localTot}<br>
-                            <span style="font-size:10px;color:var(--text-3);background:var(--card-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border);">Rate: ${stopRate.toFixed(2)}</span>
+                            KES ${kesTot.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}<br>
+                            <span style="font-size:10px;color:var(--text-3);background:var(--card-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border);">Rate: 1 USD = ${stopRate.toFixed(2)} KES</span>
                         </td>
                         <td style="padding:8px 10px;white-space:nowrap;">
-                            <b style="color:var(--brand);">$${usdTot}</b><br>
+                            <b style="color:var(--brand);">$${usdTot.toFixed(2)}</b><br>
                             <small style="color:var(--text-3);font-weight:600;">${sysTot}</small>
-                        </td>
-                        <td style="padding:8px 10px;font-size:11px;color:var(--text-3);">
-                            ${s.receipt_status || 'Received'}
                         </td>
                         <td style="padding:8px 10px;text-align:center;">
                             <div style="display:inline-flex;gap:4px;">

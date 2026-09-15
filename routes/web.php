@@ -80,6 +80,7 @@ return [
     ['POST', '/financial/store', [FinancialController::class, 'store']],
     ['POST', '/financial/inline-update', [FinancialController::class, 'inlineUpdate']],
     ['POST', '/financial/delete/{id}', [FinancialController::class, 'delete']],
+    ['POST', '/financial/clear-all', [FinancialController::class, 'clearAll']],
     ['GET', '/financial/export', [FinancialController::class, 'export']],
     ['GET', '/financial/day-summary', [FinancialController::class, 'daySummary']],
 
@@ -87,6 +88,7 @@ return [
     ['POST', '/finances/store', [FinancialController::class, 'store']],
     ['POST', '/finances/inline-update', [FinancialController::class, 'inlineUpdate']],
     ['POST', '/finances/delete/{id}', [FinancialController::class, 'delete']],
+    ['POST', '/finances/clear-all', [FinancialController::class, 'clearAll']],
     ['GET', '/finances/export', [FinancialController::class, 'export']],
     ['GET', '/finances/day-summary', [FinancialController::class, 'daySummary']],
 

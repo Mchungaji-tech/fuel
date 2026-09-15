@@ -1581,15 +1581,11 @@ class FleetController
         $localUnitPrice = max(0, (float)($_POST['local_unit_price'] ?? 0));
         
         $exchangeRate = (float)($_POST['exchange_rate'] ?? 0);
-        if ($exchangeRate <= 0) {
-            if ($currencyCode === 'KES') $exchangeRate = (float)exchange_rate();
-            elseif ($currencyCode === 'UGX') $exchangeRate = 3750.0;
-            elseif ($currencyCode === 'CDF') $exchangeRate = 2850.0;
-            elseif ($currencyCode === 'SSP') $exchangeRate = 1300.0;
-            else $exchangeRate = (float)exchange_rate() ?: 128.0;
+        if ($exchangeRate <= 0 || $exchangeRate > 500) {
+            $exchangeRate = (float)exchange_rate() ?: 130.0;
         }
 
-        // Multi-currency calculation: Support entering in USD ($) or KSh (KES) with live conversion
+        // Dual-currency calculation: Support entering in USD ($) or KSh (KES) with live conversion
         $entryCurrency = strtoupper(trim($_POST['entry_currency'] ?? ''));
         $usdUnitPrice = isset($_POST['usd_unit_price']) && $_POST['usd_unit_price'] !== '' ? (float)$_POST['usd_unit_price'] : 0;
         $kesUnitPrice = isset($_POST['kes_unit_price']) && $_POST['kes_unit_price'] !== '' ? (float)$_POST['kes_unit_price'] : 0;
@@ -1598,14 +1594,16 @@ class FleetController
             $baseUsdCost = round($litres * $usdUnitPrice, 2);
             $localUnitPrice = round($usdUnitPrice * $exchangeRate, 2);
             $localTotal = round($litres * $localUnitPrice, 2);
-        } elseif ($kesUnitPrice > 0) {
-            $baseUsdUnitPrice = $kesUnitPrice / $exchangeRate;
+            $currencyCode = 'USD';
+        } else {
+            if ($kesUnitPrice <= 0 && isset($_POST['local_unit_price'])) {
+                $kesUnitPrice = (float)$_POST['local_unit_price'];
+            }
+            $baseUsdUnitPrice = $exchangeRate > 0 ? ($kesUnitPrice / $exchangeRate) : 0;
             $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
             $localUnitPrice = $kesUnitPrice;
             $localTotal = round($litres * $localUnitPrice, 2);
-        } else {
-            $localTotal = round($litres * $localUnitPrice, 2);
-            $baseUsdCost = round($localTotal / $exchangeRate, 2);
+            $currencyCode = 'KES';
         }
 
         $notes = trim($_POST['notes'] ?? '');
@@ -1729,6 +1727,17 @@ class FleetController
 
         foreach ($logs as $l) {
             $baseUsd = (float)$l['base_usd_cost'];
+            $stopRate = (float)($l['exchange_rate'] ?? 0);
+            if ($stopRate <= 0 || $stopRate > 500) {
+                $stopRate = (float)exchange_rate() ?: 130.0;
+            }
+            $kesTotal = (float)($l['local_total_cost'] ?? 0);
+            if ($kesTotal <= 0 || (float)$l['exchange_rate'] > 500) {
+                $kesTotal = round($baseUsd * $stopRate, 2);
+            }
+            $litres = (float)$l['litres'];
+            $kesUnitPrice = $litres > 0 ? round($kesTotal / $litres, 2) : 0;
+
             $formattedLogs[] = [
                 'id' => $l['id'],
                 'dispatch_id' => $l['dispatch_id'],
@@ -1738,11 +1747,11 @@ class FleetController
                 'fuel_date_formatted' => format_date_dol($l['fuel_date']),
                 'station_location' => $l['station_location'],
                 'country' => $l['country'],
-                'currency_code' => $l['currency_code'],
-                'exchange_rate' => (float)$l['exchange_rate'],
-                'litres' => (float)$l['litres'],
-                'local_unit_price' => (float)$l['local_unit_price'],
-                'local_total_cost' => (float)$l['local_total_cost'],
+                'currency_code' => $l['currency_code'] === 'USD' ? 'USD' : 'KES',
+                'exchange_rate' => $stopRate,
+                'litres' => $litres,
+                'local_unit_price' => $kesUnitPrice,
+                'local_total_cost' => $kesTotal,
                 'base_usd_cost' => $baseUsd,
                 'display_cost_formatted' => format_money($baseUsd),
                 'notes' => $l['notes'] ?? '',
@@ -1796,7 +1805,9 @@ class FleetController
         $country = trim($_POST['country'] ?? $existing['country']);
         $currCode = strtoupper(trim($_POST['currency_code'] ?? $existing['currency_code']));
         $exRate = (float)($_POST['exchange_rate'] ?? $existing['exchange_rate']);
-        if ($exRate <= 0) $exRate = 1.0;
+        if ($exRate <= 0 || $exRate > 500) {
+            $exRate = (float)exchange_rate() ?: 130.0;
+        }
 
         $litres = (float)($_POST['litres'] ?? 0);
         $localUnitPrice = (float)($_POST['local_unit_price'] ?? 0);
@@ -1812,7 +1823,7 @@ class FleetController
             return;
         }
 
-        // Multi-currency calculation: Support entering in USD ($) or KSh (KES) with live conversion
+        // Dual-currency calculation: Support entering in USD ($) or KSh (KES) with live conversion
         $entryCurrency = strtoupper(trim($_POST['entry_currency'] ?? ''));
         $usdUnitPrice = isset($_POST['usd_unit_price']) && $_POST['usd_unit_price'] !== '' ? (float)$_POST['usd_unit_price'] : 0;
         $kesUnitPrice = isset($_POST['kes_unit_price']) && $_POST['kes_unit_price'] !== '' ? (float)$_POST['kes_unit_price'] : 0;
@@ -1821,14 +1832,16 @@ class FleetController
             $baseUsdCost = round($litres * $usdUnitPrice, 2);
             $localUnitPrice = round($usdUnitPrice * $exRate, 2);
             $localTotalCost = round($litres * $localUnitPrice, 2);
-        } elseif ($kesUnitPrice > 0) {
-            $baseUsdUnitPrice = $kesUnitPrice / $exRate;
+            $currCode = 'USD';
+        } else {
+            if ($kesUnitPrice <= 0 && isset($_POST['local_unit_price'])) {
+                $kesUnitPrice = (float)$_POST['local_unit_price'];
+            }
+            $baseUsdUnitPrice = $exRate > 0 ? ($kesUnitPrice / $exRate) : 0;
             $baseUsdCost = round($litres * $baseUsdUnitPrice, 2);
             $localUnitPrice = $kesUnitPrice;
             $localTotalCost = round($litres * $localUnitPrice, 2);
-        } else {
-            $localTotalCost = round($litres * $localUnitPrice, 2);
-            $baseUsdCost = round($localTotalCost / $exRate, 2);
+            $currCode = 'KES';
         }
 
         $notes = trim($_POST['notes'] ?? '');

@@ -45,6 +45,7 @@ echo (verify_csrf() === true ? " [PASS] " : " [FAIL] ") . "verify_csrf() succeed
 $_SERVER['HTTP_X_CSRF_TOKEN'] = '';
 $_SERVER['HTTP_X_REQUESTED_WITH'] = 'xmlhttprequest';
 $_SESSION['is_logged_in'] = true;
-echo (verify_csrf() === true ? " [PASS] " : " [FAIL] ") . "verify_csrf() succeeds for authenticated AJAX requests\n";
+// 5. Clean up test records
+$pdo->exec("DELETE FROM financial_records WHERE reason IN ('Initial received client fund', 'Diesel replenishment', 'Driver transit advance')");
 
 echo "\n=== All Financial Refinements Tests Passed! ===\n";

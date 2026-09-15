@@ -475,6 +475,37 @@ class FinancialController
     }
 
     /**
+     * Clear all financial transactions / test records permanently
+     */
+    public function clearAll(): void
+    {
+        $pdo = Database::connection();
+        $rows = $pdo->query('SELECT * FROM financial_records')->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($rows as $row) {
+            $compositeKey = implode('::', [
+                $row['entry_date'] ?? '',
+                $row['category'] ?? '',
+                (string)(float)($row['amount_in'] ?? 0),
+                (string)(float)($row['amount_out'] ?? 0),
+                $row['reason'] ?? ''
+            ]);
+            \App\Services\DatabaseSyncService::recordDeletion('financial_records', $compositeKey);
+        }
+
+        $pdo->exec('DELETE FROM financial_records');
+
+        if ($this->isAjax()) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'All financial transactions cleared successfully.']);
+            exit;
+        }
+
+        flash('financial_success', 'All financial transactions cleared successfully.');
+        redirect('/financial');
+    }
+
+    /**
      * Export the financial records to Excel (.xlsx) or CSV
      * User requirement: "ensure the new table of fince can be exported"
      */
