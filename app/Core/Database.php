@@ -447,8 +447,7 @@ class Database
                 {$idColumnSql},
                 origin VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
                 destination VARCHAR(150) NOT NULL,
-                transit_steps TEXT,
-                distance_km INT DEFAULT 0,
+                checkpoints_breakdown TEXT,
                 standard_allowance_kes DECIMAL(12,2) NOT NULL DEFAULT 0,
                 standard_allowance_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
                 notes TEXT,
@@ -557,8 +556,8 @@ class Database
         // Expenses
         $ensureColumn('expenses', 'receipt_status', "VARCHAR(50) DEFAULT 'Received'");
 
-        // Route Mileage Rates
-        $ensureColumn('route_mileage_rates', 'transit_steps', 'TEXT');
+        // Route Mileage Rates (Driver Transit Money at Checkpoints)
+        $ensureColumn('route_mileage_rates', 'checkpoints_breakdown', 'TEXT');
 
         // Customers
         $ensureColumn('customers', 'company', 'VARCHAR(255) DEFAULT NULL');
@@ -623,30 +622,30 @@ class Database
                 ->execute([date('Y-m-d H:i:s')]);
         }
 
-        // Initialize standard East African route transit stages & mileage rates
+        // Initialize standard East African route checkpoint transit money allowances
         $standardRoutes = [
-            ['Eldoret', 'Uganda (Kampala)', 'Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Jinja (150 km) | Step 3: Jinja ➔ Kampala (80 km)', 350, 45000.00, 346.15, 'Standard transit allowance (Malaba border clearance & per diem)'],
-            ['Eldoret', 'Uganda (Jinja)', 'Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Jinja (150 km)', 270, 40000.00, 307.69, 'Eastern Uganda depot transit allowance'],
-            ['Eldoret', 'DR Congo (Goma)', 'Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Kampala (230 km) | Step 3: Kampala ➔ Mbarara ➔ Katuna / Goma (500 km)', 850, 85000.00, 653.85, 'Cross-border multi-stage transit via Uganda & Katuna border post'],
-            ['Eldoret', 'DR Congo (Lubumbashi)', 'Step 1: Eldoret ➔ Namanga Border (450 km) | Step 2: Namanga ➔ Dodoma ➔ Mbeya (950 km) | Step 3: Mbeya ➔ Kasumbalesa ➔ Lubumbashi (700 km)', 2100, 140000.00, 1076.92, 'Long haul Southern transit route allowance'],
-            ['Eldoret', 'DR Congo (Beni / Bunia)', 'Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Kampala ➔ Fort Portal (520 km) | Step 3: Fort Portal ➔ Mpondwe Border ➔ Beni (220 km)', 860, 90000.00, 692.31, 'Transit via Western Uganda / Mpondwe border into Eastern DRC'],
-            ['Eldoret', 'South Sudan (Juba)', 'Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Mbale ➔ Gulu (450 km) | Step 3: Gulu ➔ Elegu / Nimule Border ➔ Juba (350 km)', 920, 95000.00, 730.77, 'Northern transit route via Uganda (Elegu/Nimule) to Juba'],
-            ['Eldoret', 'Rwanda (Kigali)', 'Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Kampala ➔ Mbarara (500 km) | Step 3: Mbarara ➔ Gatuna Border ➔ Kigali (160 km)', 780, 75000.00, 576.92, 'Gatuna border route driver transit per diem'],
-            ['Eldoret', 'Tanzania (Dar es Salaam)', 'Step 1: Eldoret ➔ Nairobi (320 km) | Step 2: Nairobi ➔ Namanga Border (160 km) | Step 3: Namanga ➔ Arusha ➔ Chalinze ➔ Dar es Salaam (720 km)', 1200, 110000.00, 846.15, 'Namanga border route transit allowance'],
-            ['Eldoret', 'Kenya (Nairobi Terminal)', 'Step 1: Eldoret ➔ Nakuru (160 km) | Step 2: Nakuru ➔ Nairobi (160 km)', 320, 30000.00, 230.77, 'Domestic Western-to-Capital route allowance'],
-            ['Eldoret', 'Kenya (Kisumu Depot)', 'Step 1: Eldoret ➔ Kisumu (120 km)', 120, 15000.00, 115.38, 'Lake Victoria regional shuttle allowance'],
-            ['Eldoret', 'Kenya (Mombasa Terminal)', 'Step 1: Eldoret ➔ Nairobi (320 km) | Step 2: Nairobi ➔ Voi ➔ Mombasa (480 km)', 800, 65000.00, 500.00, 'Coastline port route driver allowance'],
+            ['Eldoret', 'Uganda (Kampala)', 'Checkpoint 1 (Eldoret Departure & Malaba Border): KES 15,000 | Checkpoint 2 (Uganda Transit & Kampala Depot): KES 30,000', 45000.00, 346.15, 'Transit money for border clearance, road tolls & driver per diem'],
+            ['Eldoret', 'Uganda (Jinja)', 'Checkpoint 1 (Eldoret Departure & Malaba Border): KES 15,000 | Checkpoint 2 (Eastern Uganda Transit & Jinja): KES 25,000', 40000.00, 307.69, 'Eastern Uganda transit money allowance'],
+            ['Eldoret', 'DR Congo (Goma)', 'Checkpoint 1 (Eldoret Departure & Kenya Exit): KES 15,000 | Checkpoint 2 (Uganda Transit / Malaba to Katuna): KES 30,000 | Checkpoint 3 (DRC Goma Border Entry & Escort): KES 40,000', 85000.00, 653.85, 'Cross-border multi-checkpoint transit money'],
+            ['Eldoret', 'DR Congo (Lubumbashi)', 'Checkpoint 1 (Kenya Exit / Namanga): KES 25,000 | Checkpoint 2 (Tanzania Transit / Tunduma Border): KES 55,000 | Checkpoint 3 (Zambia / Kasumbalesa DRC Entry): KES 60,000', 140000.00, 1076.92, 'Long haul Southern transit money allowance'],
+            ['Eldoret', 'DR Congo (Beni / Bunia)', 'Checkpoint 1 (Kenya Exit / Malaba): KES 15,000 | Checkpoint 2 (Uganda Transit / Fort Portal): KES 35,000 | Checkpoint 3 (Mpondwe Border / DRC Entry): KES 40,000', 90000.00, 692.31, 'Transit money via Western Uganda / Mpondwe border into Eastern DRC'],
+            ['Eldoret', 'South Sudan (Juba)', 'Checkpoint 1 (Kenya Exit / Malaba): KES 15,000 | Checkpoint 2 (Uganda Transit / Gulu & Elegu Border): KES 35,000 | Checkpoint 3 (Nimule / South Sudan Juba Convoy): KES 45,000', 95000.00, 730.77, 'Northern transit route money via Uganda (Elegu/Nimule) to Juba'],
+            ['Eldoret', 'Rwanda (Kigali)', 'Checkpoint 1 (Kenya Exit / Malaba): KES 15,000 | Checkpoint 2 (Uganda Transit / Mbarara): KES 30,000 | Checkpoint 3 (Gatuna Border / Rwanda Entry): KES 30,000', 75000.00, 576.92, 'Gatuna border route driver transit per diem & fees'],
+            ['Eldoret', 'Tanzania (Dar es Salaam)', 'Checkpoint 1 (Kenya Exit / Namanga Border): KES 30,000 | Checkpoint 2 (Tanzania Transit / Arusha & Chalinze): KES 80,000', 110000.00, 846.15, 'Namanga border route transit money allowance'],
+            ['Eldoret', 'Kenya (Nairobi Terminal)', 'Checkpoint 1 (Eldoret Departure & Highway Transit): KES 10,000 | Checkpoint 2 (Nairobi Offloading & Depot): KES 20,000', 30000.00, 230.77, 'Domestic Western-to-Capital driver transit money'],
+            ['Eldoret', 'Kenya (Kisumu Depot)', 'Checkpoint 1 (Eldoret Departure & Kisumu Offloading): KES 15,000', 15000.00, 115.38, 'Regional shuttle transit money allowance'],
+            ['Eldoret', 'Kenya (Mombasa Terminal)', 'Checkpoint 1 (Eldoret to Nairobi Transit): KES 25,000 | Checkpoint 2 (Nairobi to Mombasa Port): KES 40,000', 65000.00, 500.00, 'Coastline port route driver transit money allowance'],
         ];
 
         $routesCheck = (int)$pdo->query("SELECT COUNT(*) FROM route_mileage_rates")->fetchColumn();
         if ($routesCheck === 0) {
-            $insRoute = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, transit_steps, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+            $insRoute = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, checkpoints_breakdown, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
             foreach ($standardRoutes as $r) {
-                $insRoute->execute([$r[0], $r[1], $r[2], $r[3], $r[4], $r[5], $r[6], date('Y-m-d H:i:s')]);
+                $insRoute->execute([$r[0], $r[1], $r[2], $r[3], $r[4], $r[5], date('Y-m-d H:i:s')]);
             }
         } else {
-            // Backfill transit_steps for existing preset rows if empty
-            $updSteps = $pdo->prepare('UPDATE route_mileage_rates SET transit_steps = ? WHERE destination = ? AND (transit_steps IS NULL OR transit_steps = "")');
+            // Update / backfill checkpoints_breakdown for existing presets
+            $updSteps = $pdo->prepare('UPDATE route_mileage_rates SET checkpoints_breakdown = ? WHERE destination = ? AND (checkpoints_breakdown IS NULL OR checkpoints_breakdown = "")');
             foreach ($standardRoutes as $r) {
                 $updSteps->execute([$r[2], $r[1]]);
             }

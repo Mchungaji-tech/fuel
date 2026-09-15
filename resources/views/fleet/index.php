@@ -768,12 +768,12 @@
                         <input list="destPresets" name="destination" id="wizardDestination" placeholder="e.g. Uganda (Kampala), DR Congo (Goma)" required onchange="onDestinationChanged(this.value)">
                         <datalist id="destPresets">
                             <?php foreach ($mileageRates as $mr): ?>
-                                <option value="<?= htmlspecialchars($mr['destination']) ?>" data-kes="<?= (float)$mr['standard_allowance_kes'] ?>" data-usd="<?= (float)$mr['standard_allowance_usd'] ?>" data-km="<?= (int)$mr['distance_km'] ?>" data-steps="<?= htmlspecialchars($mr['transit_steps'] ?? '') ?>">
-                                    <?= htmlspecialchars($mr['destination']) ?> (<?= number_format($mr['distance_km']) ?> km • KES <?= number_format($mr['standard_allowance_kes']) ?>)
+                                <option value="<?= htmlspecialchars($mr['destination']) ?>" data-kes="<?= (float)$mr['standard_allowance_kes'] ?>" data-usd="<?= (float)$mr['standard_allowance_usd'] ?>" data-checkpoints="<?= htmlspecialchars($mr['checkpoints_breakdown'] ?? ($mr['transit_steps'] ?? '')) ?>">
+                                    <?= htmlspecialchars($mr['destination']) ?> • KES <?= number_format($mr['standard_allowance_kes']) ?> ($ <?= number_format($mr['standard_allowance_usd'], 2) ?>)
                                 </option>
                             <?php endforeach; ?>
                         </datalist>
-                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Route selection auto-suggests transit stages, distance & driver allowance in Step 3</span>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Selecting destination auto-suggests driver checkpoint transit money in Step 3</span>
                     </div>
 
                     <div class="form-group">
@@ -802,10 +802,10 @@
                             <div>
                                 <b style="font-size:13.5px;color:var(--text);display:flex;align-items:center;gap:6px;">
                                     <span>🛣️</span>
-                                    <span>Driver Mileage & Transit Allowance</span>
+                                    <span>Driver Mileage (Transit Money Given)</span>
                                 </b>
                                 <div style="font-size:12px;color:var(--text-3);margin-top:2px;">
-                                    Per diem, toll fees & allowances paid in KSh (KES) with real-time Dollar equivalent.
+                                    Money given to driver for checkpoint clearance, road fees, parking, and en-route transit expenses.
                                 </div>
                             </div>
                             <span style="font-size:11.5px;background:var(--card-2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);font-weight:700;color:var(--text-2);">
@@ -813,9 +813,13 @@
                             </span>
                         </div>
 
-                        <!-- Multi-Step Route Transit Stages Alert Box -->
-                        <div id="dispRouteStepsAlert" style="display:none;margin-bottom:14px;padding:9px 13px;background:rgba(99,102,241,0.08);border:1px solid var(--brand);border-radius:8px;font-size:12.5px;color:var(--text);">
-                            <b style="color:var(--brand);">🛣️ Route Transit Stages:</b> <span id="dispRouteStepsText"></span>
+                        <!-- Checkpoint Transit Money Breakdown Alert Box -->
+                        <div id="dispRouteStepsAlert" style="display:none;margin-bottom:14px;padding:10px 14px;background:rgba(99,102,241,0.08);border:1.5px dashed var(--brand);border-radius:10px;font-size:12.5px;color:var(--text);">
+                            <div style="font-weight:800;color:var(--brand);margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+                                <span>📍</span>
+                                <span>Route Checkpoints & Transit Money Breakdown:</span>
+                            </div>
+                            <div id="dispRouteStepsText" style="line-height:1.5;color:var(--text);"></div>
                         </div>
 
                         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
@@ -1227,29 +1231,16 @@
                             <th style="padding:8px 10px;text-align:center;">Action</th>
                         </tr>
                     </thead>
-                    <tbody id="dlmHistoryTableBody">
-                        <tr>
-                            <td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">
-                                Select a dispatch trip above to view its recorded fuel stops.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Route Transit Stages & Mileage Allowances Management Modal -->
+   <!-- Route Checkpoints & Driver Transit Money Management Modal -->
 <div class="modal-backdrop" id="mileageRatesModal">
     <div class="modal-card" style="max-width:900px;">
         <div class="modal-head">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:24px;background:rgba(79,70,229,0.1);padding:6px;border-radius:10px;">🛣️</span>
                 <div>
-                    <h2 style="margin:0;font-size:19px;">Route Stages & Transit Mileage Allowances</h2>
+                    <h2 style="margin:0;font-size:19px;">Driver Mileage & Checkpoint Transit Money</h2>
                     <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">
-                        Manage multi-step transit routes, intermediate stages (e.g. Kenya ➔ Uganda ➔ DR Congo), and driver allowances (KES & USD).
+                        Manage standard operational money given to drivers for checkpoints along the route (e.g. Kenya Exit, Uganda Transit, DR Congo / South Sudan entry).
                     </div>
                 </div>
             </div>
@@ -1261,12 +1252,12 @@
         <!-- Add / Edit Route Rate Card Form -->
         <div style="background:var(--card-2);border:1.5px solid var(--border-2);border-radius:12px;padding:16px;margin-bottom:20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                <b id="mrFormTitle" style="font-size:13.5px;color:var(--text);">➕ Add Route Transit Stages & Allowance Rate</b>
+                <b id="mrFormTitle" style="font-size:13.5px;color:var(--text);">➕ Add Route Checkpoints & Driver Transit Money</b>
                 <button type="button" id="mrCancelEditBtn" onclick="resetMileageRateForm()" style="display:none;background:transparent;border:0;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;">✕ Cancel Edit</button>
             </div>
             <form id="mileageRateForm" onsubmit="return handleMileageRateSubmit(event)">
                 <input type="hidden" id="mrRateId" value="">
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
                     <div>
                         <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Origin Depot *</label>
                         <input type="text" id="mrOrigin" value="Eldoret" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
@@ -1276,31 +1267,27 @@
                         <input type="text" id="mrDestination" placeholder="e.g. DR Congo (Goma)" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
                     </div>
                     <div>
-                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Total Distance (km)</label>
-                        <input type="number" id="mrDistanceKm" placeholder="e.g. 850" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;">
-                    </div>
-                    <div>
-                        <label style="font-size:11.5px;font-weight:700;color:var(--amber);display:block;margin-bottom:4px;">Standard Allowance (KES) *</label>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--amber);display:block;margin-bottom:4px;">Total Money Given (KES) *</label>
                         <input type="number" step="1" id="mrAllowanceKes" placeholder="e.g. 85000" required oninput="onMrKesInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;color:var(--amber);">
                     </div>
                     <div>
-                        <label style="font-size:11.5px;font-weight:700;color:var(--brand);display:block;margin-bottom:4px;">Standard Allowance (USD $) *</label>
+                        <label style="font-size:11.5px;font-weight:700;color:var(--brand);display:block;margin-bottom:4px;">Total Money Given (USD $) *</label>
                         <input type="number" step="0.01" id="mrAllowanceUsd" placeholder="0.00" required oninput="onMrUsdInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;color:var(--brand);">
                     </div>
                 </div>
 
-                <!-- Multi-Step Transit Stages Field -->
+                <!-- Checkpoints Money Allocation Field -->
                 <div style="margin-top:10px;">
                     <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">
-                        🛣️ Transit Stages / Waypoint Steps (Optional Breakdown)
+                        📍 Transit Checkpoints & Money Breakdown (e.g. Kenya Departure ➔ Uganda Transit ➔ Destination Entry)
                     </label>
-                    <input type="text" id="mrTransitSteps" placeholder="e.g. Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Kampala (230 km) | Step 3: Kampala ➔ Goma via Katuna (500 km)" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
+                    <input type="text" id="mrCheckpoints" placeholder="e.g. Checkpoint 1 (Eldoret Departure): KES 15,000 | Checkpoint 2 (Uganda Transit / Malaba): KES 30,000 | Checkpoint 3 (Goma Border Entry): KES 40,000" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
                 </div>
 
-                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                    <input type="text" id="mrNotes" placeholder="Optional notes (e.g. Malaba border clearance toll inclusive)" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
+                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:gap:10px;">
+                    <input type="text" id="mrNotes" placeholder="Optional notes (e.g. Transit permits, escort fee and border clearance inclusive)" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
                     <button type="submit" id="mrSubmitBtn" class="btn btn-brand btn-sm" style="font-weight:800;padding:8px 18px;">
-                        💾 Save Route Rate
+                        💾 Save Checkpoint Rate
                     </button>
                 </div>
             </form>
@@ -1308,24 +1295,23 @@
 
         <!-- Route Presets Table -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:13.5px;color:var(--text);">Active Route & Transit Stage Presets</b>
+            <b style="font-size:13.5px;color:var(--text);">Active Route Checkpoints & Transit Money Presets</b>
             <span id="mrTableCountBadge" style="font-size:12px;color:var(--text-3);font-weight:700;"><?= count($mileageRates) ?> routes</span>
         </div>
         <div class="table-responsive" style="max-height:320px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;">
             <table style="width:100%;font-size:13px;margin:0;">
                 <thead>
                     <tr>
-                        <th style="padding:9px 12px;">Route & Transit Stages</th>
-                        <th style="padding:9px 12px;text-align:right;">Distance</th>
-                        <th style="padding:9px 12px;text-align:right;">Allowance (KES)</th>
-                        <th style="padding:9px 12px;text-align:right;">Allowance (USD)</th>
+                        <th style="padding:9px 12px;">Route & Checkpoints Breakdown</th>
+                        <th style="padding:9px 12px;text-align:right;">Total Given (KES)</th>
+                        <th style="padding:9px 12px;text-align:right;">Total Given (USD)</th>
                         <th style="padding:9px 12px;">Notes</th>
                         <th style="padding:9px 12px;text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="mrTableBody">
                     <?php if (empty($mileageRates)): ?>
-                        <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No route rates configured yet.</td></tr>
+                        <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-3);">No route checkpoint rates configured yet.</td></tr>
                     <?php else: ?>
                         <?php foreach ($mileageRates as $mr): ?>
                             <tr id="mr-row-<?= $mr['id'] ?>">
@@ -1333,13 +1319,15 @@
                                     <div style="font-weight:700;">
                                         <span><?= htmlspecialchars($mr['origin']) ?> ➔ <span style="color:var(--brand);"><?= htmlspecialchars($mr['destination']) ?></span></span>
                                     </div>
-                                    <?php if (!empty($mr['transit_steps'])): ?>
-                                        <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;background:var(--card-2);padding:2px 6px;border-radius:5px;border:1px dashed var(--border);">
-                                            🛣️ <?= htmlspecialchars($mr['transit_steps']) ?>
+                                    <?php 
+                                        $cp = $mr['checkpoints_breakdown'] ?? ($mr['transit_steps'] ?? '');
+                                        if (!empty($cp)): 
+                                    ?>
+                                        <div style="font-size:11.5px;color:var(--text-2);margin-top:3px;background:var(--card-2);padding:3px 7px;border-radius:6px;border:1px dashed var(--border);">
+                                            📍 <?= htmlspecialchars($cp) ?>
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td style="padding:9px 12px;text-align:right;color:var(--text-2);"><?= $mr['distance_km'] ? number_format($mr['distance_km']) . ' km' : '—' ?></td>
                                 <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--amber);">KES <?= number_format($mr['standard_allowance_kes']) ?></td>
                                 <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--brand);">$ <?= number_format($mr['standard_allowance_usd'], 2) ?></td>
                                 <td style="padding:9px 12px;color:var(--text-3);font-size:12px;"><?= htmlspecialchars($mr['notes'] ?? '—') ?></td>
@@ -3218,12 +3206,12 @@ window.onDestinationChanged = function(destVal) {
             if (milUsd) milUsd.value = usd > 0 ? usd.toFixed(2) : '';
             syncMileageFields(kes, usd);
         }
-        const steps = opt.dataset.steps || '';
+        const checkpoints = opt.dataset.checkpoints || opt.dataset.steps || '';
         const stepsBox = document.getElementById('dispRouteStepsAlert');
         const stepsText = document.getElementById('dispRouteStepsText');
         if (stepsBox && stepsText) {
-            if (steps) {
-                stepsText.textContent = steps;
+            if (checkpoints) {
+                stepsText.textContent = checkpoints;
                 stepsBox.style.display = 'block';
             } else {
                 stepsBox.style.display = 'none';
@@ -3240,7 +3228,7 @@ function calcExpectedTransport() {
 window.calcExpectedTransport = calcExpectedTransport;
 
 /* =========================================================================
-   ROUTE TRANSIT STAGES & MILEAGE RATES MODAL & AJAX CRUD
+   ROUTE CHECKPOINTS & DRIVER TRANSIT MONEY RATES MODAL & AJAX CRUD
    ========================================================================= */
 window.openMileageRatesModal = function() {
     resetMileageRateForm();
@@ -3271,33 +3259,32 @@ window.resetMileageRateForm = function() {
     const idEl = document.getElementById('mrRateId');
     if (idEl) idEl.value = '';
     const titleEl = document.getElementById('mrFormTitle');
-    if (titleEl) titleEl.textContent = '➕ Add Route Transit Stages & Allowance Rate';
+    if (titleEl) titleEl.textContent = '➕ Add Route Checkpoints & Driver Transit Money';
     const cancelBtn = document.getElementById('mrCancelEditBtn');
     if (cancelBtn) cancelBtn.style.display = 'none';
     const btn = document.getElementById('mrSubmitBtn');
-    if (btn) btn.textContent = '💾 Save Route Rate';
+    if (btn) btn.textContent = '💾 Save Checkpoint Rate';
     const org = document.getElementById('mrOrigin');
     if (org) org.value = 'Eldoret';
-    const steps = document.getElementById('mrTransitSteps');
-    if (steps) steps.value = '';
+    const cp = document.getElementById('mrCheckpoints');
+    if (cp) cp.value = '';
 };
 
 window.editMileageRate = function(rate) {
     document.getElementById('mrRateId').value = rate.id;
     document.getElementById('mrOrigin').value = rate.origin || 'Eldoret';
     document.getElementById('mrDestination').value = rate.destination || '';
-    document.getElementById('mrTransitSteps').value = rate.transit_steps || '';
-    document.getElementById('mrDistanceKm').value = rate.distance_km || '';
+    document.getElementById('mrCheckpoints').value = rate.checkpoints_breakdown || rate.transit_steps || '';
     document.getElementById('mrAllowanceKes').value = Math.round(rate.standard_allowance_kes || 0);
     document.getElementById('mrAllowanceUsd').value = parseFloat(rate.standard_allowance_usd || 0).toFixed(2);
     document.getElementById('mrNotes').value = rate.notes || '';
 
     const titleEl = document.getElementById('mrFormTitle');
-    if (titleEl) titleEl.textContent = `✏️ Editing Route: ${rate.origin} ➔ ${rate.destination}`;
+    if (titleEl) titleEl.textContent = `✏️ Editing Checkpoints: ${rate.origin} ➔ ${rate.destination}`;
     const cancelBtn = document.getElementById('mrCancelEditBtn');
     if (cancelBtn) cancelBtn.style.display = 'inline-block';
     const btn = document.getElementById('mrSubmitBtn');
-    if (btn) btn.textContent = '✓ Update Route Rate';
+    if (btn) btn.textContent = '✓ Update Checkpoint Rate';
 
     document.getElementById('mrDestination')?.focus();
 };
@@ -3310,8 +3297,7 @@ window.handleMileageRateSubmit = async function(e) {
 
     const origin = document.getElementById('mrOrigin')?.value.trim() || 'Eldoret';
     const dest = document.getElementById('mrDestination')?.value.trim();
-    const steps = document.getElementById('mrTransitSteps')?.value.trim() || '';
-    const km = document.getElementById('mrDistanceKm')?.value;
+    const checkpoints = document.getElementById('mrCheckpoints')?.value.trim() || '';
     const kes = document.getElementById('mrAllowanceKes')?.value;
     const usd = document.getElementById('mrAllowanceUsd')?.value;
     const notes = document.getElementById('mrNotes')?.value.trim();
@@ -3321,7 +3307,7 @@ window.handleMileageRateSubmit = async function(e) {
         return false;
     }
     if (!kes || parseFloat(kes) <= 0) {
-        alert('Please specify standard allowance in KES.');
+        alert('Please specify standard total money given in KES.');
         return false;
     }
 
@@ -3329,8 +3315,7 @@ window.handleMileageRateSubmit = async function(e) {
         _csrf_token: CSRF_TOKEN,
         origin: origin,
         destination: dest,
-        transit_steps: steps,
-        distance_km: km,
+        checkpoints_breakdown: checkpoints,
         standard_allowance_kes: kes,
         standard_allowance_usd: usd,
         notes: notes
@@ -3349,7 +3334,7 @@ window.handleMileageRateSubmit = async function(e) {
             const fb = document.getElementById('mrFeedbackBanner');
             if (fb) {
                 fb.style.display = 'block';
-                fb.textContent = isEdit ? '✓ Route rate updated successfully!' : '✓ New route rate saved!';
+                fb.textContent = isEdit ? '✓ Checkpoint rate updated successfully!' : '✓ New checkpoint rate saved!';
                 setTimeout(() => { if (fb) fb.style.display = 'none'; }, 4000);
             }
         } else {
@@ -3357,13 +3342,13 @@ window.handleMileageRateSubmit = async function(e) {
         }
     } catch(err) {
         console.error(err);
-        alert('Network error saving route mileage rate.');
+        alert('Network error saving checkpoint mileage rate.');
     }
     return false;
 };
 
 window.deleteMileageRate = async function(id) {
-    if (!confirm('Are you sure you want to delete this route mileage preset?')) return;
+    if (!confirm('Are you sure you want to delete this route checkpoint preset?')) return;
     try {
         const res = await fetch('<?= url("fleet/mileage-rates/delete") ?>/' + id, {
             method: 'POST',
@@ -3400,23 +3385,24 @@ function refreshMileageRatesTable(rates) {
     if (!tbody) return;
 
     if (rates.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No route rates configured yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-3);">No route checkpoint rates configured yet.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = rates.map(r => `
+    tbody.innerHTML = rates.map(r => {
+        const cp = r.checkpoints_breakdown || r.transit_steps || '';
+        return `
         <tr id="mr-row-${r.id}">
             <td style="padding:9px 12px;">
                 <div style="font-weight:700;">
                     <span>${escapeHtml(r.origin)} ➔ <span style="color:var(--brand);">${escapeHtml(r.destination)}</span></span>
                 </div>
-                ${r.transit_steps ? `
-                    <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;background:var(--card-2);padding:2px 6px;border-radius:5px;border:1px dashed var(--border);">
-                        🛣️ ${escapeHtml(r.transit_steps)}
+                ${cp ? `
+                    <div style="font-size:11.5px;color:var(--text-2);margin-top:3px;background:var(--card-2);padding:3px 7px;border-radius:6px;border:1px dashed var(--border);">
+                        📍 ${escapeHtml(cp)}
                     </div>
                 ` : ''}
             </td>
-            <td style="padding:9px 12px;text-align:right;color:var(--text-2);">${r.distance_km ? Number(r.distance_km).toLocaleString() + ' km' : '—'}</td>
             <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--amber);">KES ${Number(r.standard_allowance_kes).toLocaleString()}</td>
             <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--brand);">$ ${Number(r.standard_allowance_usd).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
             <td style="padding:9px 12px;color:var(--text-3);font-size:12px;">${escapeHtml(r.notes || '—')}</td>
@@ -3427,14 +3413,18 @@ function refreshMileageRatesTable(rates) {
                 </div>
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 
     if (datalist) {
-        datalist.innerHTML = rates.map(r => `
-            <option value="${escapeHtml(r.destination)}" data-kes="${r.standard_allowance_kes}" data-usd="${r.standard_allowance_usd}" data-km="${r.distance_km}" data-steps="${escapeHtml(r.transit_steps || '')}">
-                ${escapeHtml(r.destination)} (${Number(r.distance_km || 0).toLocaleString()} km • KES ${Number(r.standard_allowance_kes).toLocaleString()})
+        datalist.innerHTML = rates.map(r => {
+            const cp = r.checkpoints_breakdown || r.transit_steps || '';
+            return `
+            <option value="${escapeHtml(r.destination)}" data-kes="${r.standard_allowance_kes}" data-usd="${r.standard_allowance_usd}" data-checkpoints="${escapeHtml(cp)}">
+                ${escapeHtml(r.destination)} • KES ${Number(r.standard_allowance_kes).toLocaleString()} ($ ${Number(r.standard_allowance_usd).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})})
             </option>
-        `).join('');
+            `;
+        }).join('');
     }
 }
 

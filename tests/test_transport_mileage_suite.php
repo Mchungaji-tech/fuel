@@ -43,7 +43,7 @@ $_SESSION['exchange_rate'] = 130.00;
 assertCondition("Session exchange rate override succeeds (130.00)", abs(exchange_rate() - 130.00) < 0.01);
 $_SESSION['exchange_rate'] = 132.50;
 
-// 2. Test Route Transit Stages & Mileage Rates Seeded Presets
+// 2. Test Checkpoint Transit Stages & Driver Mileage Rates Seeded Presets
 $presets = $pdo->query("SELECT * FROM route_mileage_rates ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 assertCondition("Route mileage rates table contains standard presets", count($presets) >= 10, "Found " . count($presets));
 
@@ -53,25 +53,25 @@ foreach ($presets as $p) {
     if (str_contains($p['destination'], 'Kampala')) $kampala = $p;
     if (str_contains($p['destination'], 'Goma')) $goma = $p;
 }
-assertCondition("Uganda (Kampala) preset exists with transit steps and allowances", !empty($kampala) && !empty($kampala['transit_steps']) && (float)$kampala['standard_allowance_kes'] > 0 && (float)$kampala['standard_allowance_usd'] > 0);
-assertCondition("DR Congo (Goma) preset exists with multi-step transit stages and allowances", !empty($goma) && !empty($goma['transit_steps']) && (float)$goma['standard_allowance_kes'] > 0 && (float)$goma['standard_allowance_usd'] > 0);
+assertCondition("Uganda (Kampala) preset exists with checkpoints breakdown and money given", !empty($kampala) && !empty($kampala['checkpoints_breakdown']) && (float)$kampala['standard_allowance_kes'] > 0 && (float)$kampala['standard_allowance_usd'] > 0);
+assertCondition("DR Congo (Goma) preset exists with multi-checkpoint money breakdown", !empty($goma) && !empty($goma['checkpoints_breakdown']) && (float)$goma['standard_allowance_kes'] > 0 && (float)$goma['standard_allowance_usd'] > 0);
 
-// 3. Test Route Mileage Rate & Transit Stages CRUD
-$insRate = $pdo->prepare("INSERT INTO route_mileage_rates (origin, destination, transit_steps, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-$insRate->execute(['Eldoret', 'South Sudan (Wau)', 'Step 1: Eldoret ➔ Malaba (120 km) | Step 2: Malaba ➔ Gulu (450 km) | Step 3: Gulu ➔ Juba ➔ Wau (630 km)', 1200, 120000, 905.66, 'Long distance multi-stage transit', date('Y-m-d H:i:s')]);
+// 3. Test Driver Mileage Rate & Checkpoint Transit Money CRUD
+$insRate = $pdo->prepare("INSERT INTO route_mileage_rates (origin, destination, checkpoints_breakdown, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+$insRate->execute(['Eldoret', 'South Sudan (Wau)', 'Checkpoint 1: Malaba Border Crossing & Clearance (KES 35,000 / $264.15) | Checkpoint 2: Gulu Transit & Road User Tolls (KES 35,000 / $264.15) | Checkpoint 3: Nimule Border & Juba Convoy (KES 50,000 / $377.36)', 120000, 905.66, 'Long distance cross-border transit', date('Y-m-d H:i:s')]);
 $newRateId = (int)$pdo->lastInsertId();
-assertCondition("Insert new route transit stage rate succeeds", $newRateId > 0);
+assertCondition("Insert new driver mileage checkpoint rate succeeds", $newRateId > 0);
 
 $checkRate = $pdo->query("SELECT * FROM route_mileage_rates WHERE id = {$newRateId}")->fetch(PDO::FETCH_ASSOC);
-assertCondition("Inserted route contains transit steps, destination and allowances", $checkRate['destination'] === 'South Sudan (Wau)' && str_contains($checkRate['transit_steps'], 'Malaba') && (float)$checkRate['standard_allowance_kes'] == 120000);
+assertCondition("Inserted route contains checkpoints breakdown, destination and total money given", $checkRate['destination'] === 'South Sudan (Wau)' && str_contains($checkRate['checkpoints_breakdown'], 'Malaba') && (float)$checkRate['standard_allowance_kes'] == 120000);
 
-$pdo->prepare("UPDATE route_mileage_rates SET distance_km = 1250, standard_allowance_kes = 125000 WHERE id = ?")->execute([$newRateId]);
+$pdo->prepare("UPDATE route_mileage_rates SET standard_allowance_kes = 125000, standard_allowance_usd = 943.40 WHERE id = ?")->execute([$newRateId]);
 $checkUpd = $pdo->query("SELECT * FROM route_mileage_rates WHERE id = {$newRateId}")->fetch(PDO::FETCH_ASSOC);
-assertCondition("Update route rate succeeds", (int)$checkUpd['distance_km'] === 1250 && (float)$checkUpd['standard_allowance_kes'] == 125000);
+assertCondition("Update driver mileage rate succeeds", (float)$checkUpd['standard_allowance_kes'] == 125000 && (float)$checkUpd['standard_allowance_usd'] == 943.40);
 
 $pdo->prepare("DELETE FROM route_mileage_rates WHERE id = ?")->execute([$newRateId]);
 $deleted = $pdo->query("SELECT COUNT(*) FROM route_mileage_rates WHERE id = {$newRateId}")->fetchColumn();
-assertCondition("Delete route rate succeeds", (int)$deleted === 0);
+assertCondition("Delete driver mileage rate succeeds", (int)$deleted === 0);
 
 // 4. Test Haulier Dispatch with Manual Agreed Transport Payment in USD
 // Pre-cleanup in case of previous run

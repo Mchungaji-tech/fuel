@@ -387,14 +387,16 @@ CREATE TABLE IF NOT EXISTS `fleet_diesel_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- EAST AFRICA ROUTE TRANSIT STAGES & MILEAGE RATES TABLE
+-- DRIVER ROAD MONEY & TRANSIT CHECKPOINT RATES TABLE
+-- In cross-border fuel haulage, "Mileage" is NOT physical distance (km).
+-- It is the actual CASH/MONEY given to the driver at each transit checkpoint
+-- (e.g. Kenya exit, Uganda transit checkpoint, Congo entry escort) for road expenses.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `route_mileage_rates` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `origin` VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
     `destination` VARCHAR(150) NOT NULL,
-    `transit_steps` TEXT NULL,
-    `distance_km` INT DEFAULT 0,
+    `checkpoints_breakdown` TEXT NULL,
     `standard_allowance_kes` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `standard_allowance_usd` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `notes` TEXT NULL,
@@ -417,25 +419,35 @@ CREATE TABLE IF NOT EXISTS `sync_deletions` (
 
 
 -- ============================================================================
--- ONLINE / PRODUCTION SERVER DATABASE MIGRATIONS (ALTER TABLE SCRIPTS)
+-- ONLINE / PRODUCTION SERVER DATABASE MIGRATIONS (ALTER TABLE / DROP SCRIPTS)
 -- Run these SQL queries on your live server / phpMyAdmin / cPanel to update
--- existing databases to the latest schema without losing existing data:
+-- existing databases to the latest schema without losing any existing data:
 -- ============================================================================
 
--- 1. Financial Records Table: Add Dynamic Transaction Exchange Rate
+-- 1. Driver Mileage / Road Money Table: Add Checkpoint Money Breakdown & Remove Distance
+ALTER TABLE `route_mileage_rates`
+    ADD COLUMN IF NOT EXISTS `checkpoints_breakdown` TEXT NULL AFTER `destination`;
+
+ALTER TABLE `route_mileage_rates`
+    DROP COLUMN IF EXISTS `distance_km`;
+
+ALTER TABLE `route_mileage_rates`
+    DROP COLUMN IF EXISTS `transit_steps`;
+
+-- 2. Financial Records Table: Add Dynamic Transaction Exchange Rate
 ALTER TABLE `financial_records` 
     ADD COLUMN IF NOT EXISTS `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000 AFTER `payment_method`;
 
--- 2. Business Expenses Table: Add Dynamic Transaction Exchange Rate
+-- 3. Business Expenses Table: Add Dynamic Transaction Exchange Rate
 ALTER TABLE `expenses` 
     ADD COLUMN IF NOT EXISTS `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000 AFTER `amount`;
 
--- 3. Fleet Diesel Logs Table: Ensure Dynamic Transaction Exchange Rate & Notes Exist
+-- 4. Fleet Diesel Logs Table: Add Dynamic Transaction Exchange Rate & Notes
 ALTER TABLE `fleet_diesel_logs` 
     ADD COLUMN IF NOT EXISTS `exchange_rate` DECIMAL(12,4) NOT NULL DEFAULT 128.0000 AFTER `currency_code`,
     ADD COLUMN IF NOT EXISTS `notes` TEXT NULL AFTER `base_usd_cost`;
 
--- 4. Fleet Dispatches Table: Ensure Subcontracting & Diesel Tracking Columns Exist
+-- 5. Fleet Dispatches Table: Ensure Subcontracting & Diesel Tracking Columns Exist
 ALTER TABLE `fleet_dispatches` 
     ADD COLUMN IF NOT EXISTS `diesel_litres` DECIMAL(10,2) DEFAULT 0.00 AFTER `diesel`,
     ADD COLUMN IF NOT EXISTS `diesel_unit_price` DECIMAL(10,4) DEFAULT 0.0000 AFTER `diesel_litres`,
@@ -444,15 +456,9 @@ ALTER TABLE `fleet_dispatches`
     ADD COLUMN IF NOT EXISTS `agreed_commission` DECIMAL(15,2) DEFAULT 0.00 AFTER `subcontractor_name`,
     ADD COLUMN IF NOT EXISTS `final_payout` DECIMAL(15,2) DEFAULT 0.00 AFTER `agreed_commission`;
 
--- 5. Trucks Table: Ensure Fleet Ownership & Driver Assignment Columns Exist
+-- 6. Trucks Table: Ensure Fleet Ownership & Driver Assignment Columns Exist
 ALTER TABLE `trucks`
     ADD COLUMN IF NOT EXISTS `ownership_type` VARCHAR(50) DEFAULT 'Owner' AFTER `status`,
     ADD COLUMN IF NOT EXISTS `current_driver` VARCHAR(100) NULL AFTER `ownership_type`;
-
--- 6. Route Mileage Rates Table: Ensure Transit Stages / Steps Column Exists
-ALTER TABLE `route_mileage_rates`
-    ADD COLUMN IF NOT EXISTS `transit_steps` TEXT NULL AFTER `destination`;
-
-
 
 

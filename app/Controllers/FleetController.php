@@ -1951,8 +1951,7 @@ class FleetController
         $origin = trim($_POST['origin'] ?? 'Eldoret');
         if ($origin === '') $origin = 'Eldoret';
         $destination = trim($_POST['destination'] ?? '');
-        $transitSteps = trim($_POST['transit_steps'] ?? '');
-        $distanceKm = (int)($_POST['distance_km'] ?? 0);
+        $checkpoints = trim($_POST['checkpoints_breakdown'] ?? ($_POST['transit_steps'] ?? ''));
         $allowanceKes = (float)($_POST['standard_allowance_kes'] ?? 0);
         $allowanceUsd = (float)($_POST['standard_allowance_usd'] ?? 0);
         $rate = (float)exchange_rate();
@@ -1979,24 +1978,23 @@ class FleetController
         }
 
         try {
-            $stmt = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, transit_steps, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$origin, $destination, $transitSteps, $distanceKm, $allowanceKes, $allowanceUsd, $notes, date('Y-m-d H:i:s')]);
+            $stmt = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, checkpoints_breakdown, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$origin, $destination, $checkpoints, $allowanceKes, $allowanceUsd, $notes, date('Y-m-d H:i:s')]);
             $newId = (int)$pdo->lastInsertId();
 
-            log_audit('Mileage Rates', 'ADD_MILEAGE_RATE', "Added route transit allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
+            log_audit('Mileage Rates', 'ADD_MILEAGE_RATE', "Added checkpoint driver transit money for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
 
             if ($isAjax) {
                 $allRates = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC')->fetchAll(PDO::FETCH_ASSOC);
                 header('Content-Type: application/json');
                 echo json_encode([
                     'success' => true,
-                    'message' => "Mileage allowance for {$destination} saved successfully!",
+                    'message' => "Driver transit allowance for {$destination} saved successfully!",
                     'rate' => [
                         'id' => $newId,
                         'origin' => $origin,
                         'destination' => $destination,
-                        'transit_steps' => $transitSteps,
-                        'distance_km' => $distanceKm,
+                        'checkpoints_breakdown' => $checkpoints,
                         'standard_allowance_kes' => $allowanceKes,
                         'standard_allowance_usd' => $allowanceUsd,
                         'notes' => $notes
@@ -2006,15 +2004,15 @@ class FleetController
                 exit;
             }
 
-            flash('fleet_success', "Mileage allowance for {$destination} created successfully.");
+            flash('fleet_success', "Driver transit allowance for {$destination} created successfully.");
         } catch (\Throwable $e) {
             if ($isAjax) {
                 http_response_code(500);
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Error saving route rate: ' . $e->getMessage()]);
+                echo json_encode(['success' => false, 'error' => 'Error saving rate: ' . $e->getMessage()]);
                 exit;
             }
-            flash('fleet_error', 'Error saving route rate: ' . $e->getMessage());
+            flash('fleet_error', 'Error saving rate: ' . $e->getMessage());
         }
 
         redirect('/fleet');
@@ -2029,8 +2027,7 @@ class FleetController
         $origin = trim($_POST['origin'] ?? 'Eldoret');
         if ($origin === '') $origin = 'Eldoret';
         $destination = trim($_POST['destination'] ?? '');
-        $transitSteps = trim($_POST['transit_steps'] ?? '');
-        $distanceKm = (int)($_POST['distance_km'] ?? 0);
+        $checkpoints = trim($_POST['checkpoints_breakdown'] ?? ($_POST['transit_steps'] ?? ''));
         $allowanceKes = (float)($_POST['standard_allowance_kes'] ?? 0);
         $allowanceUsd = (float)($_POST['standard_allowance_usd'] ?? 0);
         $rate = (float)exchange_rate();
@@ -2056,23 +2053,22 @@ class FleetController
         }
 
         try {
-            $stmt = $pdo->prepare('UPDATE route_mileage_rates SET origin = ?, destination = ?, transit_steps = ?, distance_km = ?, standard_allowance_kes = ?, standard_allowance_usd = ?, notes = ? WHERE id = ?');
-            $stmt->execute([$origin, $destination, $transitSteps, $distanceKm, $allowanceKes, $allowanceUsd, $notes, $rateId]);
+            $stmt = $pdo->prepare('UPDATE route_mileage_rates SET origin = ?, destination = ?, checkpoints_breakdown = ?, standard_allowance_kes = ?, standard_allowance_usd = ?, notes = ? WHERE id = ?');
+            $stmt->execute([$origin, $destination, $checkpoints, $allowanceKes, $allowanceUsd, $notes, $rateId]);
 
-            log_audit('Mileage Rates', 'UPDATE_MILEAGE_RATE', "Updated route transit allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
+            log_audit('Mileage Rates', 'UPDATE_MILEAGE_RATE', "Updated checkpoint driver transit money for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
 
             if ($isAjax) {
                 $allRates = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC')->fetchAll(PDO::FETCH_ASSOC);
                 header('Content-Type: application/json');
                 echo json_encode([
                     'success' => true,
-                    'message' => "Mileage allowance for {$destination} updated successfully!",
+                    'message' => "Driver transit allowance for {$destination} updated successfully!",
                     'rate' => [
                         'id' => $rateId,
                         'origin' => $origin,
                         'destination' => $destination,
-                        'transit_steps' => $transitSteps,
-                        'distance_km' => $distanceKm,
+                        'checkpoints_breakdown' => $checkpoints,
                         'standard_allowance_kes' => $allowanceKes,
                         'standard_allowance_usd' => $allowanceUsd,
                         'notes' => $notes
@@ -2082,15 +2078,15 @@ class FleetController
                 exit;
             }
 
-            flash('fleet_success', "Mileage allowance updated successfully.");
+            flash('fleet_success', "Driver transit allowance updated successfully.");
         } catch (\Throwable $e) {
             if ($isAjax) {
                 http_response_code(500);
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Error updating route: ' . $e->getMessage()]);
+                echo json_encode(['success' => false, 'error' => 'Error updating rate: ' . $e->getMessage()]);
                 exit;
             }
-            flash('fleet_error', 'Error updating route: ' . $e->getMessage());
+            flash('fleet_error', 'Error updating rate: ' . $e->getMessage());
         }
 
         redirect('/fleet');
