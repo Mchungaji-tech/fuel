@@ -828,10 +828,6 @@ document.addEventListener('DOMContentLoaded', function() {
         <span>Drivers & Salaries</span>
       </a>
     <?php endif; ?>
-    <a class="nav-item <?= isActiveNav('trips') ?>" href="<?= url('trips') ?>" title="Trips Board">
-      <span class="icon"><svg viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></span>
-      <span>Trips Board</span>
-    </a>
 
     <div class="nav-section">Operations & Analytics</div>
     <a class="nav-item <?= isActiveNav('products') ?>" href="<?= url('products') ?>" title="Fuel Products">
@@ -924,7 +920,6 @@ document.addEventListener('DOMContentLoaded', function() {
       <?php if (can_view_financials()): ?>
         <a class="nav-item <?= isActiveNav('drivers') ?>" href="<?= url('drivers') ?>"><span>Drivers & Salaries</span></a>
       <?php endif; ?>
-      <a class="nav-item <?= isActiveNav('trips') ?>" href="<?= url('trips') ?>"><span>Trips Board</span></a>
       <div style="height:1px;background:var(--border);margin:10px 0;"></div>
       <a class="nav-item <?= isActiveNav('products') ?>" href="<?= url('products') ?>"><span>Fuel Products</span></a>
       <?php if (can_view_financials()): ?>

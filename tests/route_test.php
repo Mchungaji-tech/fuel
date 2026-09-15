@@ -40,7 +40,8 @@ assertTest("USD format_money(100) returns '$ 100.00'", format_money(100) === '$ 
 
 $_SESSION['currency'] = 'KES';
 assertTest("Switched currency is KES", current_currency() === 'KES');
-assertTest("KES format_money(100) converts using 130 rate to 'KES 13,000.00'", format_money(100) === 'KES 13,000.00');
+$expectedKes = 'KES ' . number_format(100 * exchange_rate(), 2);
+assertTest("KES format_money(100) converts dynamically using current rate ({$expectedKes})", format_money(100) === $expectedKes);
 $_SESSION['currency'] = 'USD'; // reset
 
 // Test 4: CSRF token generation and validation

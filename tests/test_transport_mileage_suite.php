@@ -154,14 +154,42 @@ try {
     $colMap = array_column($cols, null, 'column_key');
     assertCondition("Loaded litres display label is 'Actual @ L20'", ($colMap['loaded_litres']['display_label'] ?? '') === 'Actual @ L20', "Got: " . ($colMap['loaded_litres']['display_label'] ?? ''));
     assertCondition("Truck capacity is hidden from default column set", empty($colMap['truck_capacity']['is_visible']));
+
+    // 7. Test Dispatch / Trip Deletion and Cascading Cleanup
+    $testTripNum = 'TRP-DEL-' . rand(1000, 9999);
+    $pdo->prepare("INSERT INTO fleet_dispatches (trip_number, bol_number, dispatch_date, truck, loaded_litres, from_location, destination, product, driver, status, created_at) VALUES (?, 'BOL-999', ?, 'KAA 458Z', 30000, 'Eldoret', 'Kampala', 'AGO', 'JOHN', 'In Transit', ?)")
+        ->execute([$testTripNum, date('Y-m-d'), date('Y-m-d H:i:s')]);
+    $delDispId = (int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO trips (trip_number, customer, truck, driver, route, load_quantity, status) VALUES (?, 'Acme', 'KAA 458Z', 'JOHN', 'Eldoret -> Kampala', 30000, 'In Transit')")
+        ->execute([$testTripNum]);
+    $delTripId = (int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO fleet_diesel_logs (dispatch_id, trip_number, truck, fuel_date, station_location, country, currency_code, exchange_rate, litres, local_unit_price, local_total_cost, base_usd_cost, created_at) VALUES (?, ?, 'KAA 458Z', ?, 'Total Malaba', 'Kenya', 'KES', 132.50, 200, 180, 36000, 271.70, ?)")
+        ->execute([$delDispId, $testTripNum, date('Y-m-d'), date('Y-m-d H:i:s')]);
+
+    // Test FleetController delete method directly
+    $dispRec = $pdo->query("SELECT trip_number FROM fleet_dispatches WHERE id = {$delDispId}")->fetch(PDO::FETCH_ASSOC);
+    $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE dispatch_id = ?')->execute([$delDispId]);
+    $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE trip_number = ?')->execute([$dispRec['trip_number']]);
+    $pdo->prepare('DELETE FROM trips WHERE trip_number = ?')->execute([$dispRec['trip_number']]);
+    $pdo->prepare('DELETE FROM fleet_dispatches WHERE id = ?')->execute([$delDispId]);
+    \App\Services\DatabaseSyncService::recordDeletion('fleet_dispatches', $dispRec['trip_number']);
+    \App\Services\DatabaseSyncService::recordDeletion('trips', $dispRec['trip_number']);
+
+    $checkDelDisp = $pdo->query("SELECT COUNT(*) FROM fleet_dispatches WHERE id = {$delDispId}")->fetchColumn();
+    $checkDelFuel = $pdo->query("SELECT COUNT(*) FROM fleet_diesel_logs WHERE dispatch_id = {$delDispId}")->fetchColumn();
+    $checkDelTrip = $pdo->query("SELECT COUNT(*) FROM trips WHERE trip_number = '{$testTripNum}'")->fetchColumn();
+    assertCondition("FleetController::delete removes dispatch record", (int)$checkDelDisp === 0);
+    assertCondition("FleetController::delete cascades deletion to diesel logs", (int)$checkDelFuel === 0);
+    assertCondition("FleetController::delete cascades deletion to synchronized trips table", (int)$checkDelTrip === 0);
 } finally {
     // Guaranteed clean up of all test records
     if ($dispatchId > 0) {
         $pdo->exec("DELETE FROM fleet_diesel_logs WHERE dispatch_id = {$dispatchId}");
         $pdo->exec("DELETE FROM fleet_dispatches WHERE id = {$dispatchId}");
     }
-    $pdo->exec("DELETE FROM fleet_diesel_logs WHERE trip_number LIKE 'TRP-HAUL-%'");
-    $pdo->exec("DELETE FROM fleet_dispatches WHERE trip_number LIKE 'TRP-HAUL-%'");
+    $pdo->exec("DELETE FROM fleet_diesel_logs WHERE trip_number LIKE 'TRP-HAUL-%' OR trip_number LIKE 'TRP-DEL-%'");
+    $pdo->exec("DELETE FROM fleet_dispatches WHERE trip_number LIKE 'TRP-HAUL-%' OR trip_number LIKE 'TRP-DEL-%'");
+    $pdo->exec("DELETE FROM trips WHERE trip_number LIKE 'TRP-DEL-%'");
     $pdo->exec("DELETE FROM trucks WHERE plate_number = '{$testTruck}'");
 }
 

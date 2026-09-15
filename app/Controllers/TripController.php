@@ -105,4 +105,52 @@ class TripController
         flash('trip_success', "Trip {$tripNumber} registered successfully.");
         redirect('/trips');
     }
+
+    public function delete(string $id): void
+    {
+        $pdo = Database::connection();
+        $tripId = (int)$id;
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+        try {
+            $tripRecord = $pdo->query("SELECT trip_number FROM trips WHERE id = {$tripId}")->fetch(PDO::FETCH_ASSOC);
+            $tripNumber = $tripRecord['trip_number'] ?? '';
+
+            if ($tripNumber === '') {
+                $dispRecord = $pdo->query("SELECT trip_number FROM fleet_dispatches WHERE id = {$tripId}")->fetch(PDO::FETCH_ASSOC);
+                $tripNumber = $dispRecord['trip_number'] ?? '';
+            }
+
+            if ($tripNumber !== '') {
+                $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE trip_number = ?')->execute([$tripNumber]);
+                $pdo->prepare('DELETE FROM fleet_dispatches WHERE trip_number = ?')->execute([$tripNumber]);
+                $pdo->prepare('DELETE FROM trips WHERE trip_number = ?')->execute([$tripNumber]);
+                \App\Services\DatabaseSyncService::recordDeletion('fleet_dispatches', $tripNumber);
+                \App\Services\DatabaseSyncService::recordDeletion('trips', $tripNumber);
+            } else {
+                $pdo->prepare('DELETE FROM trips WHERE id = ?')->execute([$tripId]);
+                $pdo->prepare('DELETE FROM fleet_dispatches WHERE id = ?')->execute([$tripId]);
+            }
+
+            log_audit('Trips Board', 'DELETE_TRIP', "Deleted trip #{$tripId} ({$tripNumber})");
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => "Trip {$tripNumber} deleted successfully."]);
+                exit;
+            }
+
+            flash('trip_success', "Trip {$tripNumber} deleted successfully.");
+        } catch (\Throwable $e) {
+            if ($isAjax) {
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Could not delete trip: ' . $e->getMessage()]);
+                exit;
+            }
+            flash('trip_error', 'Could not delete trip: ' . $e->getMessage());
+        }
+
+        redirect('/trips');
+    }
 }

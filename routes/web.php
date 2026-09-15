@@ -100,10 +100,11 @@ return [
     ['POST', '/drivers/salary/toggle', [DriverController::class, 'toggleSalary']],
     ['POST', '/drivers/delete/{id}', [DriverController::class, 'delete']],
 
-    // Trips (dispatch board)
-    ['GET', '/trips', [TripController::class, 'index']],
-    ['GET', '/trips/new', [TripController::class, 'create']],
+    // Trips redirected to fleet management
+    ['GET', '/trips', function() { redirect('/fleet'); }],
+    ['GET', '/trips/new', function() { redirect('/fleet'); }],
     ['POST', '/trips/store', [TripController::class, 'store']],
+    ['POST', '/trips/delete/{id}', [TripController::class, 'delete']],
 
     // Invoices redirected to fleet
     ['GET', '/invoices', function() { redirect('/fleet'); }],

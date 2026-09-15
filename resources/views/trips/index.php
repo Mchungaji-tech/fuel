@@ -130,6 +130,10 @@
                                     <a href="<?= url('fleet') ?>" class="btn btn-sm btn-ghost" style="padding:4px 9px;font-size:12px;" title="View in Fleet Ledger">
                                         View in Ledger →
                                     </a>
+                                    <form method="POST" action="<?= url('trips/delete/' . $t['id']) ?>" style="display:inline;margin-left:4px;" onsubmit="return confirm('Permanently delete trip <?= htmlspecialchars($t['trip']) ?>?');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-sm btn-ghost" style="color:var(--red);border-color:transparent;padding:4px 7px;" title="Delete Trip">✕</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

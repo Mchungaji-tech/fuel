@@ -1422,25 +1422,50 @@ class FleetController
     public function delete(string $id): void
     {
         $pdo = Database::connection();
-        $q = $pdo->prepare('SELECT trip_number, truck, client_name FROM fleet_dispatches WHERE id = ? LIMIT 1');
-        $q->execute([(int) $id]);
-        $row = $q->fetch(PDO::FETCH_ASSOC);
+        $dispatchId = (int)$id;
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
-        $stmt = $pdo->prepare('DELETE FROM fleet_dispatches WHERE id = ?');
-        $stmt->execute([$id]);
+        try {
+            $disp = $pdo->query("SELECT trip_number, truck, client_name FROM fleet_dispatches WHERE id = {$dispatchId}")->fetch(PDO::FETCH_ASSOC);
+            $tripNumber = $disp['trip_number'] ?? '';
 
-        $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE dispatch_id = ?')->execute([(int) $id]);
+            // Delete associated diesel logs
+            $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE dispatch_id = ?')->execute([$dispatchId]);
+            if ($tripNumber !== '') {
+                $pdo->prepare('DELETE FROM fleet_diesel_logs WHERE trip_number = ?')->execute([$tripNumber]);
+                // Delete from trips table if synchronized
+                $pdo->prepare('DELETE FROM trips WHERE trip_number = ?')->execute([$tripNumber]);
+                \App\Services\DatabaseSyncService::recordDeletion('trips', $tripNumber);
+            }
 
-        if ($row && !empty($row['trip_number'])) {
-            $pdo->prepare('DELETE FROM trips WHERE trip_number = ?')->execute([$row['trip_number']]);
-            \App\Services\DatabaseSyncService::recordDeletion('fleet_dispatches', $row['trip_number']);
-            \App\Services\DatabaseSyncService::recordDeletion('trips', $row['trip_number']);
+            // Delete from fleet_dispatches
+            $stmt = $pdo->prepare('DELETE FROM fleet_dispatches WHERE id = ?');
+            $stmt->execute([$dispatchId]);
+
+            if ($tripNumber !== '') {
+                \App\Services\DatabaseSyncService::recordDeletion('fleet_dispatches', $tripNumber);
+            }
+
+            $tripRef = $disp ? ($tripNumber . ' - ' . ($disp['truck'] ?? '') . ' (' . ($disp['client_name'] ?? 'Consignee') . ')') : "ID #{$dispatchId}";
+            log_audit('Fleet Dispatch', 'DELETE_DISPATCH', "Deleted fleet dispatch {$tripRef}", 1);
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => "Trip {$tripNumber} deleted successfully."]);
+                exit;
+            }
+
+            flash('fleet_success', 'Dispatch record removed successfully.');
+        } catch (\Throwable $e) {
+            if ($isAjax) {
+                http_response_code(500);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Could not delete trip: ' . $e->getMessage()]);
+                exit;
+            }
+            flash('fleet_error', 'Could not delete trip: ' . $e->getMessage());
         }
 
-        $tripRef = $row ? ($row['trip_number'] . ' - ' . $row['truck'] . ' (' . ($row['client_name'] ?? 'Consignee') . ')') : "ID #{$id}";
-        log_audit('Fleet Dispatch', 'DELETE_DISPATCH', "Deleted fleet dispatch {$tripRef}", 1);
-
-        flash('fleet_success', 'Dispatch record removed successfully.');
         redirect('/fleet');
     }
 
