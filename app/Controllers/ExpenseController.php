@@ -335,6 +335,56 @@ class ExpenseController
         redirect('/expenses');
     }
 
+    /**
+     * Check how many records match the given export filters (returns JSON).
+     * Called by JavaScript before downloading so it can show a toast if 0 rows found.
+     */
+    public function exportCheck(): void
+    {
+        if (!can_view_financials()) {
+            header('Content-Type: application/json');
+            echo json_encode(['count' => 0, 'error' => 'Access denied']);
+            exit;
+        }
+
+        $pdo = Database::connection();
+        $truck = trim($_GET['truck'] ?? '');
+        $month = trim($_GET['month'] ?? '');
+        $year  = trim($_GET['year'] ?? '');
+
+        $sql = 'SELECT COUNT(*) FROM expenses WHERE 1=1';
+        $params = [];
+
+        if ($truck !== '' && strtolower($truck) !== 'all') {
+            $sql .= ' AND truck = ?';
+            $params[] = $truck;
+        }
+
+        if ($month !== '' && strtolower($month) !== 'all') {
+            $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $sql .= " AND strftime('%m', expense_date) = ?";
+            $params[] = $mFormatted;
+        }
+
+        if ($year !== '' && strtolower($year) !== 'all') {
+            $sql .= " AND strftime('%Y', expense_date) = ?";
+            $params[] = $year;
+        }
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $count = (int) $stmt->fetchColumn();
+
+        header('Content-Type: application/json');
+        echo json_encode(['count' => $count]);
+        exit;
+    }
+
+    /**
+     * Export the business expenses to Excel (.xlsx), Excel 97 (.xls), or CSV.
+     * Returns a JSON error (HTTP 204) when filters produce zero rows so the
+     * calling JS can surface a toast instead of opening an empty download.
+     */
     public function export(): void
     {
         if (!can_view_financials()) {
@@ -371,6 +421,18 @@ class ExpenseController
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $expenses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // When no records match the selected filters, return a JSON error instead
+        // of streaming an empty file. The calling JS will show a toast notification.
+        if (empty($expenses)) {
+            http_response_code(204);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'No expense records found for the selected filters.',
+            ]);
+            exit;
+        }
 
         $currencySymbol = app_currency_symbol();
         $isKes = current_currency() === 'KES';
@@ -418,3 +480,4 @@ class ExpenseController
         exit;
     }
 }
+

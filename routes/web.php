@@ -71,6 +71,7 @@ return [
     // Maintenance & Outside Expenses
     ['GET', '/expenses', [ExpenseController::class, 'index']],
     ['GET', '/expenses/export', [ExpenseController::class, 'export']],
+    ['GET', '/expenses/export/check', [ExpenseController::class, 'exportCheck']],
     ['POST', '/expenses/store', [ExpenseController::class, 'store']],
     ['POST', '/expenses/inline-update', [ExpenseController::class, 'inlineUpdate']],
     ['POST', '/expenses/delete/{id}', [ExpenseController::class, 'delete']],
