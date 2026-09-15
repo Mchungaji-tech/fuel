@@ -38,12 +38,13 @@ $truckCheck = $pdo->query("SELECT plate_number, compartments FROM trucks LIMIT 1
 if ($truckCheck) {
     echo " Truck sample: {$truckCheck['plate_number']} - Compartments: " . var_export($truckCheck['compartments'], true) . "\n";
 }
-// Insert a test truck without compartments
+// Insert a test truck without compartments and without capacity requirement
 $testPlate = 'TEST-' . rand(100, 999);
-$insTruck = $pdo->prepare("INSERT INTO trucks (plate_number, model, capacity_litres, compartments, ownership_type, status, created_at) VALUES (?, 'Isuzu Giga', 36000, NULL, 'Company', 'Ready', ?)");
+$insTruck = $pdo->prepare("INSERT INTO trucks (plate_number, model, capacity_litres, compartments, ownership_type, status, created_at) VALUES (?, 'Isuzu Giga', 0, NULL, 'Company', 'Ready', ?)");
 $insTruck->execute([$testPlate, date('Y-m-d H:i:s')]);
-$fetchTruck = $pdo->query("SELECT compartments FROM trucks WHERE plate_number = '{$testPlate}'")->fetchColumn();
-assertCondition("Truck compartments is nullable without forced default", $fetchTruck === null);
+$fetchTruck = $pdo->query("SELECT compartments, capacity_litres FROM trucks WHERE plate_number = '{$testPlate}'")->fetch(PDO::FETCH_ASSOC);
+assertCondition("Truck compartments is nullable without forced default", $fetchTruck['compartments'] === null);
+assertCondition("Truck created without capacity requirement", (int)$fetchTruck['capacity_litres'] === 0);
 $pdo->exec("DELETE FROM trucks WHERE plate_number = '{$testPlate}'");
 
 // 3. Customer Case-Insensitive Synchronization

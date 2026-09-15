@@ -135,19 +135,19 @@ class TruckController
 
         $status = trim($_POST['status'] ?? 'Ready');
 
-        if ($plate !== '' && $capacity > 0) {
+        if ($plate !== '') {
             $stmt = $pdo->prepare('INSERT INTO trucks (
                 plate_number, model, capacity_litres, compartments, ownership_type, owner_name, commission_rate, status, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
             try {
                 $stmt->execute([$plate, $model, $capacity, $compartments, $ownershipType, $ownerName, $commissionRate, $status, date('Y-m-d H:i:s')]);
                 \App\Services\DatabaseSyncService::clearDeletion('trucks', $plate);
-                flash('truck_success', "Truck {$plate} registered ({$ownershipType}) with capacity " . number_format($capacity) . " L.");
+                flash('truck_success', "Tanker {$plate} registered ({$ownershipType}).");
             } catch (\Exception $e) {
-                flash('truck_error', "Truck {$plate} already exists or error occurred.");
+                flash('truck_error', "Tanker {$plate} already exists or error occurred.");
             }
         } else {
-            flash('truck_error', 'Plate number and capacity in litres are required.');
+            flash('truck_error', 'Registration plate number is required.');
         }
 
         redirect('/trucks');

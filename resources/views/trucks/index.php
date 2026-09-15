@@ -191,11 +191,6 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Tanker Capacity (Litres) *</label>
-                    <input type="number" name="capacity_litres" placeholder="e.g. 28000, 32000, 36000" required>
-                </div>
-
-                <div class="form-group">
                     <label>Compartment Setup (Optional)</label>
                     <input type="text" name="compartments" value="" placeholder="e.g. 4 comp (8k/8k/8k/8k)">
                 </div>
