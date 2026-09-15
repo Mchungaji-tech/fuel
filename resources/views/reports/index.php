@@ -102,7 +102,7 @@
         </div>
         <div style="font-size:14.5px;color:var(--text);line-height:1.65;">
             <p style="margin:0 0 10px;">
-                During <b><?= date('F Y', strtotime($selectedMonth . '-01')) ?></b>, Sarura Fuel recorded <b><?= $trips ?> trip dispatches</b>, safely delivering <b><?= number_format($litres) ?> Litres</b> of bulk petroleum products across regional corridors. Gross freight revenue billed was <b><?= format_money($transport) ?></b>, converting into a net operating balance of <b><?= format_money($netProfit) ?></b> (<b><?= $margin ?>% profit margin</b>).
+                During <b><?= date('F Y', strtotime($selectedMonth . '-01')) ?></b>, Sarura Fuel recorded <b><?= $trips ?> trip dispatches</b>, safely delivering <b><?= number_format($litres) ?> Litres</b> of bulk petroleum products across regional transit routes. Gross freight revenue billed was <b><?= format_money($transport) ?></b>, converting into a net operating balance of <b><?= format_money($netProfit) ?></b> (<b><?= $margin ?>% profit margin</b>).
             </p>
             <p style="margin:0 0 10px;color:var(--text-2);">
                 <b>Cost Distribution:</b> Direct vehicle en-route mileage costs consumed <b><?= round($mileagePct, 1) ?>%</b> (<?= format_money($mileage) ?>), general vehicle repairs and business maintenance expenses accounted for <b><?= round($expensePct, 1) ?>%</b> (<?= format_money($expenses) ?>), and driver payroll compensation represented <b><?= round($salaryPct, 1) ?>%</b> (<?= format_money($salaries) ?>) of total revenues.

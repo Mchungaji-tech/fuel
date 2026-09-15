@@ -387,12 +387,13 @@ CREATE TABLE IF NOT EXISTS `fleet_diesel_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- EAST AFRICA ROUTE MILEAGE RATES TABLE
+-- EAST AFRICA ROUTE TRANSIT STAGES & MILEAGE RATES TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `route_mileage_rates` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `origin` VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
     `destination` VARCHAR(150) NOT NULL,
+    `transit_steps` TEXT NULL,
     `distance_km` INT DEFAULT 0,
     `standard_allowance_kes` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `standard_allowance_usd` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
@@ -448,18 +449,10 @@ ALTER TABLE `trucks`
     ADD COLUMN IF NOT EXISTS `ownership_type` VARCHAR(50) DEFAULT 'Owner' AFTER `status`,
     ADD COLUMN IF NOT EXISTS `current_driver` VARCHAR(100) NULL AFTER `ownership_type`;
 
--- 6. Route Mileage Rates Table (If not already created)
-CREATE TABLE IF NOT EXISTS `route_mileage_rates` (
-    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
-    `origin` VARCHAR(100) NOT NULL DEFAULT 'Eldoret',
-    `destination` VARCHAR(150) NOT NULL,
-    `distance_km` INT DEFAULT 0,
-    `standard_allowance_kes` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    `standard_allowance_usd` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    `notes` TEXT NULL,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY `uniq_route` (`origin`, `destination`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- 6. Route Mileage Rates Table: Ensure Transit Stages / Steps Column Exists
+ALTER TABLE `route_mileage_rates`
+    ADD COLUMN IF NOT EXISTS `transit_steps` TEXT NULL AFTER `destination`;
+
 
 
 

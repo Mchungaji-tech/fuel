@@ -1951,6 +1951,7 @@ class FleetController
         $origin = trim($_POST['origin'] ?? 'Eldoret');
         if ($origin === '') $origin = 'Eldoret';
         $destination = trim($_POST['destination'] ?? '');
+        $transitSteps = trim($_POST['transit_steps'] ?? '');
         $distanceKm = (int)($_POST['distance_km'] ?? 0);
         $allowanceKes = (float)($_POST['standard_allowance_kes'] ?? 0);
         $allowanceUsd = (float)($_POST['standard_allowance_usd'] ?? 0);
@@ -1978,13 +1979,14 @@ class FleetController
         }
 
         try {
-            $stmt = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$origin, $destination, $distanceKm, $allowanceKes, $allowanceUsd, $notes, date('Y-m-d H:i:s')]);
+            $stmt = $pdo->prepare('INSERT INTO route_mileage_rates (origin, destination, transit_steps, distance_km, standard_allowance_kes, standard_allowance_usd, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$origin, $destination, $transitSteps, $distanceKm, $allowanceKes, $allowanceUsd, $notes, date('Y-m-d H:i:s')]);
             $newId = (int)$pdo->lastInsertId();
 
-            log_audit('Mileage Rates', 'ADD_MILEAGE_RATE', "Added corridor allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
+            log_audit('Mileage Rates', 'ADD_MILEAGE_RATE', "Added route transit allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
 
             if ($isAjax) {
+                $allRates = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC')->fetchAll(PDO::FETCH_ASSOC);
                 header('Content-Type: application/json');
                 echo json_encode([
                     'success' => true,
@@ -1993,11 +1995,13 @@ class FleetController
                         'id' => $newId,
                         'origin' => $origin,
                         'destination' => $destination,
+                        'transit_steps' => $transitSteps,
                         'distance_km' => $distanceKm,
                         'standard_allowance_kes' => $allowanceKes,
                         'standard_allowance_usd' => $allowanceUsd,
                         'notes' => $notes
-                    ]
+                    ],
+                    'rates' => $allRates
                 ]);
                 exit;
             }
@@ -2025,6 +2029,7 @@ class FleetController
         $origin = trim($_POST['origin'] ?? 'Eldoret');
         if ($origin === '') $origin = 'Eldoret';
         $destination = trim($_POST['destination'] ?? '');
+        $transitSteps = trim($_POST['transit_steps'] ?? '');
         $distanceKm = (int)($_POST['distance_km'] ?? 0);
         $allowanceKes = (float)($_POST['standard_allowance_kes'] ?? 0);
         $allowanceUsd = (float)($_POST['standard_allowance_usd'] ?? 0);
@@ -2051,12 +2056,13 @@ class FleetController
         }
 
         try {
-            $stmt = $pdo->prepare('UPDATE route_mileage_rates SET origin = ?, destination = ?, distance_km = ?, standard_allowance_kes = ?, standard_allowance_usd = ?, notes = ? WHERE id = ?');
-            $stmt->execute([$origin, $destination, $distanceKm, $allowanceKes, $allowanceUsd, $notes, $rateId]);
+            $stmt = $pdo->prepare('UPDATE route_mileage_rates SET origin = ?, destination = ?, transit_steps = ?, distance_km = ?, standard_allowance_kes = ?, standard_allowance_usd = ?, notes = ? WHERE id = ?');
+            $stmt->execute([$origin, $destination, $transitSteps, $distanceKm, $allowanceKes, $allowanceUsd, $notes, $rateId]);
 
-            log_audit('Mileage Rates', 'UPDATE_MILEAGE_RATE', "Updated corridor allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
+            log_audit('Mileage Rates', 'UPDATE_MILEAGE_RATE', "Updated route transit allowance for {$origin} → {$destination}: KES {$allowanceKes} ($ {$allowanceUsd})");
 
             if ($isAjax) {
+                $allRates = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC')->fetchAll(PDO::FETCH_ASSOC);
                 header('Content-Type: application/json');
                 echo json_encode([
                     'success' => true,
@@ -2065,11 +2071,13 @@ class FleetController
                         'id' => $rateId,
                         'origin' => $origin,
                         'destination' => $destination,
+                        'transit_steps' => $transitSteps,
                         'distance_km' => $distanceKm,
                         'standard_allowance_kes' => $allowanceKes,
                         'standard_allowance_usd' => $allowanceUsd,
                         'notes' => $notes
-                    ]
+                    ],
+                    'rates' => $allRates
                 ]);
                 exit;
             }
@@ -2104,11 +2112,12 @@ class FleetController
                 \App\Services\DatabaseSyncService::recordDeletion('route_mileage_rates', $comp);
             }
 
-            log_audit('Mileage Rates', 'DELETE_MILEAGE_RATE', "Deleted corridor allowance rate #{$rateId}");
+            log_audit('Mileage Rates', 'DELETE_MILEAGE_RATE', "Deleted route transit allowance rate #{$rateId}");
 
             if ($isAjax) {
+                $allRates = $pdo->query('SELECT * FROM route_mileage_rates ORDER BY destination ASC')->fetchAll(PDO::FETCH_ASSOC);
                 header('Content-Type: application/json');
-                echo json_encode(['success' => true, 'message' => 'Mileage rate deleted successfully.']);
+                echo json_encode(['success' => true, 'message' => 'Mileage rate deleted successfully.', 'rates' => $allRates]);
                 exit;
             }
 

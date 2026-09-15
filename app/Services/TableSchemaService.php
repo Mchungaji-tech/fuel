@@ -74,7 +74,7 @@ class TableSchemaService
                     ['customer', 'Customer / Consignee', 'text', 1],
                     ['truck', 'Truck Plate', 'text', 1],
                     ['driver', 'Driver Name', 'text', 1],
-                    ['route', 'Route / Corridor', 'text', 1],
+                    ['route', 'Route / Destination', 'text', 1],
                     ['load_quantity', 'Load Quantity', 'text', 1],
                     ['status', 'Status', 'status', 1],
                 ];

@@ -14,7 +14,7 @@
             <button class="btn btn-ghost" onclick="document.getElementById('columnManagerModal').classList.add('active')" title="Customize column titles, show/hide columns, add custom columns, or reset table">
                 ⚙️ Columns & Schema
             </button>
-            <button type="button" class="btn btn-ghost" onclick="openMileageRatesModal()" style="font-weight:700;" title="Manage corridor destination mileage rates & driver allowances">
+            <button type="button" class="btn btn-ghost" onclick="openMileageRatesModal()" style="font-weight:700;" title="Manage route transit stages & driver mileage allowances">
                 🛣️ Mileage Rates
             </button>
             <button class="btn btn-ghost" onclick="document.getElementById('importModal').classList.add('active')">📥 Import Spreadsheet</button>
@@ -768,12 +768,12 @@
                         <input list="destPresets" name="destination" id="wizardDestination" placeholder="e.g. Uganda (Kampala), DR Congo (Goma)" required onchange="onDestinationChanged(this.value)">
                         <datalist id="destPresets">
                             <?php foreach ($mileageRates as $mr): ?>
-                                <option value="<?= htmlspecialchars($mr['destination']) ?>" data-kes="<?= (float)$mr['standard_allowance_kes'] ?>" data-usd="<?= (float)$mr['standard_allowance_usd'] ?>" data-km="<?= (int)$mr['distance_km'] ?>">
+                                <option value="<?= htmlspecialchars($mr['destination']) ?>" data-kes="<?= (float)$mr['standard_allowance_kes'] ?>" data-usd="<?= (float)$mr['standard_allowance_usd'] ?>" data-km="<?= (int)$mr['distance_km'] ?>" data-steps="<?= htmlspecialchars($mr['transit_steps'] ?? '') ?>">
                                     <?= htmlspecialchars($mr['destination']) ?> (<?= number_format($mr['distance_km']) ?> km • KES <?= number_format($mr['standard_allowance_kes']) ?>)
                                 </option>
                             <?php endforeach; ?>
                         </datalist>
-                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Corridor selection auto-suggests driver mileage allowance in Step 3</span>
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Route selection auto-suggests transit stages, distance & driver allowance in Step 3</span>
                     </div>
 
                     <div class="form-group">
@@ -811,6 +811,11 @@
                             <span style="font-size:11.5px;background:var(--card-2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);font-weight:700;color:var(--text-2);">
                                 1 USD = <?= exchange_rate() ?> KES
                             </span>
+                        </div>
+
+                        <!-- Multi-Step Route Transit Stages Alert Box -->
+                        <div id="dispRouteStepsAlert" style="display:none;margin-bottom:14px;padding:9px 13px;background:rgba(99,102,241,0.08);border:1px solid var(--brand);border-radius:8px;font-size:12.5px;color:var(--text);">
+                            <b style="color:var(--brand);">🛣️ Route Transit Stages:</b> <span id="dispRouteStepsText"></span>
                         </div>
 
                         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
@@ -1235,16 +1240,16 @@
     </div>
 </div>
 
-<!-- Corridor Mileage Rates & Transit Allowances Management Modal -->
+<!-- Route Transit Stages & Mileage Allowances Management Modal -->
 <div class="modal-backdrop" id="mileageRatesModal">
-    <div class="modal-card" style="max-width:860px;">
+    <div class="modal-card" style="max-width:900px;">
         <div class="modal-head">
             <div style="display:flex;align-items:center;gap:10px;">
                 <span style="font-size:24px;background:rgba(79,70,229,0.1);padding:6px;border-radius:10px;">🛣️</span>
                 <div>
-                    <h2 style="margin:0;font-size:19px;">Corridor Mileage Rates & Driver Allowances</h2>
+                    <h2 style="margin:0;font-size:19px;">Route Stages & Transit Mileage Allowances</h2>
                     <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">
-                        Manage standard corridor transit allowances (KES & USD) auto-suggested when dispatching trucks.
+                        Manage multi-step transit routes, intermediate stages (e.g. Kenya ➔ Uganda ➔ DR Congo), and driver allowances (KES & USD).
                     </div>
                 </div>
             </div>
@@ -1256,7 +1261,7 @@
         <!-- Add / Edit Route Rate Card Form -->
         <div style="background:var(--card-2);border:1.5px solid var(--border-2);border-radius:12px;padding:16px;margin-bottom:20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                <b id="mrFormTitle" style="font-size:13.5px;color:var(--text);">➕ Add Corridor Destination Rate</b>
+                <b id="mrFormTitle" style="font-size:13.5px;color:var(--text);">➕ Add Route Transit Stages & Allowance Rate</b>
                 <button type="button" id="mrCancelEditBtn" onclick="resetMileageRateForm()" style="display:none;background:transparent;border:0;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;">✕ Cancel Edit</button>
             </div>
             <form id="mileageRateForm" onsubmit="return handleMileageRateSubmit(event)">
@@ -1267,41 +1272,50 @@
                         <input type="text" id="mrOrigin" value="Eldoret" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
                     </div>
                     <div>
-                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Corridor Destination *</label>
-                        <input type="text" id="mrDestination" placeholder="e.g. Uganda (Kampala)" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
+                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Final Destination *</label>
+                        <input type="text" id="mrDestination" placeholder="e.g. DR Congo (Goma)" required style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-weight:700;">
                     </div>
                     <div>
-                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Distance (km)</label>
-                        <input type="number" id="mrDistanceKm" placeholder="e.g. 350" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;">
+                        <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">Total Distance (km)</label>
+                        <input type="number" id="mrDistanceKm" placeholder="e.g. 850" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;">
                     </div>
                     <div>
                         <label style="font-size:11.5px;font-weight:700;color:var(--amber);display:block;margin-bottom:4px;">Standard Allowance (KES) *</label>
-                        <input type="number" step="1" id="mrAllowanceKes" placeholder="e.g. 50000" required oninput="onMrKesInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;color:var(--amber);">
+                        <input type="number" step="1" id="mrAllowanceKes" placeholder="e.g. 85000" required oninput="onMrKesInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--amber);border-radius:8px;font-weight:800;color:var(--amber);">
                     </div>
                     <div>
                         <label style="font-size:11.5px;font-weight:700;color:var(--brand);display:block;margin-bottom:4px;">Standard Allowance (USD $) *</label>
                         <input type="number" step="0.01" id="mrAllowanceUsd" placeholder="0.00" required oninput="onMrUsdInput(this.value)" style="width:100%;padding:8px 10px;border:1.5px solid var(--brand);border-radius:8px;font-weight:800;color:var(--brand);">
                     </div>
                 </div>
+
+                <!-- Multi-Step Transit Stages Field -->
+                <div style="margin-top:10px;">
+                    <label style="font-size:11.5px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px;">
+                        🛣️ Transit Stages / Waypoint Steps (Optional Breakdown)
+                    </label>
+                    <input type="text" id="mrTransitSteps" placeholder="e.g. Step 1: Eldoret ➔ Malaba Border (120 km) | Step 2: Malaba ➔ Kampala (230 km) | Step 3: Kampala ➔ Goma via Katuna (500 km)" style="width:100%;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
+                </div>
+
                 <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-                    <input type="text" id="mrNotes" placeholder="Optional notes (e.g. Malaba border toll inclusive)" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
+                    <input type="text" id="mrNotes" placeholder="Optional notes (e.g. Malaba border clearance toll inclusive)" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--border-2);border-radius:8px;font-size:12.5px;">
                     <button type="submit" id="mrSubmitBtn" class="btn btn-brand btn-sm" style="font-weight:800;padding:8px 18px;">
-                        💾 Save Corridor Rate
+                        💾 Save Route Rate
                     </button>
                 </div>
             </form>
         </div>
 
-        <!-- Corridor Routes Table -->
+        <!-- Route Presets Table -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <b style="font-size:13.5px;color:var(--text);">Active Corridor Route Presets</b>
+            <b style="font-size:13.5px;color:var(--text);">Active Route & Transit Stage Presets</b>
             <span id="mrTableCountBadge" style="font-size:12px;color:var(--text-3);font-weight:700;"><?= count($mileageRates) ?> routes</span>
         </div>
-        <div class="table-responsive" style="max-height:300px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;">
+        <div class="table-responsive" style="max-height:320px;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;">
             <table style="width:100%;font-size:13px;margin:0;">
                 <thead>
                     <tr>
-                        <th style="padding:9px 12px;">Origin ➔ Destination</th>
+                        <th style="padding:9px 12px;">Route & Transit Stages</th>
                         <th style="padding:9px 12px;text-align:right;">Distance</th>
                         <th style="padding:9px 12px;text-align:right;">Allowance (KES)</th>
                         <th style="padding:9px 12px;text-align:right;">Allowance (USD)</th>
@@ -1311,12 +1325,19 @@
                 </thead>
                 <tbody id="mrTableBody">
                     <?php if (empty($mileageRates)): ?>
-                        <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No corridor rates configured yet.</td></tr>
+                        <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No route rates configured yet.</td></tr>
                     <?php else: ?>
                         <?php foreach ($mileageRates as $mr): ?>
                             <tr id="mr-row-<?= $mr['id'] ?>">
-                                <td style="padding:9px 12px;font-weight:700;">
-                                    <span><?= htmlspecialchars($mr['origin']) ?> ➔ <span style="color:var(--brand);"><?= htmlspecialchars($mr['destination']) ?></span></span>
+                                <td style="padding:9px 12px;">
+                                    <div style="font-weight:700;">
+                                        <span><?= htmlspecialchars($mr['origin']) ?> ➔ <span style="color:var(--brand);"><?= htmlspecialchars($mr['destination']) ?></span></span>
+                                    </div>
+                                    <?php if (!empty($mr['transit_steps'])): ?>
+                                        <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;background:var(--card-2);padding:2px 6px;border-radius:5px;border:1px dashed var(--border);">
+                                            🛣️ <?= htmlspecialchars($mr['transit_steps']) ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
                                 <td style="padding:9px 12px;text-align:right;color:var(--text-2);"><?= $mr['distance_km'] ? number_format($mr['distance_km']) . ' km' : '—' ?></td>
                                 <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--amber);">KES <?= number_format($mr['standard_allowance_kes']) ?></td>
@@ -1691,7 +1712,7 @@
                         <b id="vdmFrom" style="color:var(--text);">—</b>
                     </div>
                     <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-                        <span style="color:var(--text-2);font-size:13px;">Destination Corridor:</span>
+                        <span style="color:var(--text-2);font-size:13px;">Destination Route:</span>
                         <b id="vdmDestination" style="color:var(--text);">—</b>
                     </div>
                     <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
@@ -1740,7 +1761,7 @@
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                     <!-- Revenue Side -->
-                    <div style="display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
                         <div style="font-size:11px;font-weight:800;color:var(--green);text-transform:uppercase;">Revenue / Billings</div>
                         <div style="display:flex;justify-content:space-between;font-size:13.5px;">
                             <span style="color:var(--text-2);">Expected Transport:</span>
@@ -1757,7 +1778,7 @@
                     </div>
 
                     <!-- Operational Costs (Deductions) Side -->
-                    <div style="display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
                         <div style="font-size:11px;font-weight:800;color:var(--red);text-transform:uppercase;">Owner Expenses (Deductions)</div>
                         <div style="display:flex;justify-content:space-between;align-items:center;font-size:13.5px;">
                             <div style="display:flex;align-items:center;gap:6px;">
@@ -1766,10 +1787,10 @@
                             </div>
                             <b id="vdmDiesel" style="color:var(--amber);">—</b>
                         </div>
-                        <!-- Corridor Fuel Stops Container -->
+                        <!-- Route Fuel Stops Container -->
                         <div id="vdmFuelStopsBox" style="display:none;background:var(--card-2);border:1px dashed var(--amber);border-radius:8px;padding:8px 10px;margin:4px 0;">
                             <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:var(--amber);margin-bottom:4px;">
-                                <span>Refueling Stops Along Corridor</span>
+                                <span>Refueling Stops Along Route</span>
                                 <span id="vdmFuelStopsCount">0 stops</span>
                             </div>
                             <div id="vdmFuelStopsList" style="display:flex;flex-direction:column;gap:4px;font-size:12px;"></div>
@@ -3187,14 +3208,27 @@ window.onDestinationChanged = function(destVal) {
     const dList = document.getElementById('destPresets');
     if (!dList) return;
     const opt = Array.from(dList.options).find(o => o.value.toLowerCase() === destVal.trim().toLowerCase());
-    if (opt && (opt.dataset.kes || opt.dataset.usd)) {
-        const kes = parseFloat(opt.dataset.kes) || 0;
-        const usd = parseFloat(opt.dataset.usd) || (SYS_EX_RATE > 0 ? kes / SYS_EX_RATE : 0);
-        const milKes = document.getElementById('dispMileageKes');
-        const milUsd = document.getElementById('dispMileageUsd');
-        if (milKes) milKes.value = kes > 0 ? Math.round(kes) : '';
-        if (milUsd) milUsd.value = usd > 0 ? usd.toFixed(2) : '';
-        syncMileageFields(kes, usd);
+    if (opt) {
+        if (opt.dataset.kes || opt.dataset.usd) {
+            const kes = parseFloat(opt.dataset.kes) || 0;
+            const usd = parseFloat(opt.dataset.usd) || (SYS_EX_RATE > 0 ? kes / SYS_EX_RATE : 0);
+            const milKes = document.getElementById('dispMileageKes');
+            const milUsd = document.getElementById('dispMileageUsd');
+            if (milKes) milKes.value = kes > 0 ? Math.round(kes) : '';
+            if (milUsd) milUsd.value = usd > 0 ? usd.toFixed(2) : '';
+            syncMileageFields(kes, usd);
+        }
+        const steps = opt.dataset.steps || '';
+        const stepsBox = document.getElementById('dispRouteStepsAlert');
+        const stepsText = document.getElementById('dispRouteStepsText');
+        if (stepsBox && stepsText) {
+            if (steps) {
+                stepsText.textContent = steps;
+                stepsBox.style.display = 'block';
+            } else {
+                stepsBox.style.display = 'none';
+            }
+        }
     }
 };
 
@@ -3206,7 +3240,7 @@ function calcExpectedTransport() {
 window.calcExpectedTransport = calcExpectedTransport;
 
 /* =========================================================================
-   CORRIDOR MILEAGE RATES MODAL & AJAX CRUD
+   ROUTE TRANSIT STAGES & MILEAGE RATES MODAL & AJAX CRUD
    ========================================================================= */
 window.openMileageRatesModal = function() {
     resetMileageRateForm();
@@ -3237,30 +3271,33 @@ window.resetMileageRateForm = function() {
     const idEl = document.getElementById('mrRateId');
     if (idEl) idEl.value = '';
     const titleEl = document.getElementById('mrFormTitle');
-    if (titleEl) titleEl.textContent = '➕ Add Corridor Destination Rate';
+    if (titleEl) titleEl.textContent = '➕ Add Route Transit Stages & Allowance Rate';
     const cancelBtn = document.getElementById('mrCancelEditBtn');
     if (cancelBtn) cancelBtn.style.display = 'none';
     const btn = document.getElementById('mrSubmitBtn');
-    if (btn) btn.textContent = '💾 Save Corridor Rate';
+    if (btn) btn.textContent = '💾 Save Route Rate';
     const org = document.getElementById('mrOrigin');
     if (org) org.value = 'Eldoret';
+    const steps = document.getElementById('mrTransitSteps');
+    if (steps) steps.value = '';
 };
 
 window.editMileageRate = function(rate) {
     document.getElementById('mrRateId').value = rate.id;
     document.getElementById('mrOrigin').value = rate.origin || 'Eldoret';
     document.getElementById('mrDestination').value = rate.destination || '';
+    document.getElementById('mrTransitSteps').value = rate.transit_steps || '';
     document.getElementById('mrDistanceKm').value = rate.distance_km || '';
     document.getElementById('mrAllowanceKes').value = Math.round(rate.standard_allowance_kes || 0);
     document.getElementById('mrAllowanceUsd').value = parseFloat(rate.standard_allowance_usd || 0).toFixed(2);
     document.getElementById('mrNotes').value = rate.notes || '';
 
     const titleEl = document.getElementById('mrFormTitle');
-    if (titleEl) titleEl.textContent = `✏️ Editing Rate: ${rate.origin} ➔ ${rate.destination}`;
+    if (titleEl) titleEl.textContent = `✏️ Editing Route: ${rate.origin} ➔ ${rate.destination}`;
     const cancelBtn = document.getElementById('mrCancelEditBtn');
     if (cancelBtn) cancelBtn.style.display = 'inline-block';
     const btn = document.getElementById('mrSubmitBtn');
-    if (btn) btn.textContent = '✓ Update Corridor Rate';
+    if (btn) btn.textContent = '✓ Update Route Rate';
 
     document.getElementById('mrDestination')?.focus();
 };
@@ -3273,13 +3310,14 @@ window.handleMileageRateSubmit = async function(e) {
 
     const origin = document.getElementById('mrOrigin')?.value.trim() || 'Eldoret';
     const dest = document.getElementById('mrDestination')?.value.trim();
+    const steps = document.getElementById('mrTransitSteps')?.value.trim() || '';
     const km = document.getElementById('mrDistanceKm')?.value;
     const kes = document.getElementById('mrAllowanceKes')?.value;
     const usd = document.getElementById('mrAllowanceUsd')?.value;
     const notes = document.getElementById('mrNotes')?.value.trim();
 
     if (!dest) {
-        alert('Please specify the destination corridor.');
+        alert('Please specify the destination route.');
         return false;
     }
     if (!kes || parseFloat(kes) <= 0) {
@@ -3291,6 +3329,7 @@ window.handleMileageRateSubmit = async function(e) {
         _csrf_token: CSRF_TOKEN,
         origin: origin,
         destination: dest,
+        transit_steps: steps,
         distance_km: km,
         standard_allowance_kes: kes,
         standard_allowance_usd: usd,
@@ -3310,7 +3349,7 @@ window.handleMileageRateSubmit = async function(e) {
             const fb = document.getElementById('mrFeedbackBanner');
             if (fb) {
                 fb.style.display = 'block';
-                fb.textContent = isEdit ? '✓ Corridor rate updated successfully!' : '✓ New corridor rate saved!';
+                fb.textContent = isEdit ? '✓ Route rate updated successfully!' : '✓ New route rate saved!';
                 setTimeout(() => { if (fb) fb.style.display = 'none'; }, 4000);
             }
         } else {
@@ -3318,13 +3357,13 @@ window.handleMileageRateSubmit = async function(e) {
         }
     } catch(err) {
         console.error(err);
-        alert('Network error saving corridor mileage rate.');
+        alert('Network error saving route mileage rate.');
     }
     return false;
 };
 
 window.deleteMileageRate = async function(id) {
-    if (!confirm('Are you sure you want to delete this corridor mileage preset?')) return;
+    if (!confirm('Are you sure you want to delete this route mileage preset?')) return;
     try {
         const res = await fetch('<?= url("fleet/mileage-rates/delete") ?>/' + id, {
             method: 'POST',
@@ -3361,14 +3400,21 @@ function refreshMileageRatesTable(rates) {
     if (!tbody) return;
 
     if (rates.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No corridor rates configured yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No route rates configured yet.</td></tr>';
         return;
     }
 
     tbody.innerHTML = rates.map(r => `
         <tr id="mr-row-${r.id}">
-            <td style="padding:9px 12px;font-weight:700;">
-                <span>${escapeHtml(r.origin)} ➔ <span style="color:var(--brand);">${escapeHtml(r.destination)}</span></span>
+            <td style="padding:9px 12px;">
+                <div style="font-weight:700;">
+                    <span>${escapeHtml(r.origin)} ➔ <span style="color:var(--brand);">${escapeHtml(r.destination)}</span></span>
+                </div>
+                ${r.transit_steps ? `
+                    <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;background:var(--card-2);padding:2px 6px;border-radius:5px;border:1px dashed var(--border);">
+                        🛣️ ${escapeHtml(r.transit_steps)}
+                    </div>
+                ` : ''}
             </td>
             <td style="padding:9px 12px;text-align:right;color:var(--text-2);">${r.distance_km ? Number(r.distance_km).toLocaleString() + ' km' : '—'}</td>
             <td style="padding:9px 12px;text-align:right;font-weight:800;color:var(--amber);">KES ${Number(r.standard_allowance_kes).toLocaleString()}</td>
@@ -3385,7 +3431,7 @@ function refreshMileageRatesTable(rates) {
 
     if (datalist) {
         datalist.innerHTML = rates.map(r => `
-            <option value="${escapeHtml(r.destination)}" data-kes="${r.standard_allowance_kes}" data-usd="${r.standard_allowance_usd}" data-km="${r.distance_km}">
+            <option value="${escapeHtml(r.destination)}" data-kes="${r.standard_allowance_kes}" data-usd="${r.standard_allowance_usd}" data-km="${r.distance_km}" data-steps="${escapeHtml(r.transit_steps || '')}">
                 ${escapeHtml(r.destination)} (${Number(r.distance_km || 0).toLocaleString()} km • KES ${Number(r.standard_allowance_kes).toLocaleString()})
             </option>
         `).join('');
