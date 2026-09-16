@@ -115,16 +115,7 @@ try {
 $json = json_decode(ob_get_clean(), true);
 assertCondition("exportCheck matches date range 2026-09-01 to 2026-09-30", ($json['count'] ?? 0) >= 1, "Count was: " . ($json['count'] ?? 0));
 
-// 9. Test exportCheck: Search keyword
-ob_start();
-$_GET = ['search' => 'Brake'];
-try {
-    $expCtrl->exportCheck();
-} catch (\Throwable $e) {}
-$json = json_decode(ob_get_clean(), true);
-assertCondition("exportCheck matches search keyword 'Brake'", ($json['count'] ?? 0) >= 1, "Count was: " . ($json['count'] ?? 0));
-
-// 10. Test full export execution to CSV with specific truck & month
+// 9. Test full export execution to CSV with specific truck & month
 if (!defined('TESTING_MODE')) {
     define('TESTING_MODE', true);
 }

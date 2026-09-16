@@ -405,12 +405,6 @@
                 </select>
             </div>
 
-            <!-- Optional Search Filter -->
-            <div class="form-group">
-                <label>Search Keyword (Optional)</label>
-                <input type="text" id="expExportSearch" placeholder="Filter by item bought, vendor, receipt #, or remarks…" oninput="debounceExpExportSummary()" style="font-size:13.5px;">
-            </div>
-
             <!-- Time Horizon Section -->
             <div>
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
@@ -492,7 +486,6 @@ const EXP_EXPORT_CHECK_URL = '<?= url('expenses/export/check') ?>';
 const EXP_EXPORT_URL = '<?= url('expenses/export') ?>';
 
 let expExportHorizonMode = 'all';
-let expExportDebounceTimer = null;
 
 function setExpExportHorizon(mode) {
     expExportHorizonMode = mode;
@@ -561,14 +554,8 @@ function onExpExportFilterChange() {
     updateExpExportSummary();
 }
 
-function debounceExpExportSummary() {
-    clearTimeout(expExportDebounceTimer);
-    expExportDebounceTimer = setTimeout(updateExpExportSummary, 300);
-}
-
 function buildExpExportParams() {
     const truck = document.getElementById('expExportTruck')?.value || '';
-    const search = document.getElementById('expExportSearch')?.value.trim() || '';
     const month = document.getElementById('expExportMonth')?.value || '';
     const year = document.getElementById('expExportYear')?.value || '';
     const fromDate = document.getElementById('expExportFromDate')?.value || '';
@@ -576,7 +563,6 @@ function buildExpExportParams() {
 
     const params = new URLSearchParams();
     if (truck) params.set('truck', truck);
-    if (search) params.set('search', search);
 
     if (expExportHorizonMode === 'range' || expExportHorizonMode === 'week' || (fromDate && toDate)) {
         if (fromDate) params.set('from_date', fromDate);
@@ -586,11 +572,11 @@ function buildExpExportParams() {
         if (year) params.set('year', year);
     }
 
-    return { params, truck, search, month, year, fromDate, toDate };
+    return { params, truck, month, year, fromDate, toDate };
 }
 
 async function updateExpExportSummary() {
-    const { params, truck, search, month, year, fromDate, toDate } = buildExpExportParams();
+    const { params, truck, month, year, fromDate, toDate } = buildExpExportParams();
     const scopeEl = document.getElementById('expExportScopeText');
     const countEl = document.getElementById('expExportCountText');
     const submitBtn = document.getElementById('expExportSubmitBtn');
@@ -612,10 +598,6 @@ async function updateExpExportSummary() {
         timeDesc = `Every ${mName}`;
     } else if (year) {
         timeDesc = `Year ${year}`;
-    }
-
-    if (search) {
-        timeDesc += ` · Matching "${search}"`;
     }
 
     if (scopeEl) {
@@ -678,14 +660,7 @@ function openExpenseExportModal() {
         }
     }
 
-    // ── 2. Pre-fill Search Filter ─────────────────────────────────────────
-    const pageFilter = document.getElementById('expenseFilter');
-    const expExportSearch = document.getElementById('expExportSearch');
-    if (pageFilter && expExportSearch) {
-        expExportSearch.value = pageFilter.value.trim();
-    }
-
-    // ── 3. Pre-fill Time Horizon ──────────────────────────────────────────
+    // ── 2. Pre-fill Time Horizon ──────────────────────────────────────────
     if (typeof activeExpPeriod !== 'undefined') {
         if (activeExpPeriod === 'month') {
             setExpExportHorizon('month');
