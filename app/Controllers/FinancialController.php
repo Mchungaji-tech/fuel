@@ -81,14 +81,14 @@ class FinancialController
         }
 
         if ($month !== '') {
-            $where[] = "strftime('%m', entry_date) = ? OR entry_date LIKE ?";
+            $where[] = "(substr(entry_date, 6, 2) = ? OR entry_date LIKE ?)";
             $params[] = str_pad($month, 2, '0', STR_PAD_LEFT);
             $params[] = "%-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-%";
         }
 
         if ($year !== '') {
-            $where[] = "strftime('%Y', entry_date) = ? OR entry_date LIKE ?";
-            $params[] = $year;
+            $where[] = "(substr(entry_date, 1, 4) = ? OR entry_date LIKE ?)";
+            $params[] = (string)$year;
             $params[] = "{$year}-%";
         }
 
@@ -553,14 +553,14 @@ class FinancialController
         }
 
         if ($month !== '') {
-            $where[] = "strftime('%m', entry_date) = ? OR entry_date LIKE ?";
+            $where[] = "(substr(entry_date, 6, 2) = ? OR entry_date LIKE ?)";
             $params[] = str_pad($month, 2, '0', STR_PAD_LEFT);
             $params[] = "%-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-%";
         }
 
         if ($year !== '') {
-            $where[] = "strftime('%Y', entry_date) = ? OR entry_date LIKE ?";
-            $params[] = $year;
+            $where[] = "(substr(entry_date, 1, 4) = ? OR entry_date LIKE ?)";
+            $params[] = (string)$year;
             $params[] = "{$year}-%";
         }
 

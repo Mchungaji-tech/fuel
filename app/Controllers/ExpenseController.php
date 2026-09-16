@@ -337,7 +337,9 @@ class ExpenseController
 
     /**
      * Check how many records match the given export filters (returns JSON).
-     * Called by JavaScript before downloading so it can show a toast if 0 rows found.
+    /**
+     * Check how many records match the given export filters (returns JSON).
+     * Called by JavaScript before downloading so it can show real-time count.
      */
     public function exportCheck(): void
     {
@@ -351,39 +353,91 @@ class ExpenseController
         $truck = trim($_GET['truck'] ?? '');
         $month = trim($_GET['month'] ?? '');
         $year  = trim($_GET['year'] ?? '');
+        $fromDate = trim($_GET['from_date'] ?? '');
+        $toDate = trim($_GET['to_date'] ?? '');
+        $search = trim($_GET['search'] ?? '');
+
+        // Support month passed as "YYYY-MM" (e.g. 2026-09)
+        if (strpos($month, '-') !== false) {
+            $parts = explode('-', $month);
+            if (empty($year) || strtolower($year) === 'all') {
+                $year = $parts[0];
+            }
+            $month = $parts[1];
+        }
 
         $sql = 'SELECT COUNT(*) FROM expenses WHERE 1=1';
         $params = [];
 
+        // 1. Truck filter (case-insensitive, space-tolerant, and handles General Business)
         if ($truck !== '' && strtolower($truck) !== 'all') {
-            $sql .= ' AND truck = ?';
-            $params[] = $truck;
+            if (strtolower($truck) === 'general' || strtolower($truck) === 'general business') {
+                $sql .= ' AND (truck IS NULL OR truck = "" OR LOWER(truck) LIKE "%general%")';
+            } else {
+                $sql .= ' AND (LOWER(TRIM(truck)) = LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(truck)), " ", "") = REPLACE(LOWER(TRIM(?)), " ", ""))';
+                $params[] = $truck;
+                $params[] = $truck;
+            }
         }
 
-        if ($month !== '' && strtolower($month) !== 'all') {
+        // 2. Search query filter
+        if ($search !== '') {
+            $sql .= ' AND (expense_title LIKE ? OR truck LIKE ? OR garage_vendor LIKE ? OR receipt_number LIKE ? OR notes LIKE ?)';
+            $sTerm = "%{$search}%";
+            $params = array_merge($params, [$sTerm, $sTerm, $sTerm, $sTerm, $sTerm]);
+        }
+
+        // 3. Date range filters
+        if ($fromDate !== '') {
+            $sql .= ' AND expense_date >= ?';
+            $params[] = $fromDate;
+        }
+        if ($toDate !== '') {
+            $sql .= ' AND expense_date <= ?';
+            $params[] = $toDate;
+        }
+
+        // 4. Year & Month filters (cross-database ANSI SQL compatible with MySQL & SQLite)
+        $hasYear = ($year !== '' && strtolower($year) !== 'all');
+        $hasMonth = ($month !== '' && strtolower($month) !== 'all');
+
+        if ($hasYear && $hasMonth) {
             $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
-            $sql .= " AND strftime('%m', expense_date) = ?";
+            $mInt = (int)$month;
+            $sql .= ' AND (expense_date LIKE ? OR expense_date LIKE ? OR (substr(expense_date, 1, 4) = ? AND substr(expense_date, 6, 2) = ?))';
+            $params[] = "$year-$mFormatted-%";
+            $params[] = "$year-$mInt-%";
+            $params[] = (string)$year;
             $params[] = $mFormatted;
-        }
-
-        if ($year !== '' && strtolower($year) !== 'all') {
-            $sql .= " AND strftime('%Y', expense_date) = ?";
-            $params[] = $year;
+        } elseif ($hasYear) {
+            $sql .= ' AND (expense_date LIKE ? OR substr(expense_date, 1, 4) = ?)';
+            $params[] = "$year-%";
+            $params[] = (string)$year;
+        } elseif ($hasMonth) {
+            $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $mInt = (int)$month;
+            $sql .= ' AND (substr(expense_date, 6, 2) = ? OR expense_date LIKE ? OR expense_date LIKE ?)';
+            $params[] = $mFormatted;
+            $params[] = "%-$mFormatted-%";
+            $params[] = "%-$mInt-%";
         }
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $count = (int) $stmt->fetchColumn();
 
-        header('Content-Type: application/json');
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
         echo json_encode(['count' => $count]);
-        exit;
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            exit;
+        }
     }
 
     /**
      * Export the business expenses to Excel (.xlsx), Excel 97 (.xls), or CSV.
-     * Returns a JSON error (HTTP 204) when filters produce zero rows so the
-     * calling JS can surface a toast instead of opening an empty download.
+     * Fully compatible with both MySQL and SQLite database backends.
      */
     public function export(): void
     {
@@ -396,25 +450,74 @@ class ExpenseController
         $truck = trim($_GET['truck'] ?? '');
         $month = trim($_GET['month'] ?? '');
         $year = trim($_GET['year'] ?? '');
+        $fromDate = trim($_GET['from_date'] ?? '');
+        $toDate = trim($_GET['to_date'] ?? '');
+        $search = trim($_GET['search'] ?? '');
         $format = strtolower(trim($_GET['format'] ?? 'xlsx'));
+
+        // Support month passed as "YYYY-MM" (e.g. 2026-09)
+        if (strpos($month, '-') !== false) {
+            $parts = explode('-', $month);
+            if (empty($year) || strtolower($year) === 'all') {
+                $year = $parts[0];
+            }
+            $month = $parts[1];
+        }
 
         $sql = 'SELECT * FROM expenses WHERE 1=1';
         $params = [];
 
+        // 1. Truck filter (case-insensitive, space-tolerant, and handles General Business)
         if ($truck !== '' && strtolower($truck) !== 'all') {
-            $sql .= ' AND truck = ?';
-            $params[] = $truck;
+            if (strtolower($truck) === 'general' || strtolower($truck) === 'general business') {
+                $sql .= ' AND (truck IS NULL OR truck = "" OR LOWER(truck) LIKE "%general%")';
+            } else {
+                $sql .= ' AND (LOWER(TRIM(truck)) = LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(truck)), " ", "") = REPLACE(LOWER(TRIM(?)), " ", ""))';
+                $params[] = $truck;
+                $params[] = $truck;
+            }
         }
 
-        if ($month !== '' && strtolower($month) !== 'all') {
+        // 2. Search query filter
+        if ($search !== '') {
+            $sql .= ' AND (expense_title LIKE ? OR truck LIKE ? OR garage_vendor LIKE ? OR receipt_number LIKE ? OR notes LIKE ?)';
+            $sTerm = "%{$search}%";
+            $params = array_merge($params, [$sTerm, $sTerm, $sTerm, $sTerm, $sTerm]);
+        }
+
+        // 3. Date range filters
+        if ($fromDate !== '') {
+            $sql .= ' AND expense_date >= ?';
+            $params[] = $fromDate;
+        }
+        if ($toDate !== '') {
+            $sql .= ' AND expense_date <= ?';
+            $params[] = $toDate;
+        }
+
+        // 4. Year & Month filters (cross-database ANSI SQL compatible with MySQL & SQLite)
+        $hasYear = ($year !== '' && strtolower($year) !== 'all');
+        $hasMonth = ($month !== '' && strtolower($month) !== 'all');
+
+        if ($hasYear && $hasMonth) {
             $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
-            $sql .= " AND strftime('%m', expense_date) = ?";
+            $mInt = (int)$month;
+            $sql .= ' AND (expense_date LIKE ? OR expense_date LIKE ? OR (substr(expense_date, 1, 4) = ? AND substr(expense_date, 6, 2) = ?))';
+            $params[] = "$year-$mFormatted-%";
+            $params[] = "$year-$mInt-%";
+            $params[] = (string)$year;
             $params[] = $mFormatted;
-        }
-
-        if ($year !== '' && strtolower($year) !== 'all') {
-            $sql .= " AND strftime('%Y', expense_date) = ?";
-            $params[] = $year;
+        } elseif ($hasYear) {
+            $sql .= ' AND (expense_date LIKE ? OR substr(expense_date, 1, 4) = ?)';
+            $params[] = "$year-%";
+            $params[] = (string)$year;
+        } elseif ($hasMonth) {
+            $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $mInt = (int)$month;
+            $sql .= ' AND (substr(expense_date, 6, 2) = ? OR expense_date LIKE ? OR expense_date LIKE ?)';
+            $params[] = $mFormatted;
+            $params[] = "%-$mFormatted-%";
+            $params[] = "%-$mInt-%";
         }
 
         $sql .= ' ORDER BY expense_date DESC, id DESC';
@@ -422,26 +525,24 @@ class ExpenseController
         $stmt->execute($params);
         $expenses = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // When no records match the selected filters, return a JSON error instead
-        // of streaming an empty file. The calling JS will show a toast notification.
+        // When no records match the selected filters, redirect back with friendly notification
         if (empty($expenses)) {
-            http_response_code(204);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'success' => false,
-                'message' => 'No expense records found for the selected filters.',
-            ]);
-            exit;
+            flash('expense_error', 'No expense records found matching the specified export filters.');
+            redirect('/expenses');
         }
 
         $currencySymbol = app_currency_symbol();
         $isKes = current_currency() === 'KES';
-        $rate = exchange_rate();
+        $defaultRate = exchange_rate();
+        if ($defaultRate <= 0) $defaultRate = 128.0;
 
         $headers = [
             'Expense Date',
             'Expense Description',
             'Vehicle / Truck',
+            'Amount (USD $)',
+            'Exchange Rate',
+            'Amount (KES)',
             'Amount (' . $currencySymbol . ')',
             'Garage / Vendor',
             'Receipt Status',
@@ -451,23 +552,35 @@ class ExpenseController
 
         $rows = [];
         foreach ($expenses as $exp) {
-            $baseAmount = (float)$exp['amount'];
-            $displayAmount = $isKes ? ($baseAmount * $rate) : $baseAmount;
+            $baseAmountUsd = (float)$exp['amount'];
+            $recordRate = !empty($exp['exchange_rate']) ? (float)$exp['exchange_rate'] : $defaultRate;
+            if ($recordRate <= 0) $recordRate = $defaultRate;
+            $amountKes = $baseAmountUsd * $recordRate;
+            $displayAmount = $isKes ? $amountKes : $baseAmountUsd;
 
             $rows[] = [
                 $exp['expense_date'],
                 $exp['expense_title'],
                 $exp['truck'] ?: 'General Business',
+                round($baseAmountUsd, 2),
+                round($recordRate, 2),
+                round($amountKes, 2),
                 round($displayAmount, 2),
                 $exp['garage_vendor'] ?: '—',
-                $exp['receipt_status'],
+                $exp['receipt_status'] ?? 'Received',
                 $exp['notes'] ?: '',
                 $exp['created_at'] ?? '',
             ];
         }
 
         $truckPart = ($truck && strtolower($truck) !== 'all') ? preg_replace('/[^a-zA-Z0-9_-]/', '', $truck) . '_' : 'all_vehicles_';
-        $periodPart = ($year ? $year : 'all_years') . ($month ? '_' . str_pad($month, 2, '0', STR_PAD_LEFT) : '');
+        if ($fromDate !== '' && $toDate !== '') {
+            $periodPart = $fromDate . '_to_' . $toDate;
+        } elseif ($fromDate !== '') {
+            $periodPart = 'from_' . $fromDate;
+        } else {
+            $periodPart = ($year && strtolower($year) !== 'all' ? $year : 'all_years') . ($month && strtolower($month) !== 'all' ? '_' . str_pad($month, 2, '0', STR_PAD_LEFT) : '');
+        }
         $filenameBase = 'expenses_' . $truckPart . $periodPart;
 
         if ($format === 'xls') {
@@ -477,7 +590,10 @@ class ExpenseController
         } else {
             ExcelService::exportXlsx($filenameBase . '.xlsx', $headers, $rows, 'Business Expenses');
         }
-        exit;
+
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            exit;
+        }
     }
 }
 

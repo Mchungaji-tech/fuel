@@ -372,61 +372,115 @@
 
 <!-- Expense Export Modal -->
 <div class="modal-backdrop" id="expenseExportModal">
-    <div class="modal-card" style="max-width:500px;">
+    <div class="modal-card" style="max-width:540px;">
         <div class="modal-head">
-            <h2>📊 Export Business &amp; Fleet Expenses</h2>
+            <div>
+                <h2 style="margin:0;font-size:20px;">📊 Export Business &amp; Fleet Expenses</h2>
+                <div style="font-size:12.5px;color:var(--text-3);margin-top:2px;">Filter expenses by specific vehicle, date range, month, year, or keyword</div>
+            </div>
             <button class="close-modal" onclick="document.getElementById('expenseExportModal').classList.remove('active')">✕</button>
         </div>
         <div class="form-grid single" style="gap:14px;">
+            <!-- Live Target & Match Count Banner -->
+            <div id="expExportScopeBanner" style="background:var(--card-2);border:1.5px solid var(--brand);border-radius:10px;padding:12px 14px;font-size:13px;display:flex;align-items:center;gap:10px;">
+                <span style="font-size:22px;">📋</span>
+                <div style="flex:1;">
+                    <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;">Extraction Target:</div>
+                    <div id="expExportScopeText" style="color:var(--brand);font-weight:800;font-size:14px;margin-top:2px;">All Vehicles • All Time</div>
+                    <div id="expExportCountText" style="font-size:12px;font-weight:700;color:var(--green);margin-top:3px;">Checking records…</div>
+                </div>
+            </div>
+
+            <!-- Vehicle / Target Selector -->
             <div class="form-group">
                 <label>Vehicle / Target</label>
-                <select id="expExportTruck">
-                    <option value="">All Vehicles &amp; General Expenses</option>
-                    <option value="General Business">General Business Only</option>
+                <select id="expExportTruck" onchange="onExpExportFilterChange()" style="font-weight:700;">
+                    <option value="">All Vehicles &amp; General Business</option>
+                    <option value="General Business">General Business Only (No Vehicle)</option>
                     <?php foreach (($trucks ?? []) as $trk): ?>
-                        <option value="<?= htmlspecialchars($trk['plate_number']) ?>"><?= htmlspecialchars($trk['plate_number']) ?></option>
+                        <option value="<?= htmlspecialchars($trk['plate_number']) ?>">
+                            <?= htmlspecialchars($trk['plate_number']) ?> (<?= htmlspecialchars($trk['ownership'] ?? 'Owner') ?>)
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
-                <div class="form-group">
-                    <label>Month (Optional)</label>
-                    <select id="expExportMonth">
-                        <option value="">All Months</option>
-                        <?php for ($m = 1; $m <= 12; $m++): ?>
-                            <option value="<?= $m ?>"><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option>
-                        <?php endfor; ?>
-                    </select>
+
+            <!-- Optional Search Filter -->
+            <div class="form-group">
+                <label>Search Keyword (Optional)</label>
+                <input type="text" id="expExportSearch" placeholder="Filter by item bought, vendor, receipt #, or remarks…" oninput="debounceExpExportSummary()" style="font-size:13.5px;">
+            </div>
+
+            <!-- Time Horizon Section -->
+            <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+                    <label style="margin:0;font-size:13px;font-weight:700;color:var(--text-2);">Time Horizon Filter:</label>
+                    <div style="display:inline-flex;gap:4px;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-sm btn-ghost exp-horizon-btn active" data-horizon="all" onclick="setExpExportHorizon('all')">All Time</button>
+                        <button type="button" class="btn btn-sm btn-ghost exp-horizon-btn" data-horizon="month" onclick="setExpExportHorizon('month')">This Month</button>
+                        <button type="button" class="btn btn-sm btn-ghost exp-horizon-btn" data-horizon="year" onclick="setExpExportHorizon('year')">This Year</button>
+                        <button type="button" class="btn btn-sm btn-ghost exp-horizon-btn" data-horizon="week" onclick="setExpExportHorizon('week')">This Week</button>
+                        <button type="button" class="btn btn-sm btn-ghost exp-horizon-btn" data-horizon="range" onclick="setExpExportHorizon('range')">Date Range ▾</button>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Year (Optional)</label>
-                    <select id="expExportYear">
-                        <option value="">All Years</option>
-                        <?php $curY = (int)date('Y'); for ($y = $curY; $y >= $curY - 4; $y--): ?>
-                            <option value="<?= $y ?>"><?= $y ?></option>
-                        <?php endfor; ?>
-                    </select>
+
+                <!-- Calendar Month & Year Selects -->
+                <div id="expExportMonthYearContainer" class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group">
+                        <label>Calendar Month</label>
+                        <select id="expExportMonth" onchange="onExpExportFilterChange()">
+                            <option value="">All Months (Full Year)</option>
+                            <?php for ($m = 1; $m <= 12; $m++): ?>
+                                <option value="<?= $m ?>"><?= date('F', mktime(0, 0, 0, $m, 10)) ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Calendar Year</label>
+                        <select id="expExportYear" onchange="onExpExportFilterChange()">
+                            <option value="">All Years</option>
+                            <?php $curY = (int)date('Y'); for ($y = $curY; $y >= $curY - 5; $y--): ?>
+                                <option value="<?= $y ?>"><?= $y ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Specific Date Range Pickers (Revealed when Date Range or This Week is chosen) -->
+                <div id="expExportDateRangeContainer" style="display:none;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+                    <div class="form-group">
+                        <label>From Date</label>
+                        <input type="date" id="expExportFromDate" onchange="onExpExportFilterChange()">
+                    </div>
+                    <div class="form-group">
+                        <label>To Date</label>
+                        <input type="date" id="expExportToDate" onchange="onExpExportFilterChange()">
+                    </div>
                 </div>
             </div>
+
+            <!-- Export Format -->
             <div class="form-group">
                 <label>Export Format</label>
-                <div style="display:flex;gap:15px;margin-top:6px;">
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:13px;">
+                <div style="display:flex;gap:18px;margin-top:6px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;font-size:13px;">
                         <input type="radio" name="expExportFormat" id="expFmtXlsx" value="xlsx" checked> Excel (.xlsx)
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:13px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;font-size:13px;">
                         <input type="radio" name="expExportFormat" id="expFmtXls" value="xls"> Excel 97-2003 (.xls)
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:13px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;font-size:13px;">
                         <input type="radio" name="expExportFormat" id="expFmtCsv" value="csv"> CSV (.csv)
                     </label>
                 </div>
             </div>
+
+            <!-- Notice / Alerts -->
             <div id="expExportNotice" style="display:none;background:rgba(251,146,60,0.12);border:1px solid var(--amber,#f59e0b);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--amber,#f59e0b);font-weight:700;"></div>
         </div>
         <div style="margin-top:22px;display:flex;justify-content:flex-end;gap:10px;">
             <button type="button" class="btn btn-ghost" onclick="document.getElementById('expenseExportModal').classList.remove('active')">Cancel</button>
-            <button type="button" class="btn btn-brand" id="expExportSubmitBtn" onclick="doExpenseExport()">Export Spreadsheet</button>
+            <button type="button" class="btn btn-brand" id="expExportSubmitBtn" onclick="doExpenseExport()">📊 Export Spreadsheet</button>
         </div>
     </div>
 </div>
@@ -437,14 +491,177 @@ const TRUCK_OPTIONS = <?= json_encode($trucks ?? []) ?>;
 const EXP_EXPORT_CHECK_URL = '<?= url('expenses/export/check') ?>';
 const EXP_EXPORT_URL = '<?= url('expenses/export') ?>';
 
-/* ─── Export Modal: Smart Pre-fill & Data Check ─── */
+let expExportHorizonMode = 'all';
+let expExportDebounceTimer = null;
+
+function setExpExportHorizon(mode) {
+    expExportHorizonMode = mode;
+    document.querySelectorAll('.exp-horizon-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.horizon === mode);
+    });
+
+    const monthYearBox = document.getElementById('expExportMonthYearContainer');
+    const dateRangeBox = document.getElementById('expExportDateRangeContainer');
+    const mSel = document.getElementById('expExportMonth');
+    const ySel = document.getElementById('expExportYear');
+    const fromInput = document.getElementById('expExportFromDate');
+    const toInput = document.getElementById('expExportToDate');
+
+    const today = new Date();
+    const curYear = String(today.getFullYear());
+    const curMonth = String(today.getMonth() + 1);
+
+    if (mode === 'month') {
+        if (monthYearBox) monthYearBox.style.display = 'grid';
+        if (dateRangeBox) dateRangeBox.style.display = 'none';
+        if (mSel) mSel.value = curMonth;
+        if (ySel) ySel.value = curYear;
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+    } else if (mode === 'year') {
+        if (monthYearBox) monthYearBox.style.display = 'grid';
+        if (dateRangeBox) dateRangeBox.style.display = 'none';
+        if (mSel) mSel.value = '';
+        if (ySel) ySel.value = curYear;
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+    } else if (mode === 'week') {
+        if (monthYearBox) monthYearBox.style.display = 'none';
+        if (dateRangeBox) dateRangeBox.style.display = 'grid';
+        if (mSel) mSel.value = '';
+        if (ySel) ySel.value = '';
+
+        // Calculate current week Monday to Sunday
+        const dayOfWeek = today.getDay();
+        const diffToMon = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
+        const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diffToMon);
+        const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+
+        const fmt = d => d.toISOString().split('T')[0];
+        if (fromInput) fromInput.value = fmt(monday);
+        if (toInput) toInput.value = fmt(sunday);
+    } else if (mode === 'range') {
+        if (monthYearBox) monthYearBox.style.display = 'none';
+        if (dateRangeBox) dateRangeBox.style.display = 'grid';
+        if (mSel) mSel.value = '';
+        if (ySel) ySel.value = '';
+    } else { // 'all'
+        if (monthYearBox) monthYearBox.style.display = 'grid';
+        if (dateRangeBox) dateRangeBox.style.display = 'none';
+        if (mSel) mSel.value = '';
+        if (ySel) ySel.value = '';
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+    }
+
+    updateExpExportSummary();
+}
+
+function onExpExportFilterChange() {
+    updateExpExportSummary();
+}
+
+function debounceExpExportSummary() {
+    clearTimeout(expExportDebounceTimer);
+    expExportDebounceTimer = setTimeout(updateExpExportSummary, 300);
+}
+
+function buildExpExportParams() {
+    const truck = document.getElementById('expExportTruck')?.value || '';
+    const search = document.getElementById('expExportSearch')?.value.trim() || '';
+    const month = document.getElementById('expExportMonth')?.value || '';
+    const year = document.getElementById('expExportYear')?.value || '';
+    const fromDate = document.getElementById('expExportFromDate')?.value || '';
+    const toDate = document.getElementById('expExportToDate')?.value || '';
+
+    const params = new URLSearchParams();
+    if (truck) params.set('truck', truck);
+    if (search) params.set('search', search);
+
+    if (expExportHorizonMode === 'range' || expExportHorizonMode === 'week' || (fromDate && toDate)) {
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+    } else {
+        if (month) params.set('month', month);
+        if (year) params.set('year', year);
+    }
+
+    return { params, truck, search, month, year, fromDate, toDate };
+}
+
+async function updateExpExportSummary() {
+    const { params, truck, search, month, year, fromDate, toDate } = buildExpExportParams();
+    const scopeEl = document.getElementById('expExportScopeText');
+    const countEl = document.getElementById('expExportCountText');
+    const submitBtn = document.getElementById('expExportSubmitBtn');
+    const notice = document.getElementById('expExportNotice');
+
+    // Build human-readable description
+    let targetDesc = truck ? truck : 'All Vehicles & General';
+    let timeDesc = 'All Time';
+
+    if (fromDate && toDate) {
+        timeDesc = `${fromDate} → ${toDate}`;
+    } else if (fromDate) {
+        timeDesc = `From ${fromDate}`;
+    } else if (month && year) {
+        const mName = new Date(2000, parseInt(month) - 1, 1).toLocaleString('default', { month: 'long' });
+        timeDesc = `${mName} ${year}`;
+    } else if (month) {
+        const mName = new Date(2000, parseInt(month) - 1, 1).toLocaleString('default', { month: 'long' });
+        timeDesc = `Every ${mName}`;
+    } else if (year) {
+        timeDesc = `Year ${year}`;
+    }
+
+    if (search) {
+        timeDesc += ` · Matching "${search}"`;
+    }
+
+    if (scopeEl) {
+        scopeEl.textContent = `${targetDesc} • ${timeDesc}`;
+    }
+
+    if (countEl) {
+        countEl.textContent = 'Checking matching records…';
+        countEl.style.color = 'var(--text-3)';
+    }
+
+    try {
+        const res = await fetch(EXP_EXPORT_CHECK_URL + '?' + params.toString());
+        const json = await res.json();
+        const count = json.count ?? 0;
+
+        if (countEl) {
+            if (count > 0) {
+                countEl.textContent = `✓ ${count} record${count > 1 ? 's' : ''} ready to export`;
+                countEl.style.color = 'var(--green,#22c55e)';
+                if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
+                if (submitBtn) { submitBtn.disabled = false; }
+            } else {
+                countEl.textContent = '⚠️ 0 records found for this criteria';
+                countEl.style.color = 'var(--amber,#f59e0b)';
+                if (notice) {
+                    notice.innerHTML = `⚠️ No expense records match <b>${targetDesc}</b> for <b>${timeDesc}</b>. Try adjusting your filters.`;
+                    notice.style.display = 'block';
+                }
+                if (submitBtn) { submitBtn.disabled = false; }
+            }
+        }
+    } catch (e) {
+        if (countEl) {
+            countEl.textContent = 'Ready to export';
+            countEl.style.color = 'var(--text-2)';
+        }
+    }
+}
 
 /**
  * Open the export modal, pre-populating selects with the currently active
- * truck/period filters so the user doesn't have to re-select them.
+ * filters so the user gets an instant, exact match.
  */
 function openExpenseExportModal() {
-    // ── Pre-fill Truck ───────────────────────────────────────────────────
+    // ── 1. Pre-fill Truck ─────────────────────────────────────────────────
     const truckSel = document.getElementById('expenseTruckFilter');
     const expExportTruck = document.getElementById('expExportTruck');
     if (truckSel && expExportTruck) {
@@ -454,98 +671,75 @@ function openExpenseExportModal() {
         } else if (activeTruck === 'general') {
             expExportTruck.value = 'General Business';
         } else {
-            // Find matching option by plate number (case-insensitive)
             const matchingOpt = [...expExportTruck.options].find(o =>
-                o.value.toLowerCase() === activeTruck
+                o.value.toLowerCase().trim() === activeTruck
             );
             expExportTruck.value = matchingOpt ? matchingOpt.value : '';
         }
     }
 
-    // ── Pre-fill Month/Year based on active period button ────────────────
-    const expExportMonth = document.getElementById('expExportMonth');
-    const expExportYear  = document.getElementById('expExportYear');
-    const today = new Date();
-
-    if (expExportMonth && expExportYear) {
-        if (activeExpPeriod === 'month') {
-            expExportMonth.value = String(today.getMonth() + 1); // 1-indexed
-            expExportYear.value  = String(today.getFullYear());
-        } else if (activeExpPeriod === 'year') {
-            expExportMonth.value = '';
-            expExportYear.value  = String(today.getFullYear());
-        } else {
-            expExportMonth.value = '';
-            expExportYear.value  = '';
-        }
+    // ── 2. Pre-fill Search Filter ─────────────────────────────────────────
+    const pageFilter = document.getElementById('expenseFilter');
+    const expExportSearch = document.getElementById('expExportSearch');
+    if (pageFilter && expExportSearch) {
+        expExportSearch.value = pageFilter.value.trim();
     }
 
-    // Hide any previous notice
+    // ── 3. Pre-fill Time Horizon ──────────────────────────────────────────
+    if (typeof activeExpPeriod !== 'undefined') {
+        if (activeExpPeriod === 'month') {
+            setExpExportHorizon('month');
+        } else if (activeExpPeriod === 'year') {
+            setExpExportHorizon('year');
+        } else if (activeExpPeriod === 'week') {
+            setExpExportHorizon('week');
+        } else {
+            setExpExportHorizon('all');
+            // If viewing a truck card with a specific factor year, pre-fill year
+            if (typeof currentSelectedYear !== 'undefined' && currentSelectedYear) {
+                const yrSel = document.getElementById('expExportYear');
+                if (yrSel) yrSel.value = String(currentSelectedYear);
+            }
+        }
+    } else {
+        setExpExportHorizon('all');
+    }
+
+    // Hide any previous warning
     const notice = document.getElementById('expExportNotice');
-    if (notice) { notice.style.display = 'none'; notice.textContent = ''; }
+    if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
 
     document.getElementById('expenseExportModal').classList.add('active');
+    updateExpExportSummary();
 }
 
 /**
  * Execute the expense export:
- * 1. Checks record count via the /check endpoint (no download triggered).
- * 2. If 0 records → shows an in-modal warning AND a toast on the page.
- * 3. If records exist → navigates to the export URL in a new tab.
+ * Directly initiates file download via window.location.href, which ensures:
+ * 1. Zero popup blocker issues (no window.open blocked by Chrome/Safari/Edge).
+ * 2. Instant download stream.
  */
-async function doExpenseExport() {
-    const truck  = document.getElementById('expExportTruck')?.value  || '';
-    const month  = document.getElementById('expExportMonth')?.value  || '';
-    const year   = document.getElementById('expExportYear')?.value   || '';
+function doExpenseExport() {
+    const { params } = buildExpExportParams();
     const format = document.querySelector('input[name="expExportFormat"]:checked')?.value || 'xlsx';
+    params.set('format', format);
 
     const btn = document.getElementById('expExportSubmitBtn');
-    const notice = document.getElementById('expExportNotice');
-
-    if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
-    if (notice) { notice.style.display = 'none'; }
-
-    // Build query string for the check endpoint
-    const params = new URLSearchParams();
-    if (truck)  params.set('truck', truck);
-    if (month)  params.set('month', month);
-    if (year)   params.set('year',  year);
-
-    try {
-        const res = await fetch(EXP_EXPORT_CHECK_URL + '?' + params.toString());
-        const json = await res.json();
-        const count = json.count ?? 0;
-
-        if (count === 0) {
-            // Build a human-readable description of the applied filters
-            const truckLabel = truck ? `vehicle <b>${truck}</b>` : 'all vehicles';
-            const monthLabel = month ? ` · ${new Date(2000, parseInt(month) - 1, 1).toLocaleString('default', { month: 'long' })}` : '';
-            const yearLabel  = year  ? ` · ${year}` : '';
-            const filterDesc = truckLabel + monthLabel + yearLabel;
-
-            const msg = `⚠️ No expense records found for ${filterDesc}. Try broadening your filters.`;
-
-            // Show in-modal notice
-            if (notice) {
-                notice.innerHTML = msg;
-                notice.style.display = 'block';
-            }
-            // Show floating toast
-            showExpToast(msg, 'warning');
-        } else {
-            // Data exists → trigger download in new tab
-            const exportParams = new URLSearchParams(params);
-            exportParams.set('format', format);
-            window.open(EXP_EXPORT_URL + '?' + exportParams.toString(), '_blank');
-            document.getElementById('expenseExportModal').classList.remove('active');
-        }
-    } catch (err) {
-        const errMsg = '❌ Export failed: could not reach the server. Please try again.';
-        if (notice) { notice.innerHTML = errMsg; notice.style.display = 'block'; }
-        showExpToast(errMsg, 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Export Spreadsheet'; }
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Preparing Download…';
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = '📊 Export Spreadsheet';
+        }, 2000);
     }
+
+    // Direct download trigger (never blocked by popup blockers)
+    window.location.href = EXP_EXPORT_URL + '?' + params.toString();
+
+    setTimeout(() => {
+        document.getElementById('expenseExportModal')?.classList.remove('active');
+    }, 400);
 }
 
 /**

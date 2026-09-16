@@ -318,12 +318,14 @@ class ReportController
 
             if ($month !== '' && strtolower($month) !== 'all') {
                 $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
-                $dSql .= " AND strftime('%m', dispatch_date) = ?";
+                $dSql .= " AND (substr(dispatch_date, 6, 2) = ? OR dispatch_date LIKE ?)";
                 $dParams[] = $mFormatted;
+                $dParams[] = "%-$mFormatted-%";
             }
             if ($year !== '' && strtolower($year) !== 'all') {
-                $dSql .= " AND strftime('%Y', dispatch_date) = ?";
-                $dParams[] = $year;
+                $dSql .= " AND (substr(dispatch_date, 1, 4) = ? OR dispatch_date LIKE ?)";
+                $dParams[] = (string)$year;
+                $dParams[] = "{$year}-%";
             }
 
             $dStmt = $pdo->prepare($dSql);
@@ -334,12 +336,14 @@ class ReportController
             $gParams = [$plate];
             if ($month !== '' && strtolower($month) !== 'all') {
                 $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
-                $gSql .= " AND strftime('%m', expense_date) = ?";
+                $gSql .= " AND (substr(expense_date, 6, 2) = ? OR expense_date LIKE ?)";
                 $gParams[] = $mFormatted;
+                $gParams[] = "%-$mFormatted-%";
             }
             if ($year !== '' && strtolower($year) !== 'all') {
-                $gSql .= " AND strftime('%Y', expense_date) = ?";
-                $gParams[] = $year;
+                $gSql .= " AND (substr(expense_date, 1, 4) = ? OR expense_date LIKE ?)";
+                $gParams[] = (string)$year;
+                $gParams[] = "{$year}-%";
             }
 
             $gStmt = $pdo->prepare($gSql);
@@ -417,14 +421,16 @@ class ReportController
                 $params[] = $month;
             } else {
                 $mFormatted = str_pad($month, 2, '0', STR_PAD_LEFT);
-                $sql .= " AND strftime('%m', dispatch_date) = ?";
+                $sql .= " AND (substr(dispatch_date, 6, 2) = ? OR dispatch_date LIKE ?)";
                 $params[] = $mFormatted;
+                $params[] = "%-$mFormatted-%";
             }
         }
 
         if ($year !== '' && strtolower($year) !== 'all') {
-            $sql .= " AND strftime('%Y', dispatch_date) = ?";
-            $params[] = $year;
+            $sql .= " AND (substr(dispatch_date, 1, 4) = ? OR dispatch_date LIKE ?)";
+            $params[] = (string)$year;
+            $params[] = "{$year}-%";
         }
 
         $sql .= ' ORDER BY dispatch_date DESC, id DESC';
