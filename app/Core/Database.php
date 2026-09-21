@@ -26,7 +26,7 @@ class Database
         }
 
         $config = config('database');
-        $driver = strtolower($config['driver'] ?? 'auto');
+        $driver = strtolower($config['driver'] ?? 'mysql');
 
         if ($driver === 'sqlite') {
             self::$connection = self::getSqliteConnection();
@@ -35,47 +35,11 @@ class Database
             return self::$connection;
         }
 
-        // 'auto' or 'mysql' mode
-        // Check if MySQL was recently unreachable (within 20s) to keep offline browsing fast
-        $offlineMarker = __DIR__ . '/../../storage/mysql_offline.tmp';
-        $recentlyFailed = false;
-        if (file_exists($offlineMarker)) {
-            $mtime = filemtime($offlineMarker);
-            if (time() - $mtime < 20) {
-                $recentlyFailed = true;
-            } else {
-                @unlink($offlineMarker);
-            }
-        }
-
-        if (!$recentlyFailed) {
-            try {
-                $mysqlPdo = self::getMysqlConnection();
-                if ($mysqlPdo instanceof PDO) {
-                    if (file_exists($offlineMarker)) {
-                        @unlink($offlineMarker);
-                    }
-                    self::$connection = $mysqlPdo;
-                    self::$activeDriver = 'mysql';
-                    self::$isFallback = false;
-                    self::$fallbackReason = null;
-                    return self::$connection;
-                }
-            } catch (\Throwable $e) {
-                // MySQL is offline or unreachable
-                @touch($offlineMarker);
-                self::$isFallback = true;
-                self::$fallbackReason = $e->getMessage();
-                error_log("Database: MySQL offline/unreachable (" . $e->getMessage() . "). Falling back to SQLite.");
-            }
-        } else {
-            self::$isFallback = true;
-            self::$fallbackReason = 'MySQL marked temporarily offline (waiting for recovery probe)';
-        }
-
-        // Fall back to SQLite
-        self::$connection = self::getSqliteConnection();
-        self::$activeDriver = 'sqlite';
+        // Direct online MySQL connection
+        self::$connection = self::getMysqlConnection();
+        self::$activeDriver = 'mysql';
+        self::$isFallback = false;
+        self::$fallbackReason = null;
         return self::$connection;
     }
 

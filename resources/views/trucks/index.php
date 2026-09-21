@@ -323,24 +323,6 @@ async function saveTruckInlineEdit(id) {
         status: status
     };
 
-    const isOffline = !navigator.onLine || (typeof isSimulatedOffline !== 'undefined' && isSimulatedOffline);
-    if (isOffline) {
-        queueOfflineAction('<?= url("trucks/inline-update") ?>', postData, () => {
-            row.querySelector('.cell-plate').innerHTML = `<b class="view-val" style="font-size:16px;color:var(--brand);">${plate}</b><div class="offline-sync-badge">Pending Sync</div>`;
-            row.querySelector('.cell-ownership').innerHTML = `
-                <span class="view-badge" style="background:${ownerType === 'Contract' ? 'var(--amber-soft)' : 'var(--green-soft)'};color:${ownerType === 'Contract' ? 'var(--amber)' : 'var(--green)'};padding:4px 9px;border-radius:6px;font-size:12px;font-weight:800;">${ownerType}</span>
-                <div class="view-owner" style="font-size:11.5px;color:var(--text-3);margin-top:2px;">${ownerName}</div>
-            `;
-            row.querySelector('.cell-capacity').innerHTML = `<b class="view-val" style="font-size:15px;color:var(--brand);">${parseInt(cap).toLocaleString()} L</b><div class="view-comp" style="font-size:11.5px;color:var(--text-3);">${comp || '—'}</div>`;
-            row.querySelector('.cell-status').innerHTML = `<span class="status s-done view-val"><i></i>${status}</span>`;
-
-            row.querySelector('.row-normal-actions').style.display = 'inline-flex';
-            row.querySelector('.row-editing-actions').style.display = 'none';
-            row.classList.remove('tr-editing');
-            delete truckRowOriginal[id];
-        });
-        return;
-    }
 
     try {
         const res = await fetch('<?= url("trucks/inline-update") ?>', {

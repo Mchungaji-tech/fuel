@@ -36,14 +36,6 @@ class FleetController
         $stmt->execute($params);
         $dispatches = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Automatically sync diesel totals and balances from fleet_diesel_logs
-        try {
-            $pdo->exec("UPDATE fleet_dispatches SET 
-                diesel = (SELECT COALESCE(SUM(base_usd_cost), 0) FROM fleet_diesel_logs WHERE fleet_diesel_logs.dispatch_id = fleet_dispatches.id),
-                diesel_litres = (SELECT COALESCE(SUM(litres), 0) FROM fleet_diesel_logs WHERE fleet_diesel_logs.dispatch_id = fleet_dispatches.id)
-                WHERE id IN (SELECT DISTINCT dispatch_id FROM fleet_diesel_logs)");
-            $pdo->exec("UPDATE fleet_dispatches SET balance = (CASE WHEN is_subcontracted = 1 THEN agreed_commission ELSE COALESCE(final_payout, transport_amount) - (COALESCE(mileage_cost, 0) + COALESCE(diesel, 0)) END)");
-        } catch (\Throwable $e) {}
 
         // Calculate aggregates across all dispatches
         $aggStmt = $pdo->query('SELECT 
@@ -595,11 +587,11 @@ class FleetController
             $dieselUnitPrice = (float)($current['diesel_unit_price'] ?? 0);
         }
 
-        if ($dieselLitres > 0 && $dieselUnitPrice > 0) {
-            $diesel = $dieselLitres * $dieselUnitPrice;
-        } elseif (isset($_POST['diesel']) && $_POST['diesel'] !== '') {
+        if (isset($_POST['diesel']) && $_POST['diesel'] !== '') {
             $rawDiesel = (float)$_POST['diesel'];
             $diesel = $isKes ? ($rawDiesel / $rate) : $rawDiesel;
+        } elseif ($dieselLitres > 0 && $dieselUnitPrice > 0) {
+            $diesel = $dieselLitres * $dieselUnitPrice;
         } else {
             $diesel = (float)($current['diesel'] ?? 0);
         }

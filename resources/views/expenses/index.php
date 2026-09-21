@@ -1103,25 +1103,6 @@ async function saveExpInlineEdit(id) {
         exchange_rate: rateVal
     };
 
-    const isOffline = !navigator.onLine || (typeof isSimulatedOffline !== 'undefined' && isSimulatedOffline);
-    if (isOffline) {
-        queueOfflineAction('<?= url("expenses/inline-update") ?>', postData, () => {
-            row.dataset.expenseDate = dateVal;
-            row.dataset.exchangeRate = rateVal;
-            row.querySelector('.cell-date').innerHTML = `<span class="view-val">${formatDateClient(dateVal)}</span><div class="offline-sync-badge">Pending Sync</div>`;
-            row.querySelector('.cell-title').innerHTML = `<b class="view-val" style="color:var(--text);">${titleVal}</b>${notesVal ? `<div class="view-notes" style="font-size:12px;color:var(--text-3);">${notesVal}</div>` : ''}`;
-            row.querySelector('.cell-truck').innerHTML = `<span class="view-val" style="font-weight:700;color:var(--brand);background:var(--brand-soft);padding:3px 8px;border-radius:6px;font-size:13px;">${truckVal || 'General'}</span>`;
-            row.querySelector('.cell-vendor').innerHTML = `<span class="view-val">${vendorVal || 'General Vendor'}</span>`;
-
-            row.querySelector('.cell-amount').innerHTML = `<span class="view-val"><?= app_currency_symbol() ?> ${parseFloat(amountVal).toFixed(2)}</span>`;
-
-            row.querySelector('.row-normal-actions').style.display = 'inline-flex';
-            row.querySelector('.row-editing-actions').style.display = 'none';
-            row.classList.remove('tr-editing');
-            delete expRowOriginal[id];
-        });
-        return;
-    }
 
     try {
         const res = await fetch('<?= url("expenses/inline-update") ?>', {
