@@ -32,7 +32,7 @@
     </div>
 
     <!-- KPI Aggregates Summary Cards -->
-    <div class="kpis" style="margin-top:20px;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
+    <div class="kpis" style="margin-top:20px;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px;">
         <div class="kpi">
             <div class="lbl">Expected Transport Billed</div>
             <div class="val" id="statTotalTransport" style="color:var(--brand);"><?= $canViewFin ? format_money($aggregates['total_transport'] ?? 0) : '[Restricted]' ?></div>
@@ -48,10 +48,15 @@
             <div class="val" id="statTotalMileage" style="color:var(--amber);"><?= $canViewFin ? format_money($aggregates['total_mileage'] ?? 0) : '[Restricted]' ?></div>
             <div style="font-size:13px;color:var(--text-3);margin-top:4px;">Driver allowances & road tolls</div>
         </div>
+        <div class="kpi" style="border:1.5px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.03);">
+            <div class="lbl" style="color:var(--red);font-weight:800;">🛠️ Maintenance & Repairs</div>
+            <div class="val" id="statTotalMaintenance" style="color:var(--red);"><?= $canViewFin ? format_money($aggregates['total_maintenance'] ?? 0) : '[Restricted]' ?></div>
+            <div style="font-size:12.5px;color:var(--text-3);margin-top:4px;font-weight:600;">Workshop repairs on trips</div>
+        </div>
         <div class="kpi" style="border:2px solid var(--green);background:linear-gradient(135deg,var(--card),var(--green-soft));">
             <div class="lbl" style="color:var(--green);font-weight:800;">Net Balance (Profit / Commission)</div>
             <div class="val" id="statTotalBalance" style="color:var(--green);font-size:28px;"><?= $canViewFin ? format_money($aggregates['total_balance'] ?? 0) : '[Restricted]' ?></div>
-            <div style="font-size:12.5px;color:var(--green);font-weight:700;margin-top:4px;">Revenue - (Diesel + Mileage)</div>
+            <div style="font-size:12.5px;color:var(--green);font-weight:700;margin-top:4px;">Revenue - (Diesel + Mileage + Maint)</div>
         </div>
     </div>
 
@@ -131,6 +136,9 @@
                         <th><?= htmlspecialchars($metaMap['final_payout']['display_label'] ?? 'Final Client Payout') ?></th>
                         <th><?= htmlspecialchars($metaMap['payout_difference']['display_label'] ?? 'Payout Diff (Loss)') ?></th>
                         <th><?= htmlspecialchars($metaMap['mileage_cost']['display_label'] ?? 'Trip Costs') ?></th>
+                        <?php if (!isset($metaMap['maintenance']['is_visible']) || !empty($metaMap['maintenance']['is_visible'])): ?>
+                            <th style="min-width:95px;" title="Maintenance & workshop repairs incurred on trip"><?= htmlspecialchars($metaMap['maintenance']['display_label'] ?? 'Maintenance') ?></th>
+                        <?php endif; ?>
                         <th><?= htmlspecialchars($metaMap['balance']['display_label'] ?? 'Net Balance') ?></th>
                         <?php if (!empty($metaMap['breakdown_notes']['is_visible'])): ?>
                             <th><?= htmlspecialchars($metaMap['breakdown_notes']['display_label'] ?? 'Breakdown Remarks') ?></th>
@@ -146,13 +154,15 @@
                 </thead>
                 <tbody>
                     <?php 
+                        $showMaintCol = !isset($metaMap['maintenance']['is_visible']) || !empty($metaMap['maintenance']['is_visible']);
                         $extraColCount = (int)!empty($metaMap['breakdown_notes']['is_visible'])
                             + (int)!empty($metaMap['shortage_notes']['is_visible'])
+                            + (int)$showMaintCol
                             + count($fleetCustomCols);
                     ?>
                     <?php if (empty($dispatches)): ?>
                         <tr>
-                            <td colspan="<?= 15 + $extraColCount ?>" style="text-align:center;padding:40px;color:var(--text-3);">
+                            <td colspan="<?= 14 + $extraColCount ?>" style="text-align:center;padding:40px;color:var(--text-3);">
                                 No fleet dispatches found. Click "New Dispatch" or "Import CSV" to get started.
                             </td>
                         </tr>
@@ -213,6 +223,8 @@
                                     'mileage_formatted' => $canViewFin ? format_money($d['mileage_cost']) : '[Restricted]',
                                     'extra_expenses' => (float)$d['extra_expenses'],
                                     'extra_formatted' => $canViewFin ? format_money($d['extra_expenses']) : '[Restricted]',
+                                    'maintenance' => (float)($d['maintenance'] ?? 0),
+                                    'maintenance_formatted' => $canViewFin ? (((float)($d['maintenance'] ?? 0)) > 0 ? format_money((float)($d['maintenance'] ?? 0)) : '—') : '[Restricted]',
                                     'balance' => $balanceVal,
                                     'balance_formatted' => $canViewFin ? format_money($balanceVal) : '[Restricted]',
                                     'seal_numbers' => $d['seal_numbers'] ?? '',
@@ -229,7 +241,7 @@
                                 elseif (str_contains($s, 'deliver') || str_contains($s, 'complete')) $sClass = 's-done';
                                 elseif (str_contains($s, 'hold') || str_contains($s, 'cancel') || str_contains($s, 'dispute')) $sClass = 's-hold';
                             ?>
-                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-truck="<?= htmlspecialchars(strtolower($d['truck'])) ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)convert_currency($d['mileage_cost']) ?>" data-extra-expenses="<?= (float)convert_currency($d['extra_expenses']) ?>" data-diesel="<?= (float)convert_currency($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)convert_currency($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
+                            <tr id="fleet-row-<?= $d['id'] ?>" data-id="<?= $d['id'] ?>" data-truck="<?= htmlspecialchars(strtolower($d['truck'])) ?>" data-dispatch-date="<?= htmlspecialchars($d['dispatch_date']) ?>" data-mileage-cost="<?= (float)convert_currency($d['mileage_cost']) ?>" data-extra-expenses="<?= (float)convert_currency($d['extra_expenses']) ?>" data-maintenance="<?= (float)convert_currency($d['maintenance'] ?? 0) ?>" data-diesel="<?= (float)convert_currency($d['diesel'] ?? 0) ?>" data-unit-price="<?= (float)convert_currency($d['unit_price'] ?? 0) ?>" data-shortage-litres="<?= (int)($d['shortage_litres'] ?? 0) ?>">
                                 <!-- DOL (Date of Loading formatted DD/MM/YY) -->
                                 <td class="cell-dol" style="font-weight:700;white-space:nowrap;">
                                     <span class="view-val"><?= format_date_dol($d['dispatch_date']) ?></span>
@@ -400,6 +412,24 @@
                                     <?php endif; ?>
                                 </td>
 
+                                <!-- Maintenance / Repairs -->
+                                <?php if ($showMaintCol): ?>
+                                    <td class="cell-maintenance editable-cell" style="white-space:nowrap;font-weight:700;" data-id="<?= $d['id'] ?>" data-field="maintenance" data-type="currency" title="Double-click to inline edit maintenance cost">
+                                        <?php 
+                                            $mVal = (float)($d['maintenance'] ?? 0); 
+                                        ?>
+                                        <?php if (!$canViewFin): ?>
+                                            <span class="view-val">[Restricted]</span>
+                                        <?php elseif ($mVal <= 0): ?>
+                                            <span class="view-val" style="color:var(--text-3);">—</span>
+                                        <?php else: ?>
+                                            <span class="view-val" style="font-weight:800;color:var(--amber);font-size:13.5px;">
+                                                <?= format_money($mVal) ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </td>
+                                <?php endif; ?>
+
                                 <!-- Net Balance (Profit / Commission) -->
                                 <td class="cell-balance" style="white-space:nowrap;font-weight:900;font-size:15px;color:<?= $balanceVal >= 0 ? 'var(--green)' : 'var(--red)' ?>;">
                                     <?php if (!$canViewFin): ?>
@@ -461,8 +491,9 @@
                                             'mileage_cost' => (float)$d['mileage_cost'],
                                             'extra_expenses' => (float)$d['extra_expenses'],
                                             'diesel' => (float)($d['diesel'] ?? 0),
+                                            'maintenance' => (float)($d['maintenance'] ?? 0),
                                             'breakdown_notes' => $d['breakdown_notes'] ?? '',
-                                        ])) ?>)" title="Manage trip mileage, diesel, and breakdown repair expenses">
+                                        ])) ?>)" title="Manage trip mileage, diesel, and maintenance repair expenses">
                                             🛠️ Expense
                                         </button>
                                         <form method="POST" action="<?= url('fleet/delete/' . $d['id']) ?>" style="display:inline;" onsubmit="return confirm('Delete fleet dispatch <?= htmlspecialchars($d['trip_number']) ?>?');">
@@ -782,6 +813,12 @@
                         <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Diesel fuel catered for by owner</span>
                     </div>
 
+                    <div class="form-group">
+                        <label>🛠️ Maintenance / Workshop Cost [USD $]</label>
+                        <input type="number" step="0.01" name="maintenance" id="dispMaintenance" placeholder="e.g. 150.00" oninput="calcBalance()">
+                        <span style="font-size:11.5px;color:var(--text-3);display:block;margin-top:2px;">Pre-trip or workshop repairs incurred on trip</span>
+                    </div>
+
                     <div class="form-group" id="commissionGroup" style="display:none;grid-column:1/-1;">
                         <label>Agreed Company Commission [<?= app_currency_symbol() ?>] *</label>
                         <input type="number" step="0.01" name="agreed_commission" id="dispCommission" placeholder="e.g. 350.00" oninput="calcBalance()">
@@ -838,10 +875,14 @@
                         <span style="color:var(--text-2);">⛽ Diesel Fuel (Owner Expense):</span>
                         <b id="wzRevDiesel" style="color:var(--amber);">—</b>
                     </div>
+                    <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;border-top:1px dashed var(--border);">
+                        <span style="color:var(--text-2);">🛠️ Maintenance & Repairs:</span>
+                        <b id="wzRevMaintenance" style="color:var(--amber);">—</b>
+                    </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0 4px;border-top:2px solid var(--border);margin-top:6px;">
                         <div>
                             <b style="font-size:14px;color:var(--text);" id="wzRevYieldLabel">Estimated Net Balance (Profit / Commission):</b>
-                            <div style="font-size:11.5px;color:var(--text-3);">Revenue - (Diesel + Mileage)</div>
+                            <div style="font-size:11.5px;color:var(--text-3);">Revenue - (Diesel + Mileage + Maint)</div>
                         </div>
                         <div id="wzRevBalance" style="font-size:24px;font-weight:900;color:var(--green);">
                             —
@@ -1018,8 +1059,13 @@
                     <input type="number" step="0.01" name="diesel" id="temDiesel" placeholder="0.00">
                     <small style="color:var(--amber);">Fuel cost catered for by owner (deducted from profit)</small>
                 </div>
+                <div class="form-group">
+                    <label>🛠️ Maintenance / Workshop Cost [<?= app_currency_symbol() ?>]</label>
+                    <input type="number" step="0.01" name="maintenance" id="temMaintenance" placeholder="0.00">
+                    <small style="color:var(--amber);">Trip repairs & workshop costs incurred on this dispatch</small>
+                </div>
                 <div style="background:rgba(59,130,246,0.05);border:1px dashed var(--brand);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-2);">
-                    ℹ️ <b>Trip Expenses Policy:</b> Dispatches strictly account for <b>Mileage</b> and <b>Diesel</b>. Any mechanical repairs, tyre replacements, or punctures must be logged on the <a href="<?= url('expenses') ?>" target="_blank" style="color:var(--brand);font-weight:700;text-decoration:underline;">Expenses</a> page.
+                    ℹ️ <b>Trip Expenses Policy:</b> Dispatches account for <b>Mileage</b>, <b>Diesel</b>, and trip <b>Maintenance</b>. General garage repairs or overheads can also be logged on the <a href="<?= url('expenses') ?>" target="_blank" style="color:var(--brand);font-weight:700;text-decoration:underline;">Expenses</a> page.
                 </div>
             </div>
             <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
@@ -1311,6 +1357,10 @@
                             <span style="color:var(--text-2);">Mileage / Allowances:</span>
                             <b id="vdmMileage" style="color:var(--text);">—</b>
                         </div>
+                        <div style="display:flex;justify-content:space-between;font-size:13.5px;">
+                            <span style="color:var(--amber);font-weight:700;">🛠️ Maintenance & Repairs:</span>
+                            <b id="vdmMaintenance" style="color:var(--amber);">—</b>
+                        </div>
                     </div>
                 </div>
 
@@ -1321,7 +1371,7 @@
                             Net Trip Balance (Yield / Profit)
                         </div>
                         <div style="font-size:12px;color:var(--text-2);margin-top:2px;">
-                            = Final Payout - (Diesel Fuel + Mileage)
+                            = Final Payout - (Diesel Fuel + Mileage + Maintenance)
                         </div>
                     </div>
                     <div id="vdmBalance" style="font-size:28px;font-weight:900;color:var(--green);">
@@ -1747,6 +1797,7 @@ function renderWizardReview() {
     const transportAmt = parseFloat(document.getElementById('dispTransport')?.value) || 0;
     const mileageAmt = parseFloat(document.getElementById('dispMileage')?.value) || 0;
     const dieselAmt = parseFloat(document.getElementById('dispDiesel')?.value) || 0;
+    const maintAmt = parseFloat(document.getElementById('dispMaintenance')?.value) || 0;
     const commAmt = parseFloat(document.getElementById('dispCommission')?.value) || 0;
 
     const revRevenue = document.getElementById('wzRevRevenue');
@@ -1759,6 +1810,8 @@ function renderWizardReview() {
     }
     const revDiesel = document.getElementById('wzRevDiesel');
     if (revDiesel) revDiesel.textContent = '- ' + formatSystemMoney(dieselAmt);
+    const revMaint = document.getElementById('wzRevMaintenance');
+    if (revMaint) revMaint.textContent = '- ' + formatSystemMoney(maintAmt);
 
     const yieldLabel = document.getElementById('wzRevYieldLabel');
     const revBalance = document.getElementById('wzRevBalance');
@@ -1768,7 +1821,7 @@ function renderWizardReview() {
         bal = commAmt;
         if (yieldLabel) yieldLabel.textContent = 'Contract Tanker Commission:';
     } else {
-        bal = transportAmt - (mileageAmt + dieselAmt);
+        bal = transportAmt - (mileageAmt + dieselAmt + maintAmt);
         if (yieldLabel) yieldLabel.textContent = 'Estimated Net Yield (Company Profit):';
     }
 
@@ -1797,6 +1850,7 @@ window.refreshFleetStatCards = function(aggs) {
     const elTrans = document.getElementById('statTotalTransport');
     const elDiesel = document.getElementById('statTotalDiesel');
     const elMileage = document.getElementById('statTotalMileage');
+    const elMaint = document.getElementById('statTotalMaintenance');
     const elBal = document.getElementById('statTotalBalance');
 
     if (elTrans && aggs.total_transport !== undefined) {
@@ -1807,6 +1861,9 @@ window.refreshFleetStatCards = function(aggs) {
     }
     if (elMileage && aggs.total_mileage !== undefined) {
         elMileage.textContent = formatSystemMoney(toSystemCurrency(aggs.total_mileage));
+    }
+    if (elMaint && aggs.total_maintenance !== undefined) {
+        elMaint.textContent = formatSystemMoney(toSystemCurrency(aggs.total_maintenance));
     }
     if (elBal && aggs.total_balance !== undefined) {
         elBal.textContent = formatSystemMoney(toSystemCurrency(aggs.total_balance));
@@ -1823,6 +1880,10 @@ window.updateFleetRowTotals = function(dispatchId, totals, globalAggregates = nu
         d.diesel_litres = totals.diesel_litres;
         d.diesel_unit_price = totals.diesel_unit_price;
         d.diesel_formatted = totals.diesel_formatted || formatSystemMoney(d.diesel);
+        if (totals.maintenance !== undefined || totals.maintenance_raw !== undefined) {
+            d.maintenance = (totals.maintenance !== undefined) ? totals.maintenance : (totals.maintenance_raw ?? 0);
+            d.maintenance_formatted = totals.maintenance_formatted || formatSystemMoney(d.maintenance);
+        }
         d.balance = (totals.balance !== undefined) ? totals.balance : (totals.balance_raw ?? 0);
         d.balance_formatted = totals.balance_formatted || formatSystemMoney(d.balance);
     }
@@ -1830,6 +1891,18 @@ window.updateFleetRowTotals = function(dispatchId, totals, globalAggregates = nu
     const row = document.getElementById('fleet-row-' + dispatchId);
     if (row) {
         row.dataset.diesel = (totals.diesel !== undefined) ? totals.diesel : (totals.diesel_raw ?? 0);
+        if (totals.maintenance !== undefined || totals.maintenance_raw !== undefined) {
+            row.dataset.maintenance = (totals.maintenance !== undefined) ? totals.maintenance : (totals.maintenance_raw ?? 0);
+            const cellMaint = row.querySelector('.cell-maintenance');
+            if (cellMaint) {
+                const mVal = parseFloat(row.dataset.maintenance || 0);
+                if (mVal > 0) {
+                    cellMaint.innerHTML = `<span class="view-val" style="font-weight:800;color:var(--amber);">${totals.maintenance_formatted || formatSystemMoney(mVal)}</span>`;
+                } else {
+                    cellMaint.innerHTML = '<span class="view-val" style="color:var(--text-3);">—</span>';
+                }
+            }
+        }
         const cellDiesel = row.querySelector('.cell-diesel');
         if (cellDiesel) {
             const dVal = parseFloat(totals.diesel ?? totals.diesel_raw ?? 0);
@@ -1916,6 +1989,7 @@ window.openViewDispatchModal = function(param) {
 
     if (document.getElementById('vdmDiesel')) document.getElementById('vdmDiesel').textContent = d.diesel_formatted || '—';
     if (document.getElementById('vdmMileage')) document.getElementById('vdmMileage').textContent = d.mileage_formatted || '—';
+    if (document.getElementById('vdmMaintenance')) document.getElementById('vdmMaintenance').textContent = d.maintenance_formatted || '—';
     if (document.getElementById('vdmExtra')) document.getElementById('vdmExtra').textContent = d.extra_formatted || '—';
     
     const balEl = document.getElementById('vdmBalance');
@@ -2062,9 +2136,13 @@ window.openTripExpenseModal = function(data) {
     const baseMileage = Number(data.mileage_cost || 0);
     const baseExtra = Number(data.extra_expenses || 0);
     const baseDiesel = Number(data.diesel || 0);
+    const baseMaintenance = Number(data.maintenance || 0);
 
     document.getElementById('temMileageCost').value = isKes ? (baseMileage * exRate).toFixed(2) : baseMileage.toFixed(2);
     document.getElementById('temDiesel').value = isKes ? (baseDiesel * exRate).toFixed(2) : baseDiesel.toFixed(2);
+    if (document.getElementById('temMaintenance')) {
+        document.getElementById('temMaintenance').value = isKes ? (baseMaintenance * exRate).toFixed(2) : baseMaintenance.toFixed(2);
+    }
 
     document.getElementById('tripExpenseModal').classList.add('active');
 };
@@ -2074,6 +2152,7 @@ window.saveTripExpenses = async function(e) {
     const id = document.getElementById('temTripId').value;
     const mileage = document.getElementById('temMileageCost').value;
     const diesel = document.getElementById('temDiesel').value;
+    const maintenance = document.getElementById('temMaintenance')?.value || 0;
     const btn = document.getElementById('temSubmitBtn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -2089,20 +2168,36 @@ window.saveTripExpenses = async function(e) {
                 _csrf_token: CSRF_TOKEN,
                 id: id,
                 mileage_cost: mileage,
-                diesel: diesel
+                diesel: diesel,
+                maintenance: maintenance
             }).toString()
         });
         const json = await res.json();
         if (json.success && json.data) {
             const d = json.data;
+            if (window.FLEET_ROWS_MAP && window.FLEET_ROWS_MAP[id]) {
+                window.FLEET_ROWS_MAP[id].mileage_cost = d.mileage_cost;
+                window.FLEET_ROWS_MAP[id].mileage_formatted = d.mileage_formatted;
+                window.FLEET_ROWS_MAP[id].diesel = d.diesel;
+                window.FLEET_ROWS_MAP[id].diesel_formatted = d.diesel_formatted;
+                window.FLEET_ROWS_MAP[id].maintenance = d.maintenance;
+                window.FLEET_ROWS_MAP[id].maintenance_formatted = d.maintenance_formatted;
+                window.FLEET_ROWS_MAP[id].balance = d.balance;
+                window.FLEET_ROWS_MAP[id].balance_formatted = d.balance_formatted;
+            }
             const row = document.getElementById('fleet-row-' + id);
             if (row) {
                 row.dataset.mileageCost = d.mileage_cost;
                 row.dataset.extraExpenses = d.extra_expenses;
                 row.dataset.diesel = d.diesel;
+                row.dataset.maintenance = d.maintenance;
 
                 if (row.querySelector('.cell-diesel')) {
                     row.querySelector('.cell-diesel').innerHTML = `<span class="view-val">${parseFloat(d.diesel) > 0 ? d.diesel_formatted : '—'}</span>`;
+                }
+
+                if (row.querySelector('.cell-maintenance')) {
+                    row.querySelector('.cell-maintenance').innerHTML = `<span class="view-val">${parseFloat(d.maintenance) > 0 ? d.maintenance_formatted : '—'}</span>`;
                 }
 
                 let costsHtml = `<div class="val-mileage" style="color:var(--amber);font-weight:700;font-size:13.5px;">${d.mileage_formatted}</div>`;
@@ -2264,6 +2359,7 @@ function calcBalance() {
     const finalPayout = (finalPInput !== undefined && finalPInput !== '') ? (parseFloat(finalPInput) || 0) : transport;
     const mileage = parseFloat(document.getElementById('dispMileage')?.value) || 0;
     const diesel = parseFloat(document.getElementById('dispDiesel')?.value) || 0;
+    const maint = parseFloat(document.getElementById('dispMaintenance')?.value) || 0;
     const comm = parseFloat(document.getElementById('dispCommission')?.value) || 0;
 
     const loaded = parseFloat(document.getElementById('dispatchLoadedLitres')?.value) || 0;
@@ -2274,8 +2370,8 @@ function calcBalance() {
     if (isSubcontractedTruck) {
         bal = comm;
     } else {
-        // Owner expenses strictly Diesel + Mileage deducted from final client payout
-        bal = finalPayout - (mileage + diesel);
+        // Owner expenses strictly Diesel + Mileage + Maintenance deducted from final client payout
+        bal = finalPayout - (mileage + diesel + maint);
     }
 
     const disp = document.getElementById('liveBalanceDisplay');
@@ -2294,6 +2390,9 @@ function calcBalance() {
         }
         if (diesel > 0) {
             msg += ` <span style="color:var(--amber);font-size:12px;font-weight:700;margin-left:8px;">(Includes -${CURRENCY_SYM} ${diesel.toFixed(2)} Owner Diesel)</span>`;
+        }
+        if (maint > 0) {
+            msg += ` <span style="color:var(--amber);font-size:12px;font-weight:700;margin-left:8px;">(Includes -${CURRENCY_SYM} ${maint.toFixed(2)} Maintenance)</span>`;
         }
         notice.innerHTML = msg;
     }
@@ -2509,6 +2608,7 @@ function startFleetInlineEdit(id) {
     const mileageRaw = parseFloat(row.dataset.mileageCost || '0');
     const extraRaw = parseFloat(row.dataset.extraExpenses || '0');
     const dieselRaw = parseFloat(row.dataset.diesel || '0');
+    const maintRaw = parseFloat(row.dataset.maintenance || '0');
 
     // Replace cells with inputs
     row.querySelector('.cell-dol').innerHTML = `<input type="date" class="table-inline-input inline-dol" value="${dolDate}">`;
@@ -2564,6 +2664,13 @@ function startFleetInlineEdit(id) {
         <input type="number" step="0.01" class="table-inline-input inline-mileage" value="${mileageRaw}" style="width:85px;">
     `;
 
+    if (row.querySelector('.cell-maintenance')) {
+        row.querySelector('.cell-maintenance').innerHTML = `
+            <div style="font-size:10px;color:var(--text-3);font-weight:700;">Maint:</div>
+            <input type="number" step="0.01" class="table-inline-input inline-maintenance" value="${maintRaw > 0 ? maintRaw : ''}" placeholder="${CURRENCY_SYM}" style="width:75px;">
+        `;
+    }
+
     // Toggle actions buttons
     row.querySelector('.row-normal-actions').style.display = 'none';
     row.querySelector('.row-editing-actions').style.display = 'inline-flex';
@@ -2593,6 +2700,7 @@ async function saveFleetInlineEdit(id) {
     const transport = row.querySelector('.inline-transport')?.value;
     const finalPayout = row.querySelector('.inline-final-payout')?.value;
     const mileageCost = row.querySelector('.inline-mileage')?.value;
+    const maintenance = row.querySelector('.inline-maintenance')?.value ?? row.dataset.maintenance ?? 0;
     const extraExpenses = 0;
 
     const postData = {
@@ -2610,6 +2718,7 @@ async function saveFleetInlineEdit(id) {
         transport_amount: transport,
         final_payout: finalPayout,
         mileage_cost: mileageCost,
+        maintenance: maintenance,
         extra_expenses: extraExpenses
     };
 
@@ -2626,8 +2735,19 @@ async function saveFleetInlineEdit(id) {
         const json = await res.json();
         if (json.success && json.data) {
             const d = json.data;
+            if (window.FLEET_ROWS_MAP && window.FLEET_ROWS_MAP[id]) {
+                window.FLEET_ROWS_MAP[id].mileage_cost = d.mileage_cost;
+                window.FLEET_ROWS_MAP[id].mileage_formatted = d.mileage_formatted;
+                window.FLEET_ROWS_MAP[id].diesel = d.diesel;
+                window.FLEET_ROWS_MAP[id].diesel_formatted = d.diesel_formatted;
+                window.FLEET_ROWS_MAP[id].maintenance = d.maintenance;
+                window.FLEET_ROWS_MAP[id].maintenance_formatted = d.maintenance_formatted;
+                window.FLEET_ROWS_MAP[id].balance = d.balance;
+                window.FLEET_ROWS_MAP[id].balance_formatted = d.balance_formatted;
+            }
             row.dataset.dispatchDate = d.dispatch_date;
             row.dataset.diesel = d.diesel;
+            row.dataset.maintenance = d.maintenance;
             row.dataset.mileageCost = d.mileage_cost;
             row.dataset.extraExpenses = d.extra_expenses;
             row.dataset.shortageLitres = d.shortage_litres;
@@ -2686,6 +2806,13 @@ async function saveFleetInlineEdit(id) {
 
             let costsHtml = `<div class="val-mileage" style="color:var(--amber);font-weight:700;font-size:13.5px;">${d.mileage_formatted}</div>`;
             row.querySelector('.cell-costs').innerHTML = costsHtml;
+
+            if (row.querySelector('.cell-maintenance')) {
+                const mVal = parseFloat(d.maintenance || 0);
+                row.querySelector('.cell-maintenance').innerHTML = mVal > 0 
+                    ? `<span class="view-val" style="font-weight:800;color:var(--amber);font-size:13.5px;">${d.maintenance_formatted}</span>` 
+                    : `<span class="view-val" style="color:var(--text-3);">—</span>`;
+            }
 
             row.querySelector('.cell-balance').innerHTML = `
                 <span class="view-val" style="color:${d.balance >= 0 ? 'var(--green)' : 'var(--red)'};">${d.balance_formatted}</span>

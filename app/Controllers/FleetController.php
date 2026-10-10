@@ -43,6 +43,7 @@ class FleetController
             COALESCE(SUM(transport_amount), 0) as total_transport,
             COALESCE(SUM(mileage_cost), 0) as total_mileage,
             COALESCE(SUM(extra_expenses), 0) as total_extra,
+            COALESCE(SUM(maintenance), 0) as total_maintenance,
             COALESCE(SUM(diesel), 0) as total_diesel,
             COALESCE(SUM(balance), 0) as total_balance,
             COALESCE(SUM(loaded_litres), 0) as total_loaded
@@ -188,10 +189,12 @@ class FleetController
             }
         }
 
-        // Trip Expenses are strictly Mileage and Diesel Fueling
+        // Trip Expenses (Mileage, Diesel, Maintenance)
         $rawMileage = (float) ($_POST['mileage_cost'] ?? 0);
         $mileageCost = $isKes ? ($rawMileage / $rate) : $rawMileage;
-        $extraExpenses = 0.0; // Any extra repairs must be logged on the Expenses page
+        $rawMaintenance = (float) ($_POST['maintenance'] ?? 0);
+        $maintenance = $isKes ? ($rawMaintenance / $rate) : $rawMaintenance;
+        $extraExpenses = 0.0;
         $breakdownNotes = '';
 
         $agreedCommission = 0.0;
@@ -201,7 +204,7 @@ class FleetController
             $balance = $agreedCommission;
         } else {
             $effectiveRev = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transportAmount;
-            $balance = $effectiveRev - ($mileageCost + $diesel);
+            $balance = $effectiveRev - ($mileageCost + $diesel + $maintenance);
         }
 
         $shortageNotes = trim($_POST['shortage_notes'] ?? '');
@@ -222,9 +225,9 @@ class FleetController
             $stmt = $pdo->prepare('INSERT INTO fleet_dispatches (
                 trip_number, bol_number, dispatch_date, truck, truck_capacity, loaded_litres, shortage_litres, delivered_litres,
                 from_location, destination, product, unit_price, driver, transport_amount, final_payout, payout_difference,
-                mileage_cost, diesel_litres, diesel_unit_price, diesel, extra_expenses, breakdown_notes, shortage_notes, client_name, balance, is_subcontracted, agreed_commission,
+                mileage_cost, diesel_litres, diesel_unit_price, diesel, extra_expenses, maintenance, breakdown_notes, shortage_notes, client_name, balance, is_subcontracted, agreed_commission,
                 status, seal_numbers, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
             $stmt->execute([
                 $tripNumber,
@@ -248,6 +251,7 @@ class FleetController
                 $dieselUnitPrice,
                 $diesel,
                 $extraExpenses,
+                $maintenance,
                 $breakdownNotes,
                 $shortageNotes,
                 $clientName,
@@ -424,7 +428,8 @@ class FleetController
         } else {
             $mileage = (float) ($dispatch['mileage_cost'] ?? 0);
             $diesel = (float) ($dispatch['diesel'] ?? 0);
-            $balance = $finalPayout - ($mileage + $diesel);
+            $maintenance = (float) ($dispatch['maintenance'] ?? 0);
+            $balance = $finalPayout - ($mileage + $diesel + $maintenance);
         }
 
         $upd = $pdo->prepare("UPDATE fleet_dispatches SET 
@@ -610,12 +615,19 @@ class FleetController
             $extraExpenses = (float)($current['extra_expenses'] ?? 0);
         }
 
+        if (isset($_POST['maintenance']) && $_POST['maintenance'] !== '') {
+            $rawMaint = (float)$_POST['maintenance'];
+            $maintenance = $isKes ? ($rawMaint / $rate) : $rawMaint;
+        } else {
+            $maintenance = (float)($current['maintenance'] ?? 0);
+        }
+
         $isSub = !empty($current['is_subcontracted']);
         if ($isSub) {
             $balance = (float)$current['agreed_commission'];
         } else {
             $effectiveRevenue = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transportAmount;
-            $balance = $effectiveRevenue - ($mileageCost + $diesel);
+            $balance = $effectiveRevenue - ($mileageCost + $diesel + $maintenance);
         }
 
         $shortageNotes = trim($_POST['shortage_notes'] ?? ($current['shortage_notes'] ?? ''));
@@ -625,13 +637,13 @@ class FleetController
             dispatch_date = ?, truck = ?, truck_capacity = ?, driver = ?, status = ?, product = ?, unit_price = ?,
             from_location = ?, destination = ?, client_name = ?, loaded_litres = ?, shortage_litres = ?, delivered_litres = ?, 
             transport_amount = ?, final_payout = ?, payout_difference = ?, 
-            mileage_cost = ?, diesel_litres = ?, diesel_unit_price = ?, diesel = ?, extra_expenses = ?, balance = ?, shortage_notes = ?, breakdown_notes = ?
+            mileage_cost = ?, diesel_litres = ?, diesel_unit_price = ?, diesel = ?, extra_expenses = ?, maintenance = ?, balance = ?, shortage_notes = ?, breakdown_notes = ?
             WHERE id = ?');
         $updateStmt->execute([
             $dispatchDate, $truck, $truckCapacity, $driver, $status, $product, $unitPrice,
             $fromLocation, $destination, $clientName, $loadedLitres, $shortageLitres, $deliveredLitres,
             $transportAmount, $finalPayout, $payoutDiff,
-            $mileageCost, $dieselLitres, $dieselUnitPrice, $diesel, $extraExpenses, $balance, $shortageNotes, $breakdownNotes,
+            $mileageCost, $dieselLitres, $dieselUnitPrice, $diesel, $extraExpenses, $maintenance, $balance, $shortageNotes, $breakdownNotes,
             $id
         ]);
 
@@ -682,6 +694,8 @@ class FleetController
                 'mileage_formatted' => format_money($mileageCost),
                 'extra_expenses' => convert_currency($extraExpenses),
                 'extra_formatted' => format_money($extraExpenses),
+                'maintenance' => convert_currency($maintenance),
+                'maintenance_formatted' => format_money($maintenance),
                 'balance' => convert_currency($balance),
                 'balance_formatted' => format_money($balance),
             ]
@@ -818,6 +832,7 @@ class FleetController
             'Final Client Payout (' . $currencySymbol . ')',
             'Payout Difference (' . $currencySymbol . ')',
             'Mileage Expense (' . $currencySymbol . ')',
+            'Maintenance (' . $currencySymbol . ')',
             'Net Trip Profit (' . $currencySymbol . ')',
             'Trip Status',
             'Remarks / Breakdown Notes',
@@ -852,6 +867,8 @@ class FleetController
             $displayPayoutDiff = $isKes ? ($payoutDiff * $rate) : $payoutDiff;
             $mileage = (float) $d['mileage_cost'];
             $displayMileage = $isKes ? ($mileage * $rate) : $mileage;
+            $maint = (float) ($d['maintenance'] ?? 0);
+            $displayMaintenance = $isKes ? ($maint * $rate) : $maint;
             $balance = (float) $d['balance'];
             $displayBalance = $isKes ? ($balance * $rate) : $balance;
 
@@ -876,6 +893,7 @@ class FleetController
                 $canViewFin ? round($displayFinalPayout, 2) : '[Restricted]',
                 $canViewFin ? round($displayPayoutDiff, 2) : '[Restricted]',
                 $canViewFin ? round($displayMileage, 2) : '[Restricted]',
+                $canViewFin ? round($displayMaintenance, 2) : '[Restricted]',
                 $canViewFin ? round($displayBalance, 2) : '[Restricted]',
                 $d['status'],
                 $d['breakdown_notes'] ?? '',
@@ -913,6 +931,7 @@ class FleetController
                 $totalLoss += (float)$pDiff;
             }
             $totalMileage = (float)array_sum(array_column($dispatches, 'mileage_cost'));
+            $totalMaintenance = (float)array_sum(array_column($dispatches, 'maintenance'));
             $totalBalance = (float)array_sum(array_column($dispatches, 'balance'));
 
             $summaryRow = [
@@ -936,6 +955,7 @@ class FleetController
                 $canViewFin ? round($isKes ? $totalPayout * $rate : $totalPayout, 2) : '[Restricted]',
                 $canViewFin ? round($isKes ? $totalLoss * $rate : $totalLoss, 2) : '[Restricted]',
                 $canViewFin ? round($isKes ? $totalMileage * $rate : $totalMileage, 2) : '[Restricted]',
+                $canViewFin ? round($isKes ? $totalMaintenance * $rate : $totalMaintenance, 2) : '[Restricted]',
                 $canViewFin ? round($isKes ? $totalBalance * $rate : $totalBalance, 2) : '[Restricted]',
                 'SUMMARY',
                 '',
@@ -1005,6 +1025,7 @@ class FleetController
             'Final Client Payout (' . $currencySymbol . ')',
             'Mileage Expense (' . $currencySymbol . ')',
             'Extra Breakdown Cost (' . $currencySymbol . ')',
+            'Maintenance (' . $currencySymbol . ')',
             'Remarks / Breakdown Notes',
             'Shortage Reconciliation Notes',
             'Trip Status',
@@ -1036,6 +1057,7 @@ class FleetController
                 current_currency() === 'KES' ? 390000.00 : 3000.00,
                 current_currency() === 'KES' ? 145000.00 : 1120.00,
                 current_currency() === 'KES' ? 15000.00 : 120.00,
+                0.00,
                 'None',
                 'Delivered 100% full cargo',
                 'Delivered',
@@ -1057,6 +1079,7 @@ class FleetController
                 current_currency() === 'KES' ? 440000.00 : 3400.00,
                 '', // Pending arrival
                 current_currency() === 'KES' ? 175000.00 : 1350.00,
+                0.00,
                 0.00,
                 'None',
                 '',
@@ -1277,13 +1300,14 @@ class FleetController
 
             $payoutDiff = ($finalPayout !== null) ? ($transport - $finalPayout) : 0.0;
 
-            // Diesel, Mileage, Extra Expenses (ALL owner/company costs)
+            // Diesel, Mileage, Extra Expenses, Maintenance (ALL owner/company costs)
             $diesel = $parseMoney(['diesel_fuel_cost', 'diesel_fuel', 'diesel_cost', 'diesel', 'fuel_cost']);
             $mileage = $parseMoney(['mileage_expense', 'mileage_cost', 'mileage', 'trip_cost', 'allowance']);
             $extra = $parseMoney(['extra_breakdown_cost', 'extra_expenses', 'breakdown_cost', 'repairs_cost', 'extra']);
+            $maintenance = $parseMoney(['maintenance', 'maintenance_cost', 'repair_cost', 'garage_cost', 'workshop_cost', 'maninatanenace']);
 
             // Ownership and Net Profit / Balance:
-            // Notice: Diesel fuel cost is catered for by the owner, not client, so it MUST deduct from net profit!
+            // Notice: Diesel fuel and maintenance costs are catered for by the owner, not client, so they MUST deduct from net profit!
             $isSubcontracted = ($truckInfo && in_array(strtolower($truckInfo['ownership_type'] ?? ''), ['contract', 'subcontracted', 'sub'])) ? 1 : 0;
             $agreedCommission = 0.0;
             if ($isSubcontracted) {
@@ -1291,7 +1315,7 @@ class FleetController
                 $balance = $agreedCommission;
             } else {
                 $effectiveRevenue = ($finalPayout !== null && $finalPayout > 0) ? $finalPayout : $transport;
-                $balance = $effectiveRevenue - ($mileage + $diesel);
+                $balance = $effectiveRevenue - ($mileage + $diesel + $maintenance);
             }
 
             // Notes & References
@@ -1331,13 +1355,13 @@ class FleetController
                 $sql = 'UPDATE fleet_dispatches SET 
                     dispatch_date = ?, truck = ?, truck_capacity = ?, loaded_litres = ?, delivered_litres = ?,
                     from_location = ?, destination = ?, client_name = ?, product = ?, driver = ?,
-                    transport_amount = ?, final_payout = ?, payout_difference = ?, mileage_cost = ?, extra_expenses = ?,
+                    transport_amount = ?, final_payout = ?, payout_difference = ?, mileage_cost = ?, extra_expenses = ?, maintenance = ?,
                     diesel = ?, breakdown_notes = ?, shortage_notes = ?, balance = ?, is_subcontracted = ?, agreed_commission = ?,
                     status = ?, seal_numbers = ?';
                 $params = [
                     $dispatchDate, $truck, $capacity, $loaded, $deliveredLitres,
                     $from, $dest, $client, $product, $driver,
-                    $transport, $finalPayout, $payoutDiff, $mileage, $extra,
+                    $transport, $finalPayout, $payoutDiff, $mileage, $extra, $maintenance,
                     $diesel, $notes, $shortageNotes, $balance, $isSubcontracted, $agreedCommission,
                     $status, $seals
                 ];
@@ -1358,13 +1382,13 @@ class FleetController
                 $cols = [
                     'trip_number', 'bol_number', 'dispatch_date', 'truck', 'truck_capacity', 'loaded_litres', 'delivered_litres',
                     'from_location', 'destination', 'client_name', 'product', 'driver', 'transport_amount', 'final_payout', 'payout_difference',
-                    'mileage_cost', 'extra_expenses', 'diesel', 'breakdown_notes', 'shortage_notes', 'balance', 'is_subcontracted', 'agreed_commission',
+                    'mileage_cost', 'extra_expenses', 'maintenance', 'diesel', 'breakdown_notes', 'shortage_notes', 'balance', 'is_subcontracted', 'agreed_commission',
                     'status', 'seal_numbers', 'created_at'
                 ];
                 $params = [
                     $tripNumber, $bolNumber, $dispatchDate, $truck, $capacity, $loaded, $deliveredLitres,
                     $from, $dest, $client, $product, $driver, $transport, $finalPayout, $payoutDiff,
-                    $mileage, $extra, $diesel, $notes, $shortageNotes, $balance, $isSubcontracted, $agreedCommission,
+                    $mileage, $extra, $maintenance, $diesel, $notes, $shortageNotes, $balance, $isSubcontracted, $agreedCommission,
                     $status, $seals, date('Y-m-d H:i:s')
                 ];
 
@@ -1474,7 +1498,7 @@ class FleetController
         $totalLitres = round((float)($stats['total_litres'] ?? 0), 2);
         $unitPrice = $totalLitres > 0 ? round($totalDiesel / $totalLitres, 4) : 0;
 
-        $dStmt = $pdo->prepare('SELECT transport_amount, final_payout, mileage_cost, extra_expenses, is_subcontracted, agreed_commission FROM fleet_dispatches WHERE id = ?');
+        $dStmt = $pdo->prepare('SELECT transport_amount, final_payout, mileage_cost, extra_expenses, maintenance, is_subcontracted, agreed_commission FROM fleet_dispatches WHERE id = ?');
         $dStmt->execute([$dispatchId]);
         $d = $dStmt->fetch(PDO::FETCH_ASSOC);
         if (!$d) {
@@ -1487,7 +1511,8 @@ class FleetController
         } else {
             $effectiveRev = ($d['final_payout'] !== null && (float)$d['final_payout'] > 0) ? (float)$d['final_payout'] : (float)$d['transport_amount'];
             $mileage = (float)($d['mileage_cost'] ?? 0);
-            $balance = round($effectiveRev - ($mileage + $totalDiesel), 2);
+            $maintenance = (float)($d['maintenance'] ?? 0);
+            $balance = round($effectiveRev - ($mileage + $totalDiesel + $maintenance), 2);
         }
 
         $upStmt = $pdo->prepare('UPDATE fleet_dispatches SET diesel = ?, diesel_litres = ?, diesel_unit_price = ?, balance = ? WHERE id = ?');
@@ -1505,6 +1530,7 @@ class FleetController
             COALESCE(SUM(transport_amount), 0) as total_transport,
             COALESCE(SUM(mileage_cost), 0) as total_mileage,
             COALESCE(SUM(extra_expenses), 0) as total_extra,
+            COALESCE(SUM(maintenance), 0) as total_maintenance,
             COALESCE(SUM(diesel), 0) as total_diesel,
             COALESCE(SUM(balance), 0) as total_balance
             FROM fleet_dispatches');

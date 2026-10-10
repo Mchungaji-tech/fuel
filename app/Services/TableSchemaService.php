@@ -52,6 +52,7 @@ class TableSchemaService
                     ['payout_difference', 'Payout Diff (Loss)', 'currency', 1],
                     ['mileage_cost', 'Mileage Expense', 'currency', 1],
                     ['extra_expenses', 'Extra Breakdown Cost', 'currency', 0],
+                    ['maintenance', 'Maintenance', 'currency', 1],
                     ['balance', 'Net Trip Profit', 'currency', 1],
                     ['breakdown_notes', 'Breakdown / Remarks', 'text', 0],
                     ['shortage_notes', 'Shortage Notes', 'text', 0],
@@ -168,6 +169,7 @@ class TableSchemaService
                 $ensureMeta('unit_price', 'Product Unit Price', 'currency', 0, 7);
                 $ensureMeta('diesel_litres', 'Diesel Litres', 'number', 0, 9);
                 $ensureMeta('diesel_unit_price', 'Diesel Unit Price', 'currency', 0, 10);
+                $ensureMeta('maintenance', 'Maintenance', 'currency', 1, 14);
 
                 // Update loaded_litres to Actual @ L20 and hide truck_capacity, bol_number and seal_numbers
                 $pdo->exec("UPDATE table_columns_meta SET display_label = 'Actual @ L20' WHERE table_name = 'fleet_dispatches' AND column_key = 'loaded_litres'");

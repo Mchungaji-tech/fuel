@@ -35,12 +35,20 @@ class Database
             return self::$connection;
         }
 
-        // Direct online MySQL connection
-        self::$connection = self::getMysqlConnection();
-        self::$activeDriver = 'mysql';
-        self::$isFallback = false;
-        self::$fallbackReason = null;
-        return self::$connection;
+        // Direct online MySQL connection with offline SQLite fallback
+        try {
+            self::$connection = self::getMysqlConnection();
+            self::$activeDriver = 'mysql';
+            self::$isFallback = false;
+            self::$fallbackReason = null;
+            return self::$connection;
+        } catch (\Throwable $e) {
+            self::$connection = self::getSqliteConnection();
+            self::$activeDriver = 'sqlite';
+            self::$isFallback = true;
+            self::$fallbackReason = $e->getMessage();
+            return self::$connection;
+        }
     }
 
     /**
@@ -303,6 +311,7 @@ class Database
                 diesel_unit_price DECIMAL(10,2) DEFAULT 0,
                 diesel DECIMAL(12,2) DEFAULT 0,
                 extra_expenses DECIMAL(12,2) DEFAULT 0,
+                maintenance DECIMAL(12,2) DEFAULT 0,
                 breakdown_notes TEXT,
                 balance DECIMAL(12,2) DEFAULT 0,
                 is_subcontracted INT DEFAULT 0,
@@ -507,6 +516,7 @@ class Database
         $ensureColumn('fleet_dispatches', 'shortage_notes', 'TEXT');
         $ensureColumn('fleet_dispatches', 'client_name', 'VARCHAR(255) DEFAULT NULL');
         $ensureColumn('fleet_dispatches', 'diesel', 'DECIMAL(12,2) DEFAULT 0');
+        $ensureColumn('fleet_dispatches', 'maintenance', 'DECIMAL(12,2) DEFAULT 0');
 
         // Fleet Diesel Logs
         $ensureColumn('fleet_diesel_logs', 'exchange_rate', "DECIMAL(12,4) DEFAULT 128.0000");

@@ -454,7 +454,8 @@ ALTER TABLE `fleet_dispatches`
     ADD COLUMN IF NOT EXISTS `is_subcontracted` TINYINT(1) DEFAULT 0 AFTER `status`,
     ADD COLUMN IF NOT EXISTS `subcontractor_name` VARCHAR(150) NULL AFTER `is_subcontracted`,
     ADD COLUMN IF NOT EXISTS `agreed_commission` DECIMAL(15,2) DEFAULT 0.00 AFTER `subcontractor_name`,
-    ADD COLUMN IF NOT EXISTS `final_payout` DECIMAL(15,2) DEFAULT 0.00 AFTER `agreed_commission`;
+    ADD COLUMN IF NOT EXISTS `final_payout` DECIMAL(15,2) DEFAULT 0.00 AFTER `agreed_commission`,
+    ADD COLUMN IF NOT EXISTS `maintenance` DECIMAL(15,2) DEFAULT 0.00 AFTER `final_payout`;
 
 -- 6. Trucks Table: Ensure Fleet Ownership & Driver Assignment Columns Exist
 ALTER TABLE `trucks`
