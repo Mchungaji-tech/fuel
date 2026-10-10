@@ -37,18 +37,56 @@ class FleetController
         $dispatches = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
+        // Ensure maintenance column exists in fleet_dispatches
+        try {
+            $pdo->query('SELECT maintenance FROM fleet_dispatches LIMIT 1');
+        } catch (\Throwable $e) {
+            try {
+                $driver = Database::getActiveDriver();
+                $colDef = ($driver === 'sqlite') ? 'DECIMAL(12,2) DEFAULT 0' : 'DECIMAL(12,2) DEFAULT 0.00';
+                $pdo->exec("ALTER TABLE fleet_dispatches ADD COLUMN maintenance {$colDef}");
+            } catch (\Throwable $e2) {}
+        }
+
         // Calculate aggregates across all dispatches
-        $aggStmt = $pdo->query('SELECT 
-            COUNT(*) as total_count,
-            COALESCE(SUM(transport_amount), 0) as total_transport,
-            COALESCE(SUM(mileage_cost), 0) as total_mileage,
-            COALESCE(SUM(extra_expenses), 0) as total_extra,
-            COALESCE(SUM(maintenance), 0) as total_maintenance,
-            COALESCE(SUM(diesel), 0) as total_diesel,
-            COALESCE(SUM(balance), 0) as total_balance,
-            COALESCE(SUM(loaded_litres), 0) as total_loaded
-            FROM fleet_dispatches');
-        $aggregates = $aggStmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $aggStmt = $pdo->query('SELECT 
+                COUNT(*) as total_count,
+                COALESCE(SUM(transport_amount), 0) as total_transport,
+                COALESCE(SUM(mileage_cost), 0) as total_mileage,
+                COALESCE(SUM(extra_expenses), 0) as total_extra,
+                COALESCE(SUM(maintenance), 0) as total_maintenance,
+                COALESCE(SUM(diesel), 0) as total_diesel,
+                COALESCE(SUM(balance), 0) as total_balance,
+                COALESCE(SUM(loaded_litres), 0) as total_loaded
+                FROM fleet_dispatches');
+            $aggregates = $aggStmt->fetch(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            try {
+                $aggStmt = $pdo->query('SELECT 
+                    COUNT(*) as total_count,
+                    COALESCE(SUM(transport_amount), 0) as total_transport,
+                    COALESCE(SUM(mileage_cost), 0) as total_mileage,
+                    COALESCE(SUM(extra_expenses), 0) as total_extra,
+                    0 as total_maintenance,
+                    COALESCE(SUM(diesel), 0) as total_diesel,
+                    COALESCE(SUM(balance), 0) as total_balance,
+                    COALESCE(SUM(loaded_litres), 0) as total_loaded
+                    FROM fleet_dispatches');
+                $aggregates = $aggStmt->fetch(PDO::FETCH_ASSOC);
+            } catch (\Throwable $e2) {
+                $aggregates = [
+                    'total_count' => 0,
+                    'total_transport' => 0,
+                    'total_mileage' => 0,
+                    'total_extra' => 0,
+                    'total_maintenance' => 0,
+                    'total_diesel' => 0,
+                    'total_balance' => 0,
+                    'total_loaded' => 0,
+                ];
+            }
+        }
 
         // Fetch options for the dispatch modal
         $trucks = $pdo->query('SELECT plate_number, model, capacity_litres, ownership_type, owner_name, commission_rate, status FROM trucks ORDER BY plate_number ASC')->fetchAll(PDO::FETCH_ASSOC);

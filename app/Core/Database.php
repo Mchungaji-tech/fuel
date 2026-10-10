@@ -469,7 +469,8 @@ class Database
 
         $ensureColumn = function (string $tableName, string $colName, string $colDef) use ($pdo, $getColumns) {
             $cols = $getColumns($tableName);
-            if (!empty($cols) && !in_array($colName, $cols, true)) {
+            $colsLower = array_map('strtolower', $cols);
+            if (!empty($cols) && !in_array(strtolower($colName), $colsLower, true)) {
                 try {
                     $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `{$colName}` {$colDef}");
                 } catch (\Throwable $e) {

@@ -129,55 +129,70 @@ class TableSchemaService
      */
     public static function ensureTableColumnsSeeded(string $table): void
     {
-        $pdo = Database::connection();
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM table_columns_meta WHERE table_name = ?');
-        $stmt->execute([$table]);
-        $count = (int)$stmt->fetchColumn();
+        try {
+            $pdo = Database::connection();
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM table_columns_meta WHERE table_name = ?');
+            $stmt->execute([$table]);
+            $count = (int)$stmt->fetchColumn();
 
-        if ($count === 0) {
-            $defaults = self::getDefaultColumnsForTable($table);
-            $ins = $pdo->prepare('INSERT OR IGNORE INTO table_columns_meta (
-                table_name, column_key, display_label, data_type, is_visible, is_custom, sort_order, created_at
-            ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)');
+            $driver = Database::getActiveDriver();
+            $insertIgnore = ($driver === 'mysql') ? 'INSERT IGNORE INTO' : 'INSERT OR IGNORE INTO';
 
-            $order = 1;
-            foreach ($defaults as $col) {
-                $ins->execute([
-                    $table,
-                    $col[0],
-                    $col[1],
-                    $col[2],
-                    $col[3],
-                    $order++,
-                    date('Y-m-d H:i:s')
-                ]);
+            if ($count === 0) {
+                $defaults = self::getDefaultColumnsForTable($table);
+                $ins = $pdo->prepare("{$insertIgnore} table_columns_meta (
+                    table_name, column_key, display_label, data_type, is_visible, is_custom, sort_order, created_at
+                ) VALUES (?, ?, ?, ?, ?, 0, ?, ?)");
+
+                $order = 1;
+                foreach ($defaults as $col) {
+                    try {
+                        $ins->execute([
+                            $table,
+                            $col[0],
+                            $col[1],
+                            $col[2],
+                            $col[3],
+                            $order++,
+                            date('Y-m-d H:i:s')
+                        ]);
+                    } catch (\Throwable $e) {}
+                }
+            } else {
+                // Ensure newly added default columns like diesel & maintenance are seeded into existing installations
+                if ($table === 'fleet_dispatches') {
+                    $ensureMeta = function($key, $label, $type, $vis, $order) use ($pdo, $insertIgnore) {
+                        try {
+                            $c = $pdo->query("SELECT COUNT(*) FROM table_columns_meta WHERE table_name = 'fleet_dispatches' AND column_key = '{$key}'")->fetchColumn();
+                            if ((int)$c === 0) {
+                                $pdo->prepare("{$insertIgnore} table_columns_meta (table_name, column_key, display_label, data_type, is_visible, is_custom, sort_order, created_at) VALUES ('fleet_dispatches', ?, ?, ?, ?, 0, ?, ?)")
+                                    ->execute([$key, $label, $type, $vis, $order, date('Y-m-d H:i:s')]);
+                            }
+                        } catch (\Throwable $e) {}
+                    };
+
+                    $ensureMeta('truck_capacity', 'Tank Capacity (L)', 'number', 0, 3);
+                    $ensureMeta('diesel', 'Diesel Fuel Cost', 'currency', 1, 8);
+                    $ensureMeta('shortage_litres', 'Shortage Litres', 'number', 1, 6);
+                    $ensureMeta('unit_price', 'Product Unit Price', 'currency', 0, 7);
+                    $ensureMeta('diesel_litres', 'Diesel Litres', 'number', 0, 9);
+                    $ensureMeta('diesel_unit_price', 'Diesel Unit Price', 'currency', 0, 10);
+                    $ensureMeta('maintenance', 'Maintenance', 'currency', 1, 14);
+
+                    // Update loaded_litres to Actual @ L20 and hide truck_capacity, bol_number and seal_numbers
+                    try {
+                        $pdo->exec("UPDATE table_columns_meta SET display_label = 'Actual @ L20' WHERE table_name = 'fleet_dispatches' AND column_key = 'loaded_litres'");
+                        $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'fleet_dispatches' AND column_key IN ('truck_capacity', 'bol_number', 'seal_numbers', 'unit_price')");
+                    } catch (\Throwable $e) {}
+                }
+                if ($table === 'trucks') {
+                    try {
+                        $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'trucks' AND column_key = 'model'");
+                    } catch (\Throwable $e) {}
+                }
             }
-        } else {
-            // Ensure newly added default columns like diesel are seeded into existing installations
-            if ($table === 'fleet_dispatches') {
-                $ensureMeta = function($key, $label, $type, $vis, $order) use ($pdo) {
-                    $c = $pdo->query("SELECT COUNT(*) FROM table_columns_meta WHERE table_name = 'fleet_dispatches' AND column_key = '{$key}'")->fetchColumn();
-                    if ((int)$c === 0) {
-                        $pdo->prepare("INSERT OR IGNORE INTO table_columns_meta (table_name, column_key, display_label, data_type, is_visible, is_custom, sort_order, created_at) VALUES ('fleet_dispatches', ?, ?, ?, ?, 0, ?, ?)")
-                            ->execute([$key, $label, $type, $vis, $order, date('Y-m-d H:i:s')]);
-                    }
-                };
-
-                $ensureMeta('truck_capacity', 'Tank Capacity (L)', 'number', 0, 3);
-                $ensureMeta('diesel', 'Diesel Fuel Cost', 'currency', 1, 8);
-                $ensureMeta('shortage_litres', 'Shortage Litres', 'number', 1, 6);
-                $ensureMeta('unit_price', 'Product Unit Price', 'currency', 0, 7);
-                $ensureMeta('diesel_litres', 'Diesel Litres', 'number', 0, 9);
-                $ensureMeta('diesel_unit_price', 'Diesel Unit Price', 'currency', 0, 10);
-                $ensureMeta('maintenance', 'Maintenance', 'currency', 1, 14);
-
-                // Update loaded_litres to Actual @ L20 and hide truck_capacity, bol_number and seal_numbers
-                $pdo->exec("UPDATE table_columns_meta SET display_label = 'Actual @ L20' WHERE table_name = 'fleet_dispatches' AND column_key = 'loaded_litres'");
-                $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'fleet_dispatches' AND column_key IN ('truck_capacity', 'bol_number', 'seal_numbers', 'unit_price')");
-            }
-            if ($table === 'trucks') {
-                $pdo->exec("UPDATE table_columns_meta SET is_visible = 0 WHERE table_name = 'trucks' AND column_key = 'model'");
-            }
+        } catch (\Throwable $e) {
+            // Silently ignore to preserve page rendering
         }
     }
 
@@ -186,18 +201,41 @@ class TableSchemaService
      */
     public static function getTableColumns(string $table, bool $onlyVisible = false): array
     {
-        self::ensureTableColumnsSeeded($table);
-        $pdo = Database::connection();
+        try {
+            self::ensureTableColumnsSeeded($table);
+            $pdo = Database::connection();
 
-        $sql = 'SELECT * FROM table_columns_meta WHERE table_name = ?';
-        if ($onlyVisible) {
-            $sql .= ' AND is_visible = 1';
+            $sql = 'SELECT * FROM table_columns_meta WHERE table_name = ?';
+            if ($onlyVisible) {
+                $sql .= ' AND is_visible = 1';
+            }
+            $sql .= ' ORDER BY sort_order ASC, id ASC';
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$table]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($rows)) {
+                return $rows;
+            }
+        } catch (\Throwable $e) {}
+
+        // Fallback to built-in default columns if table_columns_meta is inaccessible
+        $defaults = self::getDefaultColumnsForTable($table);
+        $result = [];
+        $order = 1;
+        foreach ($defaults as $col) {
+            if ($onlyVisible && empty($col[3])) continue;
+            $result[] = [
+                'table_name' => $table,
+                'column_key' => $col[0],
+                'display_label' => $col[1],
+                'data_type' => $col[2],
+                'is_visible' => $col[3],
+                'is_custom' => 0,
+                'sort_order' => $order++,
+            ];
         }
-        $sql .= ' ORDER BY sort_order ASC, id ASC';
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$table]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $result;
     }
 
     /**
